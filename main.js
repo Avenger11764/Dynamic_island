@@ -10,12 +10,13 @@ function logg(msg) {
 
 let mainWindow;
 
-const { SMTCMonitor } = require('@coooookies/windows-smtc-monitor');
-let monitor;
+let monitor = null;
 try {
-  monitor = new SMTCMonitor();
+  // const { SMTCMonitor } = require('@coooookies/windows-smtc-monitor');
+  // monitor = new SMTCMonitor();
+  // logg('SMTCMonitor initialized successfully');
 } catch(e) {
-  logg('Failed to init SMTCMonitor: ' + e.message);
+  logg('Failed to init SMTCMonitor: ' + e.message + '\n' + e.stack);
 }
 
 async function authenticateSpotify() {
@@ -56,55 +57,54 @@ async function fetchLyrics(item) {
    }
 }
 
+const { fork } = require('child_process');
+let smtcWorker = null;
+
 function startSpotifyPolling() {
-  if (!monitor) return;
-  setInterval(() => {
+  const spawnWorker = () => {
     try {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        const sessions = Array.from(monitor.sessions.values());
-        let bestSession = sessions.find(s => s.sourceAppId && s.sourceAppId.toLowerCase().includes('spotify'));
-        if (!bestSession) {
-          bestSession = sessions.find(s => s.playback && s.playback.playbackStatus === 4);
-        }
-        if (!bestSession) {
-          bestSession = sessions[0];
-        }
+      const workerPath = path.join(__dirname, 'smtc-worker.js');
+      smtcWorker = fork(workerPath, [], {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+        stdio: ['ignore', 'ignore', 'ignore', 'ipc']
+      });
 
-        if (bestSession && bestSession.media) {
-           const item = {
-             id: bestSession.media.title + '-' + bestSession.media.artist,
-             name: bestSession.media.title || 'Unknown Title',
-             artists: [{ name: bestSession.media.artist || 'Unknown Artist' }],
-             album: { images: [{ url: '' }] }
-           };
-           
-           if (bestSession.media.thumbnail) {
-              item.album.images[0].url = 'data:image/png;base64,' + bestSession.media.thumbnail.toString('base64');
-           }
+      smtcWorker.on('message', (msg) => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (msg) {
+          const item = {
+            id: msg.title + '-' + msg.artist,
+            name: msg.title,
+            artists: [{ name: msg.artist }],
+            album: { images: [{ url: msg.thumbnail ? 'data:image/png;base64,' + msg.thumbnail : '' }] }
+          };
 
-           const is_playing = (bestSession.playback && bestSession.playback.playbackStatus === 4);
+          const body = {
+            item: item,
+            is_playing: msg.is_playing,
+            progress_ms: msg.progress_ms,
+            lyrics: currentLyrics
+          };
 
-           const body = {
-             item: item,
-             is_playing: is_playing,
-             lyrics: currentLyrics
-           };
-
-           if (item.id !== currentTrackId) {
-               currentTrackId = item.id;
-               currentLyrics = [];
-               fetchLyrics(item);
-           }
-           
-           mainWindow.webContents.send('spotify-state', body);
+          if (item.id !== currentTrackId) {
+            currentTrackId = item.id;
+            currentLyrics = [];
+            fetchLyrics(item);
+          }
+          
+          mainWindow.webContents.send('spotify-state', body);
         } else {
-           mainWindow.webContents.send('spotify-state', null);
+          mainWindow.webContents.send('spotify-state', null);
         }
-      }
-    } catch (e) {
-      logg('SMTC Polling error: ' + e.message);
+      });
+
+      smtcWorker.on('exit', () => setTimeout(spawnWorker, 5000));
+    } catch(e) {
+      logg('Worker spawn error: ' + e.message);
     }
-  }, 1000);
+  };
+  
+  spawnWorker();
 }
 
 let lastCopiedText = '';

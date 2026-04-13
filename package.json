@@ -27,6 +27,7 @@
       "secrets.js",
       ".env",
       "main.js",
+      "smtc-worker.js",
       "build_dist/**/*",
       "node_modules/**/*"
     ]
