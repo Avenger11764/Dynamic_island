@@ -332,7 +332,7 @@ export default function App() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="absolute left-0 right-0 top-[54px] flex flex-col justify-center items-center w-full px-5 z-10 pointer-events-none"
+                      className="absolute left-0 right-0 top-10 bottom-[76px] flex flex-col justify-center items-center w-full px-5 z-10 pointer-events-none"
                   >
                      <AnimatePresence mode="wait">
                        <motion.div 
