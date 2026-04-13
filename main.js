@@ -4,6 +4,10 @@ const http = require('http');
 const fs = require('fs');
 const SpotifyWebApi = require('spotify-web-api-node');
 
+function logg(msg) {
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'app-debug.log'), new Date().toISOString() + ': ' + msg + '\n'); } catch(e){}
+}
+
 let mainWindow;
 
 let spotifyClientId = '';
@@ -20,6 +24,8 @@ const spotifyApi = new SpotifyWebApi({
   clientSecret: spotifyClientSecret,
   redirectUri: 'http://127.0.0.1:8888/callback'
 });
+
+logg('SpotifyWebApi initialized with ClientID: ' + spotifyClientId);
 
 const scopes = [
   'user-read-playback-state',
@@ -41,11 +47,14 @@ function loadTokens() {
 }
 
 async function authenticateSpotify() {
+  logg('authenticateSpotify called');
   const saved = loadTokens();
   if (saved && saved.refresh) {
+    logg('Found saved refresh token. Attempting refresh.');
     spotifyApi.setRefreshToken(saved.refresh);
     try {
       const data = await spotifyApi.refreshAccessToken();
+      logg('Refresh token successful');
       spotifyApi.setAccessToken(data.body['access_token']);
       if (data.body['refresh_token']) {
          saveTokens(data.body['access_token'], data.body['refresh_token']);
@@ -55,20 +64,29 @@ async function authenticateSpotify() {
       startSpotifyPolling();
       return; 
     } catch (e) {
-      console.log('Failed to refresh saved token, falling back to auth');
+      logg('Failed to refresh saved token: ' + e.message);
     }
   }
 
-  const authorizeURL = spotifyApi.createAuthorizeURL(scopes, 'state');
-  shell.openExternal(authorizeURL);
+  logg('Falling back to auth step. Opening URL...');
+  try {
+    const authorizeURL = spotifyApi.createAuthorizeURL(scopes, 'state');
+    logg('Auth URL: ' + authorizeURL);
+    shell.openExternal(authorizeURL);
+  } catch(e) {
+    logg('Error creating auth URL: ' + e.message);
+  }
 
+  logg('Starting HTTP server...');
   const server = http.createServer((req, res) => {
     if (req.url.startsWith('/callback')) {
       const url = new URL(req.url, 'http://127.0.0.1:8888');
       const code = url.searchParams.get('code');
       if (code) {
+        logg('Received code from Spotify callback');
         spotifyApi.authorizationCodeGrant(code).then(
           function(data) {
+            logg('Authorization grant successful!');
             spotifyApi.setAccessToken(data.body['access_token']);
             spotifyApi.setRefreshToken(data.body['refresh_token']);
             saveTokens(data.body['access_token'], data.body['refresh_token']);
@@ -78,6 +96,7 @@ async function authenticateSpotify() {
             startSpotifyPolling();
           },
           function(err) {
+            logg('Authorization failed: ' + err.message);
             res.end('Authentication failed.');
           }
         );
@@ -119,10 +138,13 @@ async function fetchLyrics(item) {
    }
 }
 
+let isRateLimited = false;
 function startSpotifyPolling() {
   setInterval(async () => {
+    if (isRateLimited) return;
     try {
       const data = await spotifyApi.getMyCurrentPlaybackState();
+      logg('Polling... response status: ' + data.statusCode + ' hasBody: ' + !!data.body + ' hasItem: ' + (data.body && !!data.body.item));
       if (mainWindow && !mainWindow.isDestroyed()) {
         if (data.body && data.body.item) {
            lastGoodState = data.body;
@@ -143,13 +165,21 @@ function startSpotifyPolling() {
         }
       }
     } catch (e) {
-      if (e.statusCode === 401) {
+      logg('Polling error: ' + e.message + ', ' + e.statusCode);
+      if (e.statusCode === 429) {
+         isRateLimited = true;
+         // Pause for 30s
+         setTimeout(() => { isRateLimited = false; }, 30000);
+      } else if (e.statusCode === 401) {
          try {
            const data = await spotifyApi.refreshAccessToken();
+           logg('Polling auto-refreshed token');
            spotifyApi.setAccessToken(data.body['access_token']);
            const saved = loadTokens();
            if (saved) saveTokens(data.body['access_token'], saved.refresh);
-         } catch(err) {}
+         } catch(err) {
+           logg('Polling auto-refresh failed: ' + err.message);
+         }
       }
     }
   }, 2000);
