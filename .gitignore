@@ -1,0 +1,8 @@
+node_modules/
+dist/
+build_dist/
+release/
+wc.7z
+*.env
+.env
+.DS_Store
