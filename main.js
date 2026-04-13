@@ -30,11 +30,23 @@ let currentLyrics = [];
 
 async function fetchLyrics(item) {
    try {
-     const trackName = item.name;
+     const trackName = item.name || '';
      const artistName = item.artists[0]?.name || '';
-     const albumName = item.album?.name || '';
-     const res = await fetch(`https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistName)}&album_name=${encodeURIComponent(albumName)}`);
-     const data = await res.json();
+     const query = encodeURIComponent(trackName + ' ' + artistName);
+     
+     // First try exact get
+     let res = await fetch(`https://lrclib.net/api/get?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistName)}`);
+     let data = await res.json();
+     
+     // If not found, fallback to search which is much more lenient for SMTC tracks
+     if (!data || !data.syncedLyrics) {
+        res = await fetch(`https://lrclib.net/api/search?q=${query}`);
+        const searchData = await res.json();
+        if (Array.isArray(searchData) && searchData.length > 0) {
+           data = searchData.find(d => d.syncedLyrics);
+        }
+     }
+
      if (data && data.syncedLyrics) {
        const lines = data.syncedLyrics.split('\n');
        const parsed = [];
