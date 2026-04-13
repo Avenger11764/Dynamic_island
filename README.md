@@ -2,6 +2,15 @@
 
 A sleek, Dynamic Island style application for Windows desktops built with Electron and React.
 
+## Screenshots
+| Compact Mode | Media Player Mode |
+|:---:|:---:|
+| ![Compact Mode](./assets/compact_mode.png) | ![Spotify Player](./assets/media_player.png) |
+
+| Stopwatch Mode | Hardware Stats Mode |
+|:---:|:---:|
+| ![Stopwatch](./assets/stopwatch.png) | ![Hardware Stats](./assets/hardware_stats.png) |
+
 ## Features
 - Dynamic Island-style UI notch mechanism
 - Smooth animations using Framer Motion
