@@ -24,6 +24,7 @@
       "buildResources": "build_dist"
     },
     "files": [
+      "secrets.js",
       ".env",
       "main.js",
       "build_dist/**/*",

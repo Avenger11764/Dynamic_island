@@ -6,17 +6,14 @@ const SpotifyWebApi = require('spotify-web-api-node');
 
 let mainWindow;
 
-const credsPath = path.join(app.getPath('userData'), 'spotify-credentials.json');
 let spotifyClientId = '';
 let spotifyClientSecret = '';
-if (fs.existsSync(credsPath)) {
-  try {
-    const rawData = fs.readFileSync(credsPath, 'utf8').replace(/^\uFEFF/, '');
-    const c = JSON.parse(rawData);
-    spotifyClientId = c.clientId;
-    spotifyClientSecret = c.clientSecret;
-  } catch(e) {}
-}
+try {
+  const secrets = require('./secrets.js');
+  spotifyClientId = secrets.clientId;
+  spotifyClientSecret = secrets.clientSecret;
+} catch(e) {}
+
 
 const spotifyApi = new SpotifyWebApi({
   clientId: spotifyClientId,

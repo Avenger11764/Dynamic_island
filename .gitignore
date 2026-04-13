@@ -6,3 +6,5 @@ wc.7z
 *.env
 .env
 .DS_Store
+
+secrets.js
