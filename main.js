@@ -249,9 +249,17 @@ function createWindow() {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) win.setIgnoreMouseEvents(ignore, options);
   });
-
+  
+  mainWindow.webContents.on('did-fail-load', (e, code, desc) => {
+    logg('Failed to load UI: ' + desc + ' (' + code + ')');
+  });
+  mainWindow.webContents.on('crashed', (e) => {
+    logg('Renderer Crashed!');
+  });
+  
   const isDev = !app.isPackaged;
   if (isDev) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
     const loadVite = () => {
       mainWindow.loadURL('http://localhost:5173').catch(() => {
         setTimeout(loadVite, 1000);
@@ -297,6 +305,12 @@ app.whenReady().then(() => {
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('before-quit', () => {
+  if (smtcWorker) {
+    try { smtcWorker.kill(); } catch(e){}
+  }
 });
 
 app.on('window-all-closed', function () {
