@@ -5,9 +5,11 @@ const SpotifyWebApi = require('spotify-web-api-node');
 
 let mainWindow;
 
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
 const spotifyApi = new SpotifyWebApi({
-  clientId: 'YOUR_SPOTIFY_CLIENT_ID',
-  clientSecret: 'YOUR_SPOTIFY_CLIENT_SECRET',
+  clientId: process.env.SPOTIFY_CLIENT_ID,
+  clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
   redirectUri: 'http://127.0.0.1:8888/callback'
 });
 
