@@ -1,15 +1,23 @@
 const { app, BrowserWindow, screen, ipcMain, shell, clipboard } = require('electron');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
 const SpotifyWebApi = require('spotify-web-api-node');
 
 let mainWindow;
 
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+const credsPath = path.join(app.getPath('userData'), 'spotify-credentials.json');
+let spotifyClientId = '';
+let spotifyClientSecret = '';
+if (fs.existsSync(credsPath)) {
+  const c = JSON.parse(fs.readFileSync(credsPath));
+  spotifyClientId = c.clientId;
+  spotifyClientSecret = c.clientSecret;
+}
 
 const spotifyApi = new SpotifyWebApi({
-  clientId: process.env.SPOTIFY_CLIENT_ID,
-  clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+  clientId: spotifyClientId,
+  clientSecret: spotifyClientSecret,
   redirectUri: 'http://127.0.0.1:8888/callback'
 });
 
@@ -18,8 +26,6 @@ const scopes = [
   'user-modify-playback-state',
   'user-read-currently-playing'
 ];
-
-const fs = require('fs');
 
 const tokenPath = path.join(app.getPath('userData'), 'spotify-tokens.json');
 
