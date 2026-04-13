@@ -10,9 +10,12 @@ const credsPath = path.join(app.getPath('userData'), 'spotify-credentials.json')
 let spotifyClientId = '';
 let spotifyClientSecret = '';
 if (fs.existsSync(credsPath)) {
-  const c = JSON.parse(fs.readFileSync(credsPath));
-  spotifyClientId = c.clientId;
-  spotifyClientSecret = c.clientSecret;
+  try {
+    const rawData = fs.readFileSync(credsPath, 'utf8').replace(/^\uFEFF/, '');
+    const c = JSON.parse(rawData);
+    spotifyClientId = c.clientId;
+    spotifyClientSecret = c.clientSecret;
+  } catch(e) {}
 }
 
 const spotifyApi = new SpotifyWebApi({
