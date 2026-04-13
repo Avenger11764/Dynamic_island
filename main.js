@@ -10,99 +10,17 @@ function logg(msg) {
 
 let mainWindow;
 
-let spotifyClientId = '';
-let spotifyClientSecret = '';
+const { SMTCMonitor } = require('@coooookies/windows-smtc-monitor');
+let monitor;
 try {
-  const secrets = require('./secrets.js');
-  spotifyClientId = secrets.clientId;
-  spotifyClientSecret = secrets.clientSecret;
-} catch(e) {}
-
-
-const spotifyApi = new SpotifyWebApi({
-  clientId: spotifyClientId,
-  clientSecret: spotifyClientSecret,
-  redirectUri: 'http://127.0.0.1:8888/callback'
-});
-
-logg('SpotifyWebApi initialized with ClientID: ' + spotifyClientId);
-
-const scopes = [
-  'user-read-playback-state',
-  'user-modify-playback-state',
-  'user-read-currently-playing'
-];
-
-const tokenPath = path.join(app.getPath('userData'), 'spotify-tokens.json');
-
-function saveTokens(access, refresh) {
-  fs.writeFileSync(tokenPath, JSON.stringify({ access, refresh }));
-}
-
-function loadTokens() {
-  if (fs.existsSync(tokenPath)) {
-    return JSON.parse(fs.readFileSync(tokenPath));
-  }
-  return null;
+  monitor = new SMTCMonitor();
+} catch(e) {
+  logg('Failed to init SMTCMonitor: ' + e.message);
 }
 
 async function authenticateSpotify() {
-  logg('authenticateSpotify called');
-  const saved = loadTokens();
-  if (saved && saved.refresh) {
-    logg('Found saved refresh token. Attempting refresh.');
-    spotifyApi.setRefreshToken(saved.refresh);
-    try {
-      const data = await spotifyApi.refreshAccessToken();
-      logg('Refresh token successful');
-      spotifyApi.setAccessToken(data.body['access_token']);
-      if (data.body['refresh_token']) {
-         saveTokens(data.body['access_token'], data.body['refresh_token']);
-      } else {
-         saveTokens(data.body['access_token'], saved.refresh);
-      }
-      startSpotifyPolling();
-      return; 
-    } catch (e) {
-      logg('Failed to refresh saved token: ' + e.message);
-    }
-  }
-
-  logg('Falling back to auth step. Opening URL...');
-  try {
-    const authorizeURL = spotifyApi.createAuthorizeURL(scopes, 'state');
-    logg('Auth URL: ' + authorizeURL);
-    shell.openExternal(authorizeURL);
-  } catch(e) {
-    logg('Error creating auth URL: ' + e.message);
-  }
-
-  logg('Starting HTTP server...');
-  const server = http.createServer((req, res) => {
-    if (req.url.startsWith('/callback')) {
-      const url = new URL(req.url, 'http://127.0.0.1:8888');
-      const code = url.searchParams.get('code');
-      if (code) {
-        logg('Received code from Spotify callback');
-        spotifyApi.authorizationCodeGrant(code).then(
-          function(data) {
-            logg('Authorization grant successful!');
-            spotifyApi.setAccessToken(data.body['access_token']);
-            spotifyApi.setRefreshToken(data.body['refresh_token']);
-            saveTokens(data.body['access_token'], data.body['refresh_token']);
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end('<h1>Spotify successfully authenticated! You can safely close this browser tab.</h1>');
-            server.close();
-            startSpotifyPolling();
-          },
-          function(err) {
-            logg('Authorization failed: ' + err.message);
-            res.end('Authentication failed.');
-          }
-        );
-      }
-    }
-  }).listen(8888, '127.0.0.1').on('error', (e) => console.log('Port blocked'));
+  logg('authenticateSpotify is obsolete. Removed auth flow.');
+  startSpotifyPolling();
 }
 
 let lastGoodState = null;
@@ -138,51 +56,55 @@ async function fetchLyrics(item) {
    }
 }
 
-let isRateLimited = false;
 function startSpotifyPolling() {
-  setInterval(async () => {
-    if (isRateLimited) return;
+  if (!monitor) return;
+  setInterval(() => {
     try {
-      const data = await spotifyApi.getMyCurrentPlaybackState();
-      logg('Polling... response status: ' + data.statusCode + ' hasBody: ' + !!data.body + ' hasItem: ' + (data.body && !!data.body.item));
       if (mainWindow && !mainWindow.isDestroyed()) {
-        if (data.body && data.body.item) {
-           lastGoodState = data.body;
-           if (data.body.item.id !== currentTrackId) {
-             currentTrackId = data.body.item.id;
-             currentLyrics = [];
-             // Fetch in background
-             fetchLyrics(data.body.item);
+        const sessions = Array.from(monitor.sessions.values());
+        let bestSession = sessions.find(s => s.sourceAppId && s.sourceAppId.toLowerCase().includes('spotify'));
+        if (!bestSession) {
+          bestSession = sessions.find(s => s.playback && s.playback.playbackStatus === 4);
+        }
+        if (!bestSession) {
+          bestSession = sessions[0];
+        }
+
+        if (bestSession && bestSession.media) {
+           const item = {
+             id: bestSession.media.title + '-' + bestSession.media.artist,
+             name: bestSession.media.title || 'Unknown Title',
+             artists: [{ name: bestSession.media.artist || 'Unknown Artist' }],
+             album: { images: [{ url: '' }] }
+           };
+           
+           if (bestSession.media.thumbnail) {
+              item.album.images[0].url = 'data:image/png;base64,' + bestSession.media.thumbnail.toString('base64');
            }
-           data.body.lyrics = currentLyrics;
-           mainWindow.webContents.send('spotify-state', data.body);
-        } else if (lastGoodState) {
-           // Provide fallback UI state
-           lastGoodState.lyrics = currentLyrics;
-           mainWindow.webContents.send('spotify-state', { ...lastGoodState, is_playing: false });
+
+           const is_playing = (bestSession.playback && bestSession.playback.playbackStatus === 4);
+
+           const body = {
+             item: item,
+             is_playing: is_playing,
+             lyrics: currentLyrics
+           };
+
+           if (item.id !== currentTrackId) {
+               currentTrackId = item.id;
+               currentLyrics = [];
+               fetchLyrics(item);
+           }
+           
+           mainWindow.webContents.send('spotify-state', body);
         } else {
            mainWindow.webContents.send('spotify-state', null);
         }
       }
     } catch (e) {
-      logg('Polling error: ' + e.message + ', ' + e.statusCode);
-      if (e.statusCode === 429) {
-         isRateLimited = true;
-         // Pause for 30s
-         setTimeout(() => { isRateLimited = false; }, 30000);
-      } else if (e.statusCode === 401) {
-         try {
-           const data = await spotifyApi.refreshAccessToken();
-           logg('Polling auto-refreshed token');
-           spotifyApi.setAccessToken(data.body['access_token']);
-           const saved = loadTokens();
-           if (saved) saveTokens(data.body['access_token'], saved.refresh);
-         } catch(err) {
-           logg('Polling auto-refresh failed: ' + err.message);
-         }
-      }
+      logg('SMTC Polling error: ' + e.message);
     }
-  }, 2000);
+  }, 1000);
 }
 
 let lastCopiedText = '';
@@ -276,10 +198,17 @@ function startPrivacyDotMonitor() {
   });
 }
 
-ipcMain.on('spotify-play', () => spotifyApi.play().catch(()=>{}));
-ipcMain.on('spotify-pause', () => spotifyApi.pause().catch(()=>{}));
-ipcMain.on('spotify-skip', () => spotifyApi.skipToNext().catch(()=>{}));
-ipcMain.on('spotify-prev', () => spotifyApi.skipToPrevious().catch(()=>{}));
+const { exec } = require('child_process');
+function pressMediaKey(key) {
+  try {
+    exec(`powershell -c "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys([char]${key})"`);
+  } catch(e) {}
+}
+
+ipcMain.on('spotify-play', () => pressMediaKey(179));
+ipcMain.on('spotify-pause', () => pressMediaKey(179));
+ipcMain.on('spotify-skip', () => pressMediaKey(176));
+ipcMain.on('spotify-prev', () => pressMediaKey(177));
 ipcMain.on('open-url', (e, link) => shell.openExternal(link));
 ipcMain.on('quit-app', () => app.quit());
 

@@ -32,6 +32,7 @@
     ]
   },
   "dependencies": {
+    "@coooookies/windows-smtc-monitor": "^1.0.12",
     "dotenv": "^17.4.2",
     "framer-motion": "^11.0.0",
     "lucide-react": "^0.360.0",
