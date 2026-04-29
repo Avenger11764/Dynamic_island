@@ -45,7 +45,9 @@ setInterval(() => {
         title: bestSession.media.title || 'Unknown',
         artist: bestSession.media.artist || 'Unknown',
         is_playing: is_playing,
-        progress_ms: progress_ms
+        progress_ms: progress_ms,
+        appId: bestSession.sourceAppId,
+        is_spotify: !!(bestSession.sourceAppId && bestSession.sourceAppId.toLowerCase().includes('spotify'))
       };
       if (bestSession.media.thumbnail) {
         item.thumbnail = bestSession.media.thumbnail.toString('base64');

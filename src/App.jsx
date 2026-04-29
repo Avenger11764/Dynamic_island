@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, SkipForward, SkipBack, CloudSun, Music, Link as LinkIcon, ExternalLink, X, Timer as TimerIcon, Activity, ChevronRight, RotateCcw, Battery, BatteryCharging, Calendar, Sparkles, Power } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, CloudSun, Music, Link as LinkIcon, ExternalLink, X, Timer as TimerIcon, Activity, ChevronRight, RotateCcw, Battery, BatteryCharging, Calendar, Sparkles, Power, LayoutGrid, Calculator, Folder, Settings as SettingsIcon, Signal } from 'lucide-react';
 
 const { ipcRenderer } = window.require ? window.require('electron') : {};
 
@@ -11,15 +11,18 @@ export default function App() {
   const [clipboardUrl, setClipboardUrl] = useState(null);
   const [privacy, setPrivacy] = useState({ cam: false, mic: false });
   const [localProgress, setLocalProgress] = useState(0);
+  const [network, setNetwork] = useState({ rx: 0, tx: 0 });
 
   const [viewMode, setViewMode] = useState('media');
   const [hardware, setHardware] = useState({ cpu: 0, ram: 0 });
   const [weather, setWeather] = useState({ temp: '--', desc: 'Fetching...' });
   const [stopwatch, setStopwatch] = useState(0);
   const [isSwRunning, setIsSwRunning] = useState(false);
+  const [tasks, setTasks] = useState([]);
 
   const [batteryEvent, setBatteryEvent] = useState(null);
   const [meetingAlert, setMeetingAlert] = useState(null);
+  const [showSongName, setShowSongName] = useState(false);
 
   const isNotification = Boolean(clipboardUrl || batteryEvent || meetingAlert);
 
@@ -79,11 +82,15 @@ export default function App() {
       ipcRenderer.on('privacy-dots', (event, state) => {
         setPrivacy(state);
       });
+      ipcRenderer.on('network-stats', (event, stats) => {
+        setNetwork(stats);
+      });
       return () => {
         ipcRenderer.removeAllListeners('spotify-state');
         ipcRenderer.removeAllListeners('clipboard-url');
         ipcRenderer.removeAllListeners('hardware-stats');
         ipcRenderer.removeAllListeners('privacy-dots');
+        ipcRenderer.removeAllListeners('network-stats');
       };
     }
   }, []);
@@ -119,6 +126,20 @@ export default function App() {
     return active;
   };
 
+  const isSpotify = Boolean(spotifyState?.isSpotify);
+
+  useEffect(() => {
+    let interval;
+    if (spotifyState?.is_playing && isSpotify && !isExpanded) {
+      interval = setInterval(() => {
+        setShowSongName(prev => !prev);
+      }, 4000); // Toggle every 4 seconds
+    } else {
+      setShowSongName(false);
+    }
+    return () => clearInterval(interval);
+  }, [spotifyState?.is_playing, isSpotify, isExpanded]);
+
   const handleMouseEnter = () => {
     if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', false);
     setIsExpanded(true);
@@ -129,39 +150,19 @@ export default function App() {
     if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
   };
 
-  // Variants for Framer Motion
-  const islandVariants = {
-    collapsed: {
-      width: 200,
-      height: 40,
-      borderRadius: 40,
-      transition: { type: 'spring', stiffness: 300, damping: 25 }
-    },
-    expanded: {
-      width: 400,
-      height: 160,
-      borderRadius: 30,
-      transition: { type: 'spring', stiffness: 300, damping: 25 }
-    }
-  };
-
-  const contentVariants = {
-    hidden: { opacity: 0, scale: 0.9 },
-    visible: { 
-      opacity: 1, 
-      scale: 1, 
-      transition: { delay: 0.1, type: 'spring', stiffness: 300, damping: 25 } 
-    },
-    exit: { opacity: 0, scale: 0.9, transition: { duration: 0.1 } }
-  };
-
   const formatDate = () => {
     const options = { weekday: 'short', month: 'short', day: 'numeric' };
     return new Date().toLocaleDateString('en-US', options);
   };
 
+  const formatSpeed = (bytes) => {
+    if (bytes < 1024) return `${bytes} B/s`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB/s`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB/s`;
+  };
+
   return (
-    <div className="w-screen h-screen flex justify-center items-start overflow-hidden pointer-events-none fixed top-0 left-0" style={{ pointerEvents: 'none' }}>
+    <div className="w-full h-full flex justify-center items-start overflow-hidden pointer-events-none fixed top-0 left-0" style={{ pointerEvents: 'none' }}>
       <motion.div
         onClick={(e) => e.stopPropagation()}
         onMouseEnter={handleMouseEnter}
@@ -173,8 +174,8 @@ export default function App() {
             ? 340
             : (isExpanded 
                ? 380 
-               : (privacy.cam && privacy.mic ? 160 : (privacy.cam || privacy.mic ? 140 : 120))),
-          height: isNotification ? 80 : (isExpanded ? 200 : 36),
+               : (privacy.cam && privacy.mic ? 160 : (privacy.cam || privacy.mic ? 140 : (showSongName ? 180 : 120)))),
+          height: isNotification ? 80 : (isExpanded ? (viewMode === 'network' ? 250 : (viewMode === 'stats' ? 230 : 200)) : 36),
           borderBottomLeftRadius: (isExpanded || isNotification) ? 32 : 100,
           borderBottomRightRadius: (isExpanded || isNotification) ? 32 : 100,
           borderTopLeftRadius: 0,
@@ -190,16 +191,37 @@ export default function App() {
             <motion.div
               key="collapsed"
               className="w-full h-full flex items-center justify-center gap-3"
-              variants={contentVariants}
-              initial="hidden"
-              animate="visible"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.1 } }}
             >
-              <span className="font-bold text-xs tracking-wider mt-[-2px]">{time}</span>
+              <AnimatePresence mode="wait">
+                {showSongName && isSpotify ? (
+                   <motion.span 
+                    key="songname"
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: -2 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    className="font-bold text-[10px] tracking-tight truncate max-w-[120px] text-green-400"
+                  >
+                    {spotifyState?.item?.name}
+                  </motion.span>
+                ) : (
+                  <motion.span 
+                    key="time"
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: -2 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    className="font-bold text-xs tracking-wider"
+                  >
+                    {time}
+                  </motion.span>
+                )}
+              </AnimatePresence>
               
               {(privacy.mic || privacy.cam || spotifyState?.is_playing) && (
                 <div className="flex items-center gap-1.5 mt-[-2px]">
-                  {spotifyState?.is_playing && <Music size={12} className="text-green-500" />}
+                  {spotifyState?.is_playing && <Music size={12} className={isSpotify ? "text-green-500" : "text-blue-400"} />}
                   {privacy.mic && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)]" />}
                   {privacy.cam && <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)]" />}
                 </div>
@@ -209,10 +231,9 @@ export default function App() {
             <motion.div
               key="clipboard-state"
               className="w-full h-full p-4 flex flex-col justify-center gap-3"
-              variants={contentVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
@@ -245,10 +266,9 @@ export default function App() {
             <motion.div
               key="expanded-state"
               className="w-full h-full p-2 flex flex-col justify-start"
-              variants={contentVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
             >
               {batteryEvent ? (
                 <motion.div key="battery-state" className="w-full h-full p-4 flex items-center justify-between" initial={{opacity:0}} animate={{opacity:1}}>
@@ -280,166 +300,178 @@ export default function App() {
                 </motion.div>
               ) : (
                 <>
-                  {/* Expanded Layout Reorganization */}
-              <div className="w-full h-full p-2 flex flex-col justify-start">
-                <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center gap-2">
-                    <div 
-                      className="flex items-center gap-2 bg-white/10 py-1.5 px-3 rounded-full hover:bg-white/20 transition-colors cursor-pointer" 
-                      style={{ pointerEvents: 'auto' }}
-                      onClick={() => setViewMode(viewMode === 'stats' ? 'media' : 'stats')}
-                    >
-                      <CloudSun size={16} className="text-yellow-300" />
-                      <span className="text-sm font-medium">{weather.temp}</span>
-                    </div>
-
-
-                  </div>
-
-                  <div className="flex items-center gap-2" style={{ pointerEvents: 'auto' }}>
-                    <button className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'stats' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('stats')}>
-                      <Activity size={14} />
-                    </button>
-                    <button className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'timer' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('timer')}>
-                      <TimerIcon size={14} />
-                    </button>
-                    <button className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'media' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('media')}>
-                      <Music size={14} />
-                    </button>
-                  </div>
-
-                  <button 
-                    className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
-                    style={{ pointerEvents: 'auto' }}
-                    onClick={() => ipcRenderer.send('quit-app')}
-                  >
-                    <Power size={14} />
-                  </button>
-                </div>
-                
-                {/* Privacy Dots in Expanded View */}
-                <div className="absolute left-1/2 -translate-x-1/2 flex gap-1.5 mt-2">
-                  {privacy.mic && <div className="w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)]" />}
-                  {privacy.cam && <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)]" />}
-                </div>
-              </div>
-
-              {/* Lyrics Display */}
-              <AnimatePresence>
-                {viewMode === 'media' && spotifyState?.lyrics?.length > 0 && (
-                  <motion.div 
-                      key="lyrics-container"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="absolute left-0 right-0 top-10 bottom-[76px] flex flex-col justify-center items-center w-full px-5 z-10 pointer-events-none"
-                  >
-                     <AnimatePresence mode="wait">
-                       <motion.div 
-                          key={getCurrentLyric() || 'empty'}
-                          initial={{ opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -4 }}
-                          transition={{ duration: 0.15 }}
-                          className="w-full text-center"
-                       >
-                          <span 
-                             className="text-[14px] font-semibold text-white/90 tracking-wide line-clamp-2 leading-snug inline-block"
-                             style={{ textShadow: '0 2px 14px rgba(0,0,0,0.9)' }}
-                          >
-                             {getCurrentLyric() || <span className="opacity-0">♪</span>}
-                          </span>
-                       </motion.div>
-                     </AnimatePresence>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Bottom Section: Dynamic based on mode */}
-              <div className="flex items-center justify-between mt-auto bg-white/5 rounded-2xl p-3 border border-white/5 h-[76px] relative overflow-hidden" style={{ pointerEvents: 'auto' }}>
-                <AnimatePresence mode="wait">
-                  {viewMode === 'media' && (
-                    <motion.div key="media" className="w-full flex items-center justify-between" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
-                          {spotifyState?.item?.album?.images?.[0] ? (
-                            <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover" />
-                          ) : (
-                            <Music size={24} className="text-white/90" />
-                          )}
-                        </div>
-                        <div className="flex flex-col max-w-[140px]">
-                          <span className="font-bold text-base leading-tight truncate">
-                            {spotifyState?.item?.name || 'Not Playing'}
-                          </span>
-                          <span className="text-xs text-white/50 truncate">
-                            {spotifyState?.item?.artists?.[0]?.name || 'Spotify offline'}
-                          </span>
-                        </div>
-                      </div>
-                      
+                  <div className="w-full h-full p-2 flex flex-col justify-start">
+                    <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-2">
-                        <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-prev')}>
-                          <SkipBack size={16} />
-                        </button>
-                        <button className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors shadow-sm" onClick={() => {
-                            const nextState = !spotifyState?.is_playing;
-                            setSpotifyState(prev => prev ? {...prev, is_playing: nextState} : prev);
-                            if (ipcRenderer) ipcRenderer.send(nextState ? 'spotify-play' : 'spotify-pause');
-                        }}>
-                          {spotifyState?.is_playing ? <Pause size={18} /> : <Play size={18} className="translate-x-[1px]" />}
-                        </button>
-                        <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-skip')}>
-                          <SkipForward size={16} />
-                        </button>
+                        <div 
+                          className="flex items-center gap-2 bg-white/10 py-1.5 px-3 rounded-full hover:bg-white/20 transition-colors cursor-pointer" 
+                          style={{ pointerEvents: 'auto' }}
+                          onClick={() => { if (ipcRenderer) ipcRenderer.send('open-weather'); }}
+                        >
+                          <CloudSun size={16} className="text-yellow-300" />
+                          <span className="text-sm font-medium">{weather.temp}</span>
+                        </div>
                       </div>
-                    </motion.div>
-                  )}
 
-                  {viewMode === 'stats' && (
-                    <motion.div key="stats" className="w-full flex items-center justify-between px-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      <div className="w-full flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between text-xs font-semibold tracking-wide">
-                          <span className="flex items-center gap-2"><Activity size={12} className="text-green-400" /> CPU Usage</span>
-                          <span className="text-white/80">{hardware.cpu}%</span>
-                        </div>
-                        <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                          <div className="h-full bg-green-400 transition-all duration-500 ease-out" style={{ width: `${hardware.cpu}%` }} />
-                        </div>
-                        <div className="flex items-center justify-between text-xs font-semibold tracking-wide mt-0.5">
-                          <span className="flex items-center gap-2"><Activity size={12} className="text-blue-400" /> RAM Usage</span>
-                          <span className="text-white/80">{hardware.ram}%</span>
-                        </div>
-                        <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-400 transition-all duration-500 ease-out" style={{ width: `${hardware.ram}%` }} />
-                        </div>
+                      <div className="flex items-center gap-2" style={{ pointerEvents: 'auto' }}>
+                        <button className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'stats' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('stats')}>
+                          <Activity size={14} />
+                        </button>
+                        <button className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'network' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('network')}>
+                          <Signal size={14} />
+                        </button>
+                        <button className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'media' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('media')}>
+                          <Music size={14} />
+                        </button>
                       </div>
-                    </motion.div>
-                  )}
 
-                  {viewMode === 'timer' && (
-                    <motion.div key="timer" className="w-full flex items-center justify-between px-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-white/50 tracking-wider uppercase mb-1">Stopwatch</span>
-                        <span className="font-mono text-3xl font-bold tracking-tight">
-                          {Math.floor(stopwatch / 60).toString().padStart(2, '0')}:{Math.floor(stopwatch % 60).toString().padStart(2, '0')}
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button className="w-12 h-12 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => { setStopwatch(0); setIsSwRunning(false); }}>
-                          <RotateCcw size={20} />
-                        </button>
-                        <button className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors shadow-sm" onClick={() => setIsSwRunning(!isSwRunning)}>
-                          {isSwRunning ? <Pause size={20} /> : <Play size={20} className="translate-x-[1px]" />}
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1.5 mx-1">
+                          {privacy.mic && <div className="w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)]" />}
+                          {privacy.cam && <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)]" />}
+                        </div>
+                        <button 
+                          className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                          style={{ pointerEvents: 'auto' }}
+                          onClick={() => ipcRenderer.send('quit-app')}
+                        >
+                          <Power size={14} />
                         </button>
                       </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </>
-           )}
-          </motion.div>
+                    </div>
+                  </div>
+
+                  <AnimatePresence>
+                    {viewMode === 'media' && spotifyState?.lyrics?.length > 0 && (
+                      <motion.div 
+                          key="lyrics-container"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="absolute left-0 right-0 top-10 bottom-[76px] flex flex-col justify-center items-center w-full px-5 z-10 pointer-events-none"
+                      >
+                         <AnimatePresence mode="wait">
+                           <motion.div 
+                              key={getCurrentLyric() || 'empty'}
+                              initial={{ opacity: 0, y: 4 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -4 }}
+                              transition={{ duration: 0.15 }}
+                              className="w-full text-center"
+                           >
+                              <span 
+                                 className="text-[14px] font-semibold text-white/90 tracking-wide line-clamp-2 leading-snug inline-block"
+                                 style={{ textShadow: '0 2px 14px rgba(0,0,0,0.9)' }}
+                              >
+                                 {getCurrentLyric() || <span className="opacity-0">♪</span>}
+                              </span>
+                           </motion.div>
+                         </AnimatePresence>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className={`flex items-center justify-between mt-auto bg-white/5 rounded-2xl border border-white/5 relative overflow-hidden transition-all duration-300 ${viewMode === 'network' ? 'p-3 h-[160px]' : (viewMode === 'stats' ? 'p-4 h-[120px]' : 'p-3 h-[76px]')}`} style={{ pointerEvents: 'auto' }}>
+                    <AnimatePresence mode="wait">
+                      {viewMode === 'media' && (
+                        <motion.div key="media" className="w-full flex items-center justify-between" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
+                              {spotifyState?.item?.album?.images?.[0] ? (
+                                <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover" />
+                              ) : (
+                                <Music size={24} className="text-white/90" />
+                              )}
+                            </div>
+                            <div 
+                              className="flex flex-col max-w-[140px] cursor-pointer hover:opacity-80 transition-opacity"
+                              onClick={() => { if (ipcRenderer) ipcRenderer.send('open-media-app', spotifyState?.sourceAppId); }}
+                            >
+                              <span className="font-bold text-base leading-tight truncate hover:underline">
+                                {spotifyState?.item?.name || 'Not Playing'}
+                              </span>
+                              <span className="text-xs text-white/50 truncate">
+                                {spotifyState?.item?.artists?.[0]?.name || 'Spotify offline'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-prev')}>
+                              <SkipBack size={16} />
+                            </button>
+                            <button className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors shadow-sm" onClick={() => {
+                                const nextState = !spotifyState?.is_playing;
+                                setSpotifyState(prev => prev ? {...prev, is_playing: nextState} : prev);
+                                if (ipcRenderer) ipcRenderer.send(nextState ? 'spotify-play' : 'spotify-pause');
+                            }}>
+                              {spotifyState?.is_playing ? <Pause size={18} /> : <Play size={18} className="translate-x-[1px]" />}
+                            </button>
+                            <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-skip')}>
+                              <SkipForward size={16} />
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {viewMode === 'stats' && (
+                        <motion.div key="stats" className="w-full flex items-center justify-between" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <div className="w-full flex flex-col gap-3">
+                             <div className="flex flex-col">
+                                <div className="flex items-center justify-between text-[10px] font-black tracking-widest mb-1.5 px-0.5 text-white/40 uppercase">
+                                  <span className="flex items-center gap-2"><Activity size={12} className="text-green-400" /> CPU USAGE</span>
+                                  <span className="text-white font-bold">{hardware.cpu}%</span>
+                                </div>
+                                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                  <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${hardware.cpu}%` }}
+                                    className="h-full bg-gradient-to-r from-green-500 to-emerald-400 shadow-[0_0_10px_rgba(34,197,94,0.3)]" 
+                                  />
+                                </div>
+                             </div>
+                             <div className="flex flex-col">
+                                <div className="flex items-center justify-between text-[10px] font-black tracking-widest mb-1.5 px-0.5 text-white/40 uppercase">
+                                  <span className="flex items-center gap-2"><Activity size={12} className="text-blue-400" /> RAM USAGE</span>
+                                  <span className="text-white font-bold">{hardware.ram}%</span>
+                                </div>
+                                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                  <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${hardware.ram}%` }}
+                                    className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 shadow-[0_0_10px_rgba(59,130,246,0.3)]" 
+                                  />
+                                </div>
+                             </div>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {viewMode === 'network' && (
+                        <motion.div key="network" className="w-full flex flex-col justify-center px-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold text-white/50 tracking-[0.2em] uppercase">Network Speed</span>
+                            <div className="flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                              <span className="text-[10px] font-bold text-green-500 uppercase">Live</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                             <div className="flex-1 bg-white/5 rounded-2xl p-3 border border-white/5 flex flex-col items-center">
+                                <span className="text-[10px] font-black text-white/30 uppercase mb-1">Download</span>
+                                <span className="text-lg font-black text-white tracking-tight">{formatSpeed(network.rx)}</span>
+                             </div>
+                             <div className="flex-1 bg-white/5 rounded-2xl p-3 border border-white/5 flex flex-col items-center">
+                                <span className="text-[10px] font-black text-white/30 uppercase mb-1">Upload</span>
+                                <span className="text-lg font-black text-white tracking-tight">{formatSpeed(network.tx)}</span>
+                             </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </>
+              )}
+            </motion.div>
           )}
         </AnimatePresence>
       </motion.div>

@@ -95,7 +95,9 @@ function startSpotifyPolling() {
             item: item,
             is_playing: msg.is_playing,
             progress_ms: msg.progress_ms,
-            lyrics: currentLyrics
+            lyrics: currentLyrics,
+            sourceAppId: msg.appId,
+            isSpotify: msg.is_spotify
           };
 
           if (item.id !== currentTrackId) {
@@ -169,6 +171,43 @@ function startHardwarePolling() {
   }, 2000);
 }
 
+function startNetworkPolling() {
+  const psScript = `
+    $ErrorActionPreference = 'SilentlyContinue'
+    $prev = Get-NetAdapterStatistics
+    while ($true) {
+      Start-Sleep -Seconds 1
+      $curr = Get-NetAdapterStatistics
+      $rx = 0; $tx = 0
+      foreach ($c in $curr) {
+        $p = $prev | Where-Object { $_.InterfaceDescription -eq $c.InterfaceDescription }
+        if ($p) {
+          $diffRx = $c.ReceivedBytes - $p.ReceivedBytes
+          $diffTx = $c.SentBytes - $p.SentBytes
+          if ($diffRx -ge 0) { $rx += $diffRx }
+          if ($diffTx -ge 0) { $tx += $diffTx }
+        }
+      }
+      Write-Output "$rx,$tx"
+      $prev = $curr
+    }
+  `;
+
+  const ps = spawn('powershell.exe', ['-NoProfile', '-Command', psScript]);
+  ps.stdout.on('data', (data) => {
+    const lines = data.toString().trim().split('\n');
+    const lastLine = lines[lines.length - 1].trim();
+    const parts = lastLine.split(',');
+    if (parts.length === 2) {
+      const rx = parseInt(parts[0]);
+      const tx = parseInt(parts[1]);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('network-stats', { rx, tx });
+      }
+    }
+  });
+}
+
 const { spawn } = require('child_process');
 
 function startPrivacyDotMonitor() {
@@ -222,7 +261,60 @@ ipcMain.on('spotify-pause', () => pressMediaKey(179));
 ipcMain.on('spotify-skip', () => pressMediaKey(176));
 ipcMain.on('spotify-prev', () => pressMediaKey(177));
 ipcMain.on('open-url', (e, link) => shell.openExternal(link));
+ipcMain.on('open-weather', () => shell.openExternal('bingweather:'));
+ipcMain.on('open-media-app', (e, appId) => {
+  if (!appId) return;
+  let procName = appId.replace('.exe', '');
+  if (procName.includes('Spotify')) procName = 'Spotify';
+  else if (procName.includes('edge')) procName = 'msedge';
+  else if (procName.includes('chrome')) procName = 'chrome';
+
+  const ps = `
+    $app = Get-Process -Name "${procName}" -ErrorAction SilentlyContinue | Where-Object {$_.MainWindowHandle -ne 0} | Select-Object -First 1
+    if (-not $app) {
+      $app = Get-Process -Name "${procName}" -ErrorAction SilentlyContinue | Select-Object -First 1
+    }
+    if ($app) {
+      try {
+        $sig = '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);'
+        Add-Type -MemberDefinition $sig -Name WindowAPI -Namespace Win32 -ErrorAction SilentlyContinue
+        if ($app.MainWindowHandle -ne 0) {
+          [Win32.WindowAPI]::ShowWindow($app.MainWindowHandle, 9)
+          [Win32.WindowAPI]::SetForegroundWindow($app.MainWindowHandle)
+        } else {
+          $wshell = New-Object -ComObject wscript.shell
+          $wshell.AppActivate($app.Id)
+        }
+      } catch {
+        $wshell = New-Object -ComObject wscript.shell
+        $wshell.AppActivate($app.Id)
+      }
+    }
+  `;
+  exec(`powershell -NoProfile -Command "${ps}"`);
+});
 ipcMain.on('quit-app', () => app.quit());
+
+ipcMain.handle('get-tasks', async () => {
+  return new Promise((resolve) => {
+    const ps = `Get-Process | Where-Object {$_.MainWindowTitle} | Group-Object MainWindowTitle | ForEach-Object { $_.Group | Sort-Object WorkingSet64 -Descending | Select-Object -First 1 } | Select-Object Name, Id, MainWindowTitle, WorkingSet64, CPU | Sort-Object WorkingSet64 -Descending | ConvertTo-Json`;
+    exec(`powershell -NoProfile -Command "${ps}"`, (err, stdout) => {
+      try {
+        if (!stdout || !stdout.trim()) { resolve([]); return; }
+        const tasks = JSON.parse(stdout);
+        // Exclude ourselves and empty strings if any.
+        const filteredList = (Array.isArray(tasks) ? tasks : [tasks]).filter(t => t.Name !== 'electron' && t.Name !== 'Dynamic Island' && t.MainWindowTitle);
+        resolve(filteredList);
+      } catch (e) {
+        resolve([]);
+      }
+    });
+  });
+});
+
+ipcMain.on('kill-task', (e, id) => {
+  exec(`taskkill /F /PID ${id}`);
+});
 
 ipcMain.on('start-drag', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -233,20 +325,22 @@ ipcMain.on('start-drag', (event) => {
 
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
-
-  const windowWidth = width;
-  const windowHeight = height;
+  const { width } = primaryDisplay.bounds;
+  const windowWidth = 600; 
+  const windowHeight = 350; 
+  const x = Math.floor((width - windowWidth) / 2);
+  const y = 0;
 
   mainWindow = new BrowserWindow({
     width: windowWidth,
     height: windowHeight,
-    x: 0,
-    y: 0,
+    x: x,
+    y: y,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
+    focusable: false, // Don't steal focus from taskbar/apps
     hasShadow: false,
     resizable: false,
     webPreferences: {
@@ -254,6 +348,9 @@ function createWindow() {
       contextIsolation: false
     }
   });
+
+  mainWindow.setAlwaysOnTop(true, 'floating');
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
@@ -312,6 +409,7 @@ app.whenReady().then(() => {
   authenticateSpotify();
   startClipboardPolling();
   startHardwarePolling();
+  startNetworkPolling();
   startPrivacyDotMonitor();
 
   app.on('activate', function () {

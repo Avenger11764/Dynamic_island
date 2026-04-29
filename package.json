@@ -17,7 +17,8 @@
     "appId": "com.dynamic.island",
     "productName": "Dynamic Island",
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "directories": {
       "output": "release",
