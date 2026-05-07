@@ -11,6 +11,10 @@ A sleek, Dynamic Island style application for Windows desktops built with Electr
 |:---:|:---:|
 | ![Stopwatch](./assets/stopwatch.png) | ![Hardware Stats](./assets/hardware_stats.png) |
 
+| Network Speed Mode | Pomodoro Timer Mode |
+|:---:|:---:|
+| ![Network Speed](./assets/network_stats.png) | ![Pomodoro Timer](./assets/pomodoro_mode.png) |
+
 ## Features
 - **Dynamic Island-style UI** notch mechanism with butter-smooth GPU-accelerated animations using Framer Motion.
 - **Media Controls** with Spotify integration, complete with a dynamic ambient glow that color-matches the playing album art.
