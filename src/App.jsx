@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, SkipForward, SkipBack, CloudSun, Music, Link as LinkIcon, ExternalLink, X, Timer as TimerIcon, Activity, ChevronRight, RotateCcw, Battery, BatteryCharging, Calendar, Sparkles, Power, LayoutGrid, Calculator, Folder, Settings as SettingsIcon, Signal } from 'lucide-react';
-
-const { ipcRenderer } = window.require ? window.require('electron') : {};
+import { Play, Pause, SkipForward, SkipBack, CloudSun, Music, Link as LinkIcon, ExternalLink, X, Timer as TimerIcon, Activity, ChevronRight, RotateCcw, Battery, BatteryCharging, Calendar, Sparkles, Power, LayoutGrid, Calculator, Folder, Settings as SettingsIcon, Signal, Volume2, Sun, Download, Home, Coffee, Briefcase, File, Trash2, Plus, Minus } from 'lucide-react';
+const ipcRenderer = window.electronAPI || null;
 
 export default function App() {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -14,11 +13,22 @@ export default function App() {
   const [network, setNetwork] = useState({ rx: 0, tx: 0 });
 
   const [viewMode, setViewMode] = useState('media');
+  const viewModeRef = useRef('media');
+  useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
+
   const [hardware, setHardware] = useState({ cpu: 0, ram: 0 });
   const [weather, setWeather] = useState({ temp: '--', desc: 'Fetching...' });
   const [stopwatch, setStopwatch] = useState(0);
   const [isSwRunning, setIsSwRunning] = useState(false);
+  const swRef = useRef({ start: 0, accumulated: 0 });
   const [tasks, setTasks] = useState([]);
+
+  // Pomodoro
+  const [pomoWorkTime, setPomoWorkTime] = useState(25 * 60);
+  const [pomoBreakTime, setPomoBreakTime] = useState(5 * 60);
+  const [pomodoro, setPomodoro] = useState(25 * 60);
+  const [isPomoRunning, setIsPomoRunning] = useState(false);
+  const [pomoMode, setPomoMode] = useState('work');
 
   const [batteryEvent, setBatteryEvent] = useState(null);
   const [meetingAlert, setMeetingAlert] = useState(null);
@@ -60,30 +70,103 @@ export default function App() {
   useEffect(() => {
     let interval;
     if (isSwRunning) {
-      interval = setInterval(() => setStopwatch(s => s + 1), 1000);
+      swRef.current.start = Date.now();
+      interval = setInterval(() => {
+        setStopwatch(swRef.current.accumulated + Math.floor((Date.now() - swRef.current.start) / 1000));
+      }, 250);
+    } else {
+      swRef.current.accumulated = stopwatch;
     }
     return () => clearInterval(interval);
   }, [isSwRunning]);
 
+  const toggleSw = () => setIsSwRunning(!isSwRunning);
+  const resetSw = () => {
+    setIsSwRunning(false);
+    setStopwatch(0);
+    swRef.current = { start: 0, accumulated: 0 };
+  };
+
+  useEffect(() => {
+    let interval;
+    if (isPomoRunning && pomodoro > 0) {
+      interval = setInterval(() => setPomodoro(p => p - 1), 1000);
+    } else if (pomodoro === 0 && isPomoRunning) {
+      setIsPomoRunning(false);
+      if (ipcRenderer) {
+        ipcRenderer.send('show-notification', {
+          title: pomoMode === 'work' ? 'Focus Session Complete' : 'Break Time is Over',
+          body: pomoMode === 'work' ? 'Time to take a short break!' : 'Ready to get back to work?'
+        });
+      }
+    }
+    return () => clearInterval(interval);
+  }, [isPomoRunning, pomodoro, pomoMode]);
+
+  const togglePomo = () => setIsPomoRunning(!isPomoRunning);
+  const resetPomo = () => {
+    setIsPomoRunning(false);
+    setPomodoro(pomoMode === 'work' ? pomoWorkTime : pomoBreakTime);
+  };
+  const switchPomoMode = (mode) => {
+    setPomoMode(mode);
+    setPomodoro(mode === 'work' ? pomoWorkTime : pomoBreakTime);
+    setIsPomoRunning(false);
+  };
+
+  const adjustPomoTime = (change) => {
+    if (isPomoRunning) return;
+    if (pomoMode === 'work') {
+      const newTime = Math.max(60, pomoWorkTime + change);
+      setPomoWorkTime(newTime);
+      setPomodoro(newTime);
+    } else {
+      const newTime = Math.max(60, pomoBreakTime + change);
+      setPomoBreakTime(newTime);
+      setPomodoro(newTime);
+    }
+  };
+
+
+
+  useEffect(() => {
+    const handleWheel = (e) => {
+      if (!isExpanded) return;
+      if (e.deltaY !== 0) {
+        if (e.shiftKey) {
+          if (ipcRenderer) ipcRenderer.send('adjust-brightness', e.deltaY > 0 ? -10 : 10);
+          setViewMode('brightness');
+        } else {
+          if (ipcRenderer) ipcRenderer.send('adjust-volume', e.deltaY > 0 ? -2 : 2);
+          setViewMode('volume');
+        }
+        clearTimeout(window.wheelTimeout);
+        window.wheelTimeout = setTimeout(() => setViewMode('media'), 2000);
+      }
+    };
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, [isExpanded]);
+
   useEffect(() => {
     if (ipcRenderer) {
-      ipcRenderer.on('spotify-state', (event, data) => {
+      ipcRenderer.on('spotify-state', (data) => {
         setSpotifyState(data);
         if (data?.is_playing) setLocalProgress(data.progress_ms);
       });
-      ipcRenderer.on('clipboard-url', (event, url) => {
+      ipcRenderer.on('clipboard-url', (url) => {
         setClipboardUrl(url);
         ipcRenderer.send('set-ignore-mouse-events', false);
         setTimeout(() => setClipboardUrl(null), 6000);
       });
-      ipcRenderer.on('hardware-stats', (event, stats) => {
-        setHardware(stats);
+      ipcRenderer.on('hardware-stats', (stats) => {
+        if (viewModeRef.current === 'stats') setHardware(stats);
       });
-      ipcRenderer.on('privacy-dots', (event, state) => {
+      ipcRenderer.on('privacy-dots', (state) => {
         setPrivacy(state);
       });
-      ipcRenderer.on('network-stats', (event, stats) => {
-        setNetwork(stats);
+      ipcRenderer.on('network-stats', (stats) => {
+        if (viewModeRef.current === 'network') setNetwork(stats);
       });
       return () => {
         ipcRenderer.removeAllListeners('spotify-state');
@@ -165,6 +248,7 @@ export default function App() {
     <div className="w-full h-full flex justify-center items-start overflow-hidden pointer-events-none fixed top-0 left-0" style={{ pointerEvents: 'none' }}>
       <motion.div
         onClick={(e) => e.stopPropagation()}
+        onContextMenu={() => { if(ipcRenderer) ipcRenderer.send('show-context-menu'); }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         layout
@@ -175,22 +259,34 @@ export default function App() {
             : (isExpanded 
                ? 380 
                : (privacy.cam && privacy.mic ? 160 : (privacy.cam || privacy.mic ? 140 : (showSongName ? 180 : 120)))),
-          height: isNotification ? 80 : (isExpanded ? (viewMode === 'network' ? 250 : (viewMode === 'stats' ? 230 : 200)) : 36),
+          height: isNotification ? 80 : (isExpanded ? (viewMode === 'network' ? 250 : (viewMode === 'stats' ? 230 : (viewMode === 'pomodoro' ? 210 : (['volume', 'brightness'].includes(viewMode) ? 140 : 200)))) : 36),
           borderBottomLeftRadius: (isExpanded || isNotification) ? 32 : 100,
           borderBottomRightRadius: (isExpanded || isNotification) ? 32 : 100,
           borderTopLeftRadius: 0,
           borderTopRightRadius: 0,
           y: -1
         }}
-        transition={{ type: "spring", stiffness: 400, damping: 28 }}
-        className={`text-white shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden border-b border-l border-r border-white/10 transition-colors duration-500 ${(isExpanded || isNotification) ? 'bg-black/75 backdrop-blur-2xl' : 'bg-black/95 backdrop-blur-md'}`}
+        transition={{ type: "spring", stiffness: 350, damping: 25, mass: 0.8 }}
+        className={`relative z-10 text-white shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden border-b border-l border-r border-white/10 transition-colors duration-500 ${(isExpanded || isNotification) ? 'bg-black/75 backdrop-blur-2xl' : 'bg-black/95 backdrop-blur-md'}`}
         style={{ pointerEvents: 'auto', originY: 0 }}
       >
+        <AnimatePresence>
+          {spotifyState?.is_playing && viewMode === 'media' && spotifyState?.item?.album?.images?.[0]?.url && (
+            <motion.img 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.45 }}
+              exit={{ opacity: 0 }}
+              src={spotifyState.item.album.images[0].url}
+              className="absolute inset-0 w-full h-full object-cover blur-3xl z-0 pointer-events-none"
+              style={{ mixBlendMode: 'screen' }}
+            />
+          )}
+        </AnimatePresence>
         <AnimatePresence mode="popLayout">
           {(!isExpanded && !isNotification) ? (
             <motion.div
               key="collapsed"
-              className="w-full h-full flex items-center justify-center gap-3"
+              className="w-full h-full flex items-center justify-center gap-3 z-10"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.1 } }}
@@ -230,7 +326,7 @@ export default function App() {
           ) : clipboardUrl ? (
             <motion.div
               key="clipboard-state"
-              className="w-full h-full p-4 flex flex-col justify-center gap-3"
+              className="w-full h-full p-4 flex flex-col justify-center gap-3 z-10"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
@@ -265,7 +361,7 @@ export default function App() {
           ) : (
             <motion.div
               key="expanded-state"
-              className="w-full h-full p-2 flex flex-col justify-start"
+              className="w-full h-full p-2 flex flex-col justify-start z-10"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
@@ -314,6 +410,12 @@ export default function App() {
                       </div>
 
                       <div className="flex items-center gap-2" style={{ pointerEvents: 'auto' }}>
+                        <button className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'pomodoro' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('pomodoro')}>
+                          <Coffee size={14} />
+                        </button>
+                        <button className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'stopwatch' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('stopwatch')}>
+                          <TimerIcon size={14} />
+                        </button>
                         <button className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'stats' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('stats')}>
                           <Activity size={14} />
                         </button>
@@ -371,7 +473,7 @@ export default function App() {
                     )}
                   </AnimatePresence>
 
-                  <div className={`flex items-center justify-between mt-auto bg-white/5 rounded-2xl border border-white/5 relative overflow-hidden transition-all duration-300 ${viewMode === 'network' ? 'p-3 h-[160px]' : (viewMode === 'stats' ? 'p-4 h-[120px]' : 'p-3 h-[76px]')}`} style={{ pointerEvents: 'auto' }}>
+                  <div className={`flex items-center justify-between mt-auto bg-white/5 rounded-2xl border border-white/5 relative overflow-hidden transition-all duration-300 ${viewMode === 'network' ? 'p-3 h-[160px]' : (viewMode === 'stats' ? 'p-4 h-[120px]' : (viewMode === 'pomodoro' ? 'p-4 h-[100px]' : 'p-3 h-[76px]'))}`} style={{ pointerEvents: 'auto' }}>
                     <AnimatePresence mode="wait">
                       {viewMode === 'media' && (
                         <motion.div key="media" className="w-full flex items-center justify-between" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -465,6 +567,73 @@ export default function App() {
                                 <span className="text-lg font-black text-white tracking-tight">{formatSpeed(network.tx)}</span>
                              </div>
                           </div>
+                        </motion.div>
+                      )}
+
+                      {viewMode === 'stopwatch' && (
+                        <motion.div key="stopwatch" className="w-full flex items-center justify-between" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                           <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg">
+                                 <TimerIcon size={24} className="text-white/90" />
+                              </div>
+                              <div className="flex flex-col">
+                                 <span className="font-mono text-xl font-bold tracking-wider">
+                                    {stopwatch >= 3600 ? `${String(Math.floor(stopwatch / 3600)).padStart(2, '0')}:` : ''}{String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:{String(stopwatch % 60).padStart(2, '0')}
+                                 </span>
+                                 <span className="text-[10px] text-white/50 uppercase tracking-widest">Stopwatch</span>
+                              </div>
+                           </div>
+                           <div className="flex items-center gap-2">
+                              <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={resetSw}>
+                                 <RotateCcw size={16} />
+                              </button>
+                              <button className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors shadow-sm" onClick={toggleSw}>
+                                 {isSwRunning ? <Pause size={18} /> : <Play size={18} className="translate-x-[1px]" />}
+                              </button>
+                           </div>
+                        </motion.div>
+                      )}
+
+                      {viewMode === 'pomodoro' && (
+                        <motion.div key="pomodoro" className="w-full flex flex-col justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <div className="flex items-center justify-between mb-3 px-2">
+                             <div className="flex bg-white/10 rounded-full p-1">
+                               <button className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${pomoMode === 'work' ? 'bg-red-500 text-white' : 'text-white/50'}`} onClick={() => switchPomoMode('work')}>Work</button>
+                               <button className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${pomoMode === 'break' ? 'bg-green-500 text-white' : 'text-white/50'}`} onClick={() => switchPomoMode('break')}>Break</button>
+                             </div>
+                             <span className="text-[10px] text-white/50 uppercase tracking-widest">{pomoMode} Mode</span>
+                          </div>
+                          <div className="flex items-center justify-between px-2">
+                             <div className="flex items-center gap-1">
+                                <button className="w-7 h-7 rounded-full hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors disabled:opacity-10 disabled:hover:bg-transparent" onClick={() => adjustPomoTime(-60)} disabled={isPomoRunning}>
+                                  <Minus size={16} />
+                                </button>
+                                <span className="font-mono text-3xl font-black tracking-wider text-white w-20 text-center">
+                                   {String(Math.floor(pomodoro / 60)).padStart(2, '0')}:{String(pomodoro % 60).padStart(2, '0')}
+                                </span>
+                                <button className="w-7 h-7 rounded-full hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors disabled:opacity-10 disabled:hover:bg-transparent" onClick={() => adjustPomoTime(60)} disabled={isPomoRunning}>
+                                  <Plus size={16} />
+                                </button>
+                             </div>
+                             <div className="flex items-center gap-2">
+                                <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={resetPomo}>
+                                   <RotateCcw size={16} />
+                                </button>
+                                <button className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors shadow-sm ${pomoMode === 'work' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`} onClick={togglePomo}>
+                                   {isPomoRunning ? <Pause size={18} /> : <Play size={18} className="translate-x-[1px]" />}
+                                </button>
+                             </div>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {(viewMode === 'volume' || viewMode === 'brightness') && (
+                        <motion.div key="quick-adjust" className="w-full h-full flex items-center justify-center gap-4 px-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                           {viewMode === 'volume' ? <Volume2 size={24} className="text-blue-400 animate-pulse" /> : <Sun size={24} className="text-yellow-400 animate-pulse" />}
+                           <div className="flex flex-col items-center">
+                             <span className="text-base font-black uppercase tracking-wider">{viewMode}</span>
+                             <span className="text-[10px] text-white/50 uppercase tracking-widest">Scroll to adjust</span>
+                           </div>
                         </motion.div>
                       )}
                     </AnimatePresence>

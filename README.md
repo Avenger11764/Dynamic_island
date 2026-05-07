@@ -12,11 +12,14 @@ A sleek, Dynamic Island style application for Windows desktops built with Electr
 | ![Stopwatch](./assets/stopwatch.png) | ![Hardware Stats](./assets/hardware_stats.png) |
 
 ## Features
-- Dynamic Island-style UI notch mechanism
-- Smooth animations using Framer Motion
-- Media controls with Spotify Web API integration
-- Auto-starts on login
-- Interactive, responsive, and beautiful UI
+- **Dynamic Island-style UI** notch mechanism with butter-smooth GPU-accelerated animations using Framer Motion.
+- **Media Controls** with Spotify integration, complete with a dynamic ambient glow that color-matches the playing album art.
+- **Pomodoro Timer** featuring adjustable Work and Break intervals, accompanied by native Windows Notifications upon completion.
+- **Hardware & Network Monitoring** showcasing CPU, RAM, and Live Network speeds (with smart polling for maximum performance).
+- **System Controls** allowing global Volume and Brightness adjustments via simple mouse-wheel scroll gestures over the island.
+- **Right-Click Context Menu** for swift application controls.
+- **Secure Architecture** fully isolated contexts via preload scripts ensuring optimal performance and safety.
+- Auto-starts on login persistently.
 
 ## Installation
 

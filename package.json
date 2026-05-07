@@ -28,6 +28,7 @@
       "secrets.js",
       ".env",
       "main.js",
+      "preload.js",
       "smtc-worker.js",
       "build_dist/**/*",
       "node_modules/**/*"

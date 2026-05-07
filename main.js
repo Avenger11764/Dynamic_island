@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, ipcMain, shell, clipboard } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, shell, clipboard, Menu, Notification } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -260,6 +260,28 @@ ipcMain.on('spotify-play', () => pressMediaKey(179));
 ipcMain.on('spotify-pause', () => pressMediaKey(179));
 ipcMain.on('spotify-skip', () => pressMediaKey(176));
 ipcMain.on('spotify-prev', () => pressMediaKey(177));
+
+ipcMain.on('adjust-volume', (e, delta) => {
+  const key = delta > 0 ? 175 : 174;
+  pressMediaKey(key);
+});
+ipcMain.on('adjust-brightness', (e, delta) => {
+  const ps = `
+    $monitors = Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue
+    $current = Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CurrentBrightness
+    if ($monitors -and $current -ne $null) {
+      $new = $current + (${delta})
+      if ($new -gt 100) { $new = 100 }
+      if ($new -lt 0) { $new = 0 }
+      $monitors | Invoke-WmiMethod -Name WmiSetBrightness -ArgumentList 1, $new
+    }
+  `;
+  exec(`powershell -NoProfile -Command "${ps}"`);
+});
+ipcMain.on('open-file', (e, filePath) => {
+  shell.openPath(filePath);
+});
+
 ipcMain.on('open-url', (e, link) => shell.openExternal(link));
 ipcMain.on('open-weather', () => shell.openExternal('bingweather:'));
 ipcMain.on('open-media-app', (e, appId) => {
@@ -294,6 +316,20 @@ ipcMain.on('open-media-app', (e, appId) => {
   exec(`powershell -NoProfile -Command "${ps}"`);
 });
 ipcMain.on('quit-app', () => app.quit());
+
+ipcMain.on('show-context-menu', (event) => {
+  const template = [
+    { label: 'Dynamic Island v1.0', enabled: false },
+    { type: 'separator' },
+    { label: 'Quit Dynamic Island', click: () => app.quit() }
+  ];
+  const menu = Menu.buildFromTemplate(template);
+  menu.popup({ window: BrowserWindow.fromWebContents(event.sender) });
+});
+
+ipcMain.on('show-notification', (event, { title, body }) => {
+  new Notification({ title, body }).show();
+});
 
 ipcMain.handle('get-tasks', async () => {
   return new Promise((resolve) => {
@@ -344,8 +380,9 @@ function createWindow() {
     hasShadow: false,
     resizable: false,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
     }
   });
 
@@ -385,10 +422,16 @@ app.whenReady().then(() => {
     // Standard approach
     app.setLoginItemSettings({
       openAtLogin: true,
-      path: app.getPath('exe')
+      path: app.getPath('exe'),
+      args: [ '--hidden' ]
     });
     
-    // Aggressive approach: explicit shortcut in Startup folder
+    // Aggressive approach 1: registry
+    try {
+      exec(`powershell -NoProfile -Command "New-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'DynamicIsland' -Value '\\"${app.getPath('exe')}\\"' -PropertyType String -Force"`);
+    } catch(e) {}
+
+    // Aggressive approach 2: explicit shortcut in Startup folder
     try {
       const startupDir = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
       if (!fs.existsSync(startupDir)) {
