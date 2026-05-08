@@ -18,6 +18,7 @@
     "productName": "Dynamic Island",
     "win": {
       "target": "nsis",
+      "icon": "assets/icon.ico",
       "requestedExecutionLevel": "requireAdministrator"
     },
     "directories": {
