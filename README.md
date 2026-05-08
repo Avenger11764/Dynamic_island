@@ -1,5 +1,7 @@
 # Dynamic Island for Windows
 
+**🌐 Official Website / Download:** [dynamic-island-windows.vercel.app](https://dynamic-island-windows.vercel.app/)
+
 A sleek, Dynamic Island style application for Windows desktops built with Electron and React.
 
 ## Screenshots
