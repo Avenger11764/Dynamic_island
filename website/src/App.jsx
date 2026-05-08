@@ -72,7 +72,7 @@ function App() {
               <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="css-i6dzq1"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
               GitHub
             </a>
-            <a href="https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/Installers/Dynamic_Island_Setup.exe" className="bg-white text-black px-5 py-2.5 rounded-full font-medium text-sm hover:bg-gray-100 transition-all active:scale-95 flex items-center gap-2">
+            <a href="https://github.com/Avenger11764/Dynamic_island/raw/main/Installers/Dynamic_Island_Setup.exe" className="bg-white text-black px-5 py-2.5 rounded-full font-medium text-sm hover:bg-gray-100 transition-all active:scale-95 flex items-center gap-2">
               <Download className="w-4 h-4" />
               Download
             </a>
@@ -99,7 +99,7 @@ function App() {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <a href="https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/Installers/Dynamic_Island_Setup.exe" className="bg-white text-black px-8 py-4 rounded-full font-semibold text-base hover:bg-gray-100 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)] active:scale-95 flex items-center gap-2">
+              <a href="https://github.com/Avenger11764/Dynamic_island/raw/main/Installers/Dynamic_Island_Setup.exe" className="bg-white text-black px-8 py-4 rounded-full font-semibold text-base hover:bg-gray-100 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)] active:scale-95 flex items-center gap-2">
                 <Download className="w-5 h-5" />
                 Download Setup
               </a>
@@ -312,7 +312,7 @@ function App() {
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <h2 className="text-5xl md:text-7xl font-bold text-white mb-8 tracking-tight">Ready to elevate your desktop?</h2>
           <p className="text-xl text-gray-400 mb-12 max-w-2xl mx-auto">Download the free installer today and join thousands of users experiencing the next level of Windows productivity.</p>
-          <a href="https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/Installers/Dynamic_Island_Setup.exe" className="bg-white text-black px-10 py-5 rounded-full font-semibold text-lg hover:scale-105 transition-transform active:scale-95 flex items-center gap-3 mx-auto shadow-[0_0_40px_rgba(255,255,255,0.2)] w-max">
+          <a href="https://github.com/Avenger11764/Dynamic_island/raw/main/Installers/Dynamic_Island_Setup.exe" className="bg-white text-black px-10 py-5 rounded-full font-semibold text-lg hover:scale-105 transition-transform active:scale-95 flex items-center gap-3 mx-auto shadow-[0_0_40px_rgba(255,255,255,0.2)] w-max">
             <Download className="w-6 h-6" />
             Download for Windows
           </a>
