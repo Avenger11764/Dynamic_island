@@ -271,7 +271,7 @@ export default function App() {
         style={{ pointerEvents: 'auto', originY: 0 }}
       >
         <AnimatePresence>
-          {isExpanded && spotifyState?.is_playing && spotifyState?.item?.album?.images?.[0]?.url && (
+          {isExpanded && (
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -286,7 +286,7 @@ export default function App() {
                 transition={{ duration: 2.0, ease: "easeInOut" }}
                 className="absolute inset-0 pointer-events-none"
               >
-                <motion.img 
+                <motion.div 
                   animate={{ 
                     x: viewMode === 'media' ? [20, 40, 10, 20] : [-50, -20, -40, -50],
                     y: [-10, -20, -5, -10],
@@ -299,10 +299,12 @@ export default function App() {
                     scale: { duration: 0.5, repeat: Infinity, ease: "easeInOut" },
                     opacity: { duration: 0.5, repeat: Infinity, ease: "easeInOut" }
                   }}
-                  src={spotifyState.item.album.images[0].url}
-                  className="absolute top-0 left-[-50px] w-[350px] h-[100px] rounded-[100px] object-cover blur-[50px] saturate-[1.5]"
+                  className="absolute top-0 left-[-50px] w-[350px] h-[100px] rounded-[100px] blur-[50px]"
+                  style={{ background: spotifyState?.item?.album?.images?.[0]?.url 
+                    ? `url(${spotifyState.item.album.images[0].url}) center/cover` 
+                    : 'linear-gradient(135deg, #a855f7, #3b82f6, #06b6d4)' }}
                 />
-                <motion.img 
+                <motion.div 
                   animate={{ 
                     x: viewMode === 'media' ? [-20, -40, -10, -20] : [50, 20, 40, 50],
                     y: [-15, -25, -10, -15],
@@ -315,11 +317,15 @@ export default function App() {
                     scale: { duration: 0.5, delay: 0.2, repeat: Infinity, ease: "easeInOut" },
                     opacity: { duration: 0.5, delay: 0.2, repeat: Infinity, ease: "easeInOut" }
                   }}
-                  src={spotifyState.item.album.images[0].url}
-                  className="absolute top-0 right-[-50px] w-[400px] h-[120px] rounded-[100px] object-cover blur-[55px] saturate-[2]"
-                  style={{ mixBlendMode: 'screen' }}
+                  className="absolute top-0 right-[-50px] w-[400px] h-[120px] rounded-[100px] blur-[55px]"
+                  style={{ 
+                    mixBlendMode: 'screen',
+                    background: spotifyState?.item?.album?.images?.[0]?.url 
+                      ? `url(${spotifyState.item.album.images[0].url}) center/cover` 
+                      : 'linear-gradient(135deg, #06b6d4, #a855f7, #ec4899)'
+                  }}
                 />
-                <motion.img 
+                <motion.div 
                   animate={{ 
                     x: viewMode === 'media' ? [-40, -60, -20, -40] : [20, 40, 10, 20],
                     y: [0, -10, 5, 0],
@@ -332,9 +338,13 @@ export default function App() {
                     scale: { duration: 0.5, delay: 0.35, repeat: Infinity, ease: "easeInOut" },
                     opacity: { duration: 0.5, delay: 0.35, repeat: Infinity, ease: "easeInOut" }
                   }}
-                  src={spotifyState.item.album.images[0].url}
-                  className="absolute top-0 right-0 w-[300px] h-[80px] rounded-[100px] object-cover blur-[60px] saturate-[1.5]"
-                  style={{ mixBlendMode: 'screen' }}
+                  className="absolute top-0 right-0 w-[300px] h-[80px] rounded-[100px] blur-[60px]"
+                  style={{ 
+                    mixBlendMode: 'screen',
+                    background: spotifyState?.item?.album?.images?.[0]?.url 
+                      ? `url(${spotifyState.item.album.images[0].url}) center/cover` 
+                      : 'linear-gradient(135deg, #3b82f6, #8b5cf6)'
+                  }}
                 />
               </motion.div>
             </motion.div>
