@@ -7,7 +7,12 @@ function App() {
     {
       icon: <MonitorPlay className="w-6 h-6 text-blue-400" />,
       title: 'Media Controls',
-      description: 'Native Spotify integration with a dynamic ambient glow that extracts colors from the playing album art.'
+      description: 'Native Spotify integration with a multi-layered liquid ambient glow that flows and sloshes in real-time.'
+    },
+    {
+      icon: <Activity className="w-6 h-6 text-cyan-400" />,
+      title: 'Liquid Fluid UI',
+      description: 'An industry-leading experience where light physically drops like liquid and pulses beautifully with the beat.'
     },
     {
       icon: <Timer className="w-6 h-6 text-orange-400" />,
@@ -83,7 +88,20 @@ function App() {
       {/* Hero Section */}
       <section className="pt-40 pb-20 px-6 relative overflow-hidden">
         {/* Ambient background glows */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-blue-500/20 blur-[120px] rounded-full pointer-events-none" />
+        {/* Ambient background glows */}
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.2, 1],
+            x: ['-50%', '-45%', '-55%', '-50%'],
+            y: ['-50%', '-55%', '-45%', '-50%'],
+          }}
+          transition={{
+            duration: 15,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+          className="absolute top-1/2 left-1/2 w-[800px] h-[400px] bg-blue-500/20 blur-[120px] rounded-full pointer-events-none" 
+        />
         
         <div className="max-w-7xl mx-auto text-center relative z-10">
           <motion.div
@@ -161,7 +179,8 @@ function App() {
       {/* Showcase Gallery */}
       <section className="py-24 px-6">
         <div className="max-w-7xl mx-auto">
-          <h2 className="text-3xl md:text-5xl font-bold text-white mb-16 text-center">Seamless Modes</h2>
+          <h2 className="text-3xl md:text-5xl font-bold text-white mb-4 text-center">Seamless Modes</h2>
+          <p className="text-gray-400 text-center mb-16 max-w-2xl mx-auto">Featuring gravity-based physics: watch the liquid light drop from the top to the bottom as you switch into music mode.</p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <motion.div whileHover={{ scale: 1.02 }} className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10">
@@ -197,7 +216,19 @@ function App() {
 
       {/* How to Install Section */}
       <section className="py-24 px-6 border-t border-white/5 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-purple-500/10 blur-[120px] rounded-full pointer-events-none" />
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.3, 1],
+            x: [0, -30, 20, 0],
+            y: [0, 40, -20, 0],
+          }}
+          transition={{
+            duration: 20,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+          className="absolute top-0 right-0 w-[600px] h-[600px] bg-purple-500/10 blur-[120px] rounded-full pointer-events-none" 
+        />
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="flex flex-col md:flex-row items-center gap-16">
             <div className="flex-1">
@@ -307,7 +338,19 @@ function App() {
       {/* CTA Section */}
       <section className="py-32 px-6 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-t from-blue-900/20 to-transparent" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[300px] bg-blue-500/20 blur-[150px] rounded-full pointer-events-none" />
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.1, 1],
+            opacity: [0.3, 0.6, 0.3],
+            x: ['-50%', '-48%', '-52%', '-50%'],
+          }}
+          transition={{
+            duration: 10,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+          className="absolute top-1/2 left-1/2 -translate-y-1/2 w-full h-[300px] bg-blue-500/20 blur-[150px] rounded-full pointer-events-none" 
+        />
         
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <h2 className="text-5xl md:text-7xl font-bold text-white mb-8 tracking-tight">Ready to elevate your desktop?</h2>
