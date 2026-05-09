@@ -271,15 +271,73 @@ export default function App() {
         style={{ pointerEvents: 'auto', originY: 0 }}
       >
         <AnimatePresence>
-          {spotifyState?.is_playing && viewMode === 'media' && spotifyState?.item?.album?.images?.[0]?.url && (
-            <motion.img 
+          {isExpanded && spotifyState?.is_playing && spotifyState?.item?.album?.images?.[0]?.url && (
+            <motion.div 
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.45 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              src={spotifyState.item.album.images[0].url}
-              className="absolute inset-0 w-full h-full object-cover blur-3xl z-0 pointer-events-none"
-              style={{ mixBlendMode: 'screen' }}
-            />
+              className="absolute inset-0 z-0 pointer-events-none overflow-hidden rounded-[32px]"
+              style={{ 
+                mixBlendMode: 'screen'
+              }}
+            >
+              <motion.div
+                animate={{ y: viewMode === 'media' ? 170 : 0 }}
+                transition={{ duration: 2.0, ease: "easeInOut" }}
+                className="absolute inset-0 pointer-events-none"
+              >
+                <motion.img 
+                  animate={{ 
+                    x: viewMode === 'media' ? [20, 40, 10, 20] : [-50, -20, -40, -50],
+                    y: [-10, -20, -5, -10],
+                    scale: [1.0, 1.15, 1.0],
+                    opacity: [0.3, 0.7, 0.3]
+                  }}
+                  transition={{
+                    x: { duration: 5, repeat: Infinity, ease: "easeInOut" },
+                    y: { duration: 6, repeat: Infinity, ease: "easeInOut" },
+                    scale: { duration: 0.5, repeat: Infinity, ease: "easeInOut" },
+                    opacity: { duration: 0.5, repeat: Infinity, ease: "easeInOut" }
+                  }}
+                  src={spotifyState.item.album.images[0].url}
+                  className="absolute top-0 left-[-50px] w-[350px] h-[100px] rounded-[100px] object-cover blur-[50px] saturate-[1.5]"
+                />
+                <motion.img 
+                  animate={{ 
+                    x: viewMode === 'media' ? [-20, -40, -10, -20] : [50, 20, 40, 50],
+                    y: [-15, -25, -10, -15],
+                    scale: [1.0, 1.15, 1.0],
+                    opacity: [0.2, 0.6, 0.2]
+                  }}
+                  transition={{
+                    x: { duration: 5.5, repeat: Infinity, ease: "easeInOut" },
+                    y: { duration: 4.5, repeat: Infinity, ease: "easeInOut" },
+                    scale: { duration: 0.5, delay: 0.2, repeat: Infinity, ease: "easeInOut" },
+                    opacity: { duration: 0.5, delay: 0.2, repeat: Infinity, ease: "easeInOut" }
+                  }}
+                  src={spotifyState.item.album.images[0].url}
+                  className="absolute top-0 right-[-50px] w-[400px] h-[120px] rounded-[100px] object-cover blur-[55px] saturate-[2]"
+                  style={{ mixBlendMode: 'screen' }}
+                />
+                <motion.img 
+                  animate={{ 
+                    x: viewMode === 'media' ? [-40, -60, -20, -40] : [20, 40, 10, 20],
+                    y: [0, -10, 5, 0],
+                    scale: [1.0, 1.15, 1.0],
+                    opacity: [0.3, 0.65, 0.3]
+                  }}
+                  transition={{
+                    x: { duration: 6.5, repeat: Infinity, ease: "easeInOut" },
+                    y: { duration: 5, repeat: Infinity, ease: "easeInOut" },
+                    scale: { duration: 0.5, delay: 0.35, repeat: Infinity, ease: "easeInOut" },
+                    opacity: { duration: 0.5, delay: 0.35, repeat: Infinity, ease: "easeInOut" }
+                  }}
+                  src={spotifyState.item.album.images[0].url}
+                  className="absolute top-0 right-0 w-[300px] h-[80px] rounded-[100px] object-cover blur-[60px] saturate-[1.5]"
+                  style={{ mixBlendMode: 'screen' }}
+                />
+              </motion.div>
+            </motion.div>
           )}
         </AnimatePresence>
         <AnimatePresence mode="popLayout">

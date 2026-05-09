@@ -419,34 +419,18 @@ function createWindow() {
 
 app.whenReady().then(() => {
   if (app.isPackaged) {
-    // Standard approach
-    app.setLoginItemSettings({
-      openAtLogin: true,
-      path: app.getPath('exe'),
-      args: [ '--hidden' ]
-    });
+    // Create a Scheduled Task to run with highest privileges on logon
+    // This is required because the app has requestedExecutionLevel: requireAdministrator
+    const exePath = app.getPath('exe');
+    const taskName = "DynamicIslandAutoStart";
+    // We use cmd.exe /c to execute schtasks properly
+    const command = `schtasks /create /f /tn "${taskName}" /tr "\\"${exePath}\\" --hidden" /sc onlogon /rl highest`;
     
-    // Aggressive approach 1: registry
-    try {
-      exec(`powershell -NoProfile -Command "New-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'DynamicIsland' -Value '\\"${app.getPath('exe')}\\"' -PropertyType String -Force"`);
-    } catch(e) {}
-
-    // Aggressive approach 2: explicit shortcut in Startup folder
-    try {
-      const startupDir = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
-      if (!fs.existsSync(startupDir)) {
-        fs.mkdirSync(startupDir, { recursive: true });
+    exec(command, (error) => {
+      if (error) {
+        console.log('Failed to create scheduled task for auto-start:', error.message);
       }
-      const shortcutPath = path.join(startupDir, 'DynamicIsland.lnk');
-      
-      shell.writeShortcutLink(shortcutPath, 'create', {
-        target: app.getPath('exe'),
-        cwd: path.dirname(app.getPath('exe')),
-        description: 'Dynamic Island Auto-Start'
-      });
-    } catch (err) {
-      console.log('Could not create startup shortcut:', err);
-    }
+    });
   }
   createWindow();
   authenticateSpotify();
