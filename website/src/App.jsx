@@ -346,24 +346,24 @@ function App() {
             </div>
             
             <div className="flex-1 w-full">
-              <div className="glass-card p-2 rounded-2xl border border-white/10 bg-black/40">
-                <div className="bg-[#0f172a] rounded-xl overflow-hidden border border-white/5">
-                  <div className="bg-[#1e293b] px-4 py-2 flex items-center gap-2 border-b border-white/5">
-                    <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
-                    <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
-                    <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
+              <motion.div 
+                whileHover={{ scale: 1.02 }}
+                className="glass-card p-2 rounded-3xl border border-white/10 bg-black/40 max-w-md mx-auto md:ml-auto"
+              >
+                <div className="bg-[#0f172a] rounded-2xl overflow-hidden border border-white/5 p-8 text-center flex flex-col items-center justify-center relative group">
+                  <div className="absolute inset-0 bg-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                  
+                  <div className="w-24 h-24 bg-blue-500/20 rounded-full flex items-center justify-center mb-6 border border-blue-500/30 group-hover:scale-110 group-hover:bg-blue-500/30 transition-all duration-500">
+                    <Download className="w-10 h-10 text-blue-400" />
                   </div>
-                  <div className="p-6 font-mono text-sm text-gray-300">
-                    <p className="text-green-400 mb-2"># Install Instructions</p>
-                    <p className="mb-1"><span className="text-blue-400">git</span> clone https://github.com/Avenger11764/Dynamic_island.git</p>
-                    <p className="mb-1"><span className="text-blue-400">cd</span> Dynamic_island</p>
-                    <p className="mb-1"><span className="text-blue-400">npm</span> install</p>
-                    <p className="mb-4"><span className="text-blue-400">npm</span> run dev</p>
-                    <p className="text-gray-500">/* To build the installer locally */</p>
-                    <p><span className="text-blue-400">npm</span> run dist</p>
-                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-2">Dynamic_Island_Setup.exe</h3>
+                  <p className="text-gray-400 mb-8">Latest Version for Windows (64-bit)</p>
+                  
+                  <a href="/Dynamic_Island_Setup.exe" download className="w-full bg-white text-black hover:bg-gray-200 font-bold py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-95 flex items-center justify-center gap-2 relative z-10">
+                    Download Now
+                  </a>
                 </div>
-              </div>
+              </motion.div>
             </div>
           </div>
         </div>
