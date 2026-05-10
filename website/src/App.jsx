@@ -353,8 +353,8 @@ function App() {
                 <div className="bg-[#0f172a] rounded-2xl overflow-hidden border border-white/5 p-8 text-center flex flex-col items-center justify-center relative group">
                   <div className="absolute inset-0 bg-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
                   
-                  <div className="w-24 h-24 bg-blue-500/20 rounded-full flex items-center justify-center mb-6 border border-blue-500/30 group-hover:scale-110 group-hover:bg-blue-500/30 transition-all duration-500">
-                    <Download className="w-10 h-10 text-blue-400" />
+                  <div className="mb-6 group-hover:scale-110 transition-transform duration-500">
+                    <img src="/favicon.png" alt="Dynamic Island App Logo" className="w-28 h-28 rounded-3xl drop-shadow-[0_0_40px_rgba(56,189,248,0.5)]" />
                   </div>
                   <h3 className="text-2xl font-bold text-white mb-2">Dynamic_Island_Setup.exe</h3>
                   <p className="text-gray-400 mb-8">Latest Version for Windows (64-bit)</p>
