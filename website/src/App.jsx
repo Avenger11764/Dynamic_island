@@ -1,19 +1,17 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, ChevronRight, BatteryCharging, Layers, Sun } from 'lucide-react';
+import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, ChevronRight, ChevronLeft, BatteryCharging, Layers, Sun } from 'lucide-react';
 
 function App() {
   const carouselRef = useRef(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartX = useRef(0);
-  const dragScrollLeft = useRef(0);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   useEffect(() => {
     let animationFrameId;
     const el = carouselRef.current;
     
     const scroll = () => {
-      if (el && !isDragging) {
+      if (el && !isNavigating) {
         el.scrollLeft += 1;
         // Infinite loop: jump back to start when halfway through (the duplicate set)
         if (el.scrollLeft >= el.scrollWidth / 2) {
@@ -25,24 +23,18 @@ function App() {
     
     animationFrameId = requestAnimationFrame(scroll);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isDragging]);
+  }, [isNavigating]);
 
-  const handleMouseDown = (e) => {
-    setIsDragging(true);
-    dragStartX.current = e.pageX - carouselRef.current.offsetLeft;
-    dragScrollLeft.current = carouselRef.current.scrollLeft;
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isDragging) return;
-    e.preventDefault();
-    const x = e.pageX - carouselRef.current.offsetLeft;
-    const walk = (x - dragStartX.current) * 1.5; 
-    carouselRef.current.scrollLeft = dragScrollLeft.current - walk;
-  };
-
-  const handleMouseUpOrLeave = () => {
-    setIsDragging(false);
+  const scrollByAmount = (amount) => {
+    setIsNavigating(true);
+    const el = carouselRef.current;
+    if (el) {
+       el.scrollBy({ left: amount, behavior: 'smooth' });
+    }
+    // Resume auto-scroll after the smooth scroll finishes
+    setTimeout(() => {
+       setIsNavigating(false);
+    }, 600);
   };
   
   const features = [
@@ -186,19 +178,34 @@ function App() {
           </div>
         </div>
 
-        {/* Gradient fades for edge smoothing */}
-        <div className="absolute left-0 top-0 bottom-0 w-12 md:w-32 bg-gradient-to-r from-[#030712] to-transparent z-10 pointer-events-none mt-[280px]" />
-        <div className="absolute right-0 top-0 bottom-0 w-12 md:w-32 bg-gradient-to-l from-[#030712] to-transparent z-10 pointer-events-none mt-[280px]" />
+        {/* Carousel Wrapper */}
+        <div className="relative w-full flex items-center">
+          {/* Navigation Arrows */}
+          <button 
+            onClick={() => scrollByAmount(-350)}
+            className="absolute left-2 md:left-6 z-20 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:scale-105 active:scale-95"
+            aria-label="Scroll left"
+          >
+            <ChevronLeft className="w-6 h-6 text-white" />
+          </button>
+          
+          <button 
+            onClick={() => scrollByAmount(350)}
+            className="absolute right-2 md:right-6 z-20 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center backdrop-blur-md transition-all shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:scale-105 active:scale-95"
+            aria-label="Scroll right"
+          >
+            <ChevronRight className="w-6 h-6 text-white" />
+          </button>
 
-        <div 
-          className="flex w-full overflow-x-auto cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
-          ref={carouselRef}
-          onMouseLeave={handleMouseUpOrLeave}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUpOrLeave}
-        >
-          <div className="flex gap-6 px-6 w-max">
+          {/* Gradient fades for edge smoothing */}
+          <div className="absolute left-0 top-0 bottom-0 w-16 md:w-32 bg-gradient-to-r from-[#030712] to-transparent z-10 pointer-events-none" />
+          <div className="absolute right-0 top-0 bottom-0 w-16 md:w-32 bg-gradient-to-l from-[#030712] to-transparent z-10 pointer-events-none" />
+
+          <div 
+            className="flex w-full overflow-x-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] py-4"
+            ref={carouselRef}
+          >
+            <div className="flex gap-6 px-6 w-max">
             {[...features, ...features].map((feature, i) => (
               <div 
                 key={i}
@@ -215,6 +222,7 @@ function App() {
             ))}
           </div>
         </div>
+      </div>
       </section>
 
       {/* Showcase Gallery */}
