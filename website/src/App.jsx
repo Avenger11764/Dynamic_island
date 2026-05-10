@@ -4,7 +4,6 @@ import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, Chevron
 
 function App() {
   const carouselRef = useRef(null);
-  const [isHovered, setIsHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const dragStartX = useRef(0);
   const dragScrollLeft = useRef(0);
@@ -14,7 +13,7 @@ function App() {
     const el = carouselRef.current;
     
     const scroll = () => {
-      if (el && !isHovered && !isDragging) {
+      if (el && !isDragging) {
         el.scrollLeft += 1;
         // Infinite loop: jump back to start when halfway through (the duplicate set)
         if (el.scrollLeft >= el.scrollWidth / 2) {
@@ -26,7 +25,7 @@ function App() {
     
     animationFrameId = requestAnimationFrame(scroll);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isHovered, isDragging]);
+  }, [isDragging]);
 
   const handleMouseDown = (e) => {
     setIsDragging(true);
@@ -194,8 +193,7 @@ function App() {
         <div 
           className="flex w-full overflow-x-auto cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           ref={carouselRef}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => { setIsHovered(false); handleMouseUpOrLeave(); }}
+          onMouseLeave={handleMouseUpOrLeave}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUpOrLeave}
