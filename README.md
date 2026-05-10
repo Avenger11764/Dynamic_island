@@ -18,14 +18,15 @@ A sleek, Dynamic Island style application for Windows desktops built with Electr
 | ![Network Speed](./assets/network_stats_v2.png) | ![Pomodoro Timer](./assets/pomodoro_mode_v2.png) |
 
 ## Features
-- **Dynamic Island-style UI** notch mechanism with butter-smooth GPU-accelerated animations using Framer Motion.
-- **Media Controls** with Spotify integration, complete with a dynamic ambient glow that color-matches the playing album art.
-- **Pomodoro Timer** featuring adjustable Work and Break intervals, accompanied by native Windows Notifications upon completion.
-- **Hardware & Network Monitoring** showcasing CPU, RAM, and Live Network speeds (with smart polling for maximum performance).
-- **System Controls** allowing global Volume and Brightness adjustments via simple mouse-wheel scroll gestures over the island.
-- **Right-Click Context Menu** for swift application controls.
-- **Secure Architecture** fully isolated contexts via preload scripts ensuring optimal performance and safety.
-- Auto-starts on login persistently.
+- **Media Controls**: Native Spotify integration with a dynamic audio waveform and liquid ambient glow that pulses with the beat.
+- **Intelligent Indicators**: A compact notch state featuring live battery rings, network blips, CPU spikes, and hardware metrics at a glance.
+- **Active Timers**: Live Pomodoro and Stopwatch counters that seamlessly replace the clock in the collapsed state when running.
+- **Hardware & Network**: Live CPU, RAM, and internet speeds tracked in real-time via beautifully designed expanded UI panels.
+- **System Controls**: Change global Volume and Brightness seamlessly using quick mouse-wheel scroll gestures over the island.
+- **Flawless Layering**: Custom engine strictly enforcing highest z-index, keeping the island flawlessly above all full-screen apps and games.
+- **Smart Greetings**: A personalized, time-aware greeting that smoothly expands to welcome you upon waking or starting your machine.
+- **Liquid Physics**: A premium, snappy spring-physics animation system mimicking native hardware filleting and seamless expansions.
+- **Secure & Efficient**: Built safely with fully isolated Electron contexts, utilizing smart background polling to ensure near-zero resource drain.
 
 ## Installation
 
