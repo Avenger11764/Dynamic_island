@@ -7,15 +7,15 @@ A sleek, Dynamic Island style application for Windows desktops built with Electr
 ## Screenshots
 | Compact Mode | Media Player Mode |
 |:---:|:---:|
-| ![Compact Mode](./assets/compact_mode.png) | ![Spotify Player](./assets/media_player.png) |
+| ![Compact Mode](./assets/compact_mode.png?v=2) | ![Spotify Player](./assets/media_player.png?v=2) |
 
 | Stopwatch Mode | Hardware Stats Mode |
 |:---:|:---:|
-| ![Stopwatch](./assets/stopwatch.png) | ![Hardware Stats](./assets/hardware_stats.png) |
+| ![Stopwatch](./assets/stopwatch.png?v=2) | ![Hardware Stats](./assets/hardware_stats.png?v=2) |
 
 | Network Speed Mode | Pomodoro Timer Mode |
 |:---:|:---:|
-| ![Network Speed](./assets/network_stats.png) | ![Pomodoro Timer](./assets/pomodoro_mode.png) |
+| ![Network Speed](./assets/network_stats.png?v=2) | ![Pomodoro Timer](./assets/pomodoro_mode.png?v=2) |
 
 ## Features
 - **Dynamic Island-style UI** notch mechanism with butter-smooth GPU-accelerated animations using Framer Motion.
