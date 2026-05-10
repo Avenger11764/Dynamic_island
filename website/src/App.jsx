@@ -1,9 +1,50 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, ChevronRight, BatteryCharging, Layers, Sun } from 'lucide-react';
 
 function App() {
   const carouselRef = useRef(null);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartX = useRef(0);
+  const dragScrollLeft = useRef(0);
+
+  useEffect(() => {
+    let animationFrameId;
+    const el = carouselRef.current;
+    
+    const scroll = () => {
+      if (el && !isHovered && !isDragging) {
+        el.scrollLeft += 1;
+        // Infinite loop: jump back to start when halfway through (the duplicate set)
+        if (el.scrollLeft >= el.scrollWidth / 2) {
+           el.scrollLeft = 0;
+        }
+      }
+      animationFrameId = requestAnimationFrame(scroll);
+    };
+    
+    animationFrameId = requestAnimationFrame(scroll);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [isHovered, isDragging]);
+
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    dragStartX.current = e.pageX - carouselRef.current.offsetLeft;
+    dragScrollLeft.current = carouselRef.current.scrollLeft;
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    const x = e.pageX - carouselRef.current.offsetLeft;
+    const walk = (x - dragStartX.current) * 1.5; 
+    carouselRef.current.scrollLeft = dragScrollLeft.current - walk;
+  };
+
+  const handleMouseUpOrLeave = () => {
+    setIsDragging(false);
+  };
   
   const features = [
     {
@@ -150,8 +191,16 @@ function App() {
         <div className="absolute left-0 top-0 bottom-0 w-12 md:w-32 bg-gradient-to-r from-[#030712] to-transparent z-10 pointer-events-none mt-[280px]" />
         <div className="absolute right-0 top-0 bottom-0 w-12 md:w-32 bg-gradient-to-l from-[#030712] to-transparent z-10 pointer-events-none mt-[280px]" />
 
-        <div className="flex w-full">
-          <div className="flex gap-6 px-3 w-max animate-marquee hover:pause-animation">
+        <div 
+          className="flex w-full overflow-x-auto cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+          ref={carouselRef}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => { setIsHovered(false); handleMouseUpOrLeave(); }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUpOrLeave}
+        >
+          <div className="flex gap-6 px-6 w-max">
             {[...features, ...features].map((feature, i) => (
               <div 
                 key={i}
