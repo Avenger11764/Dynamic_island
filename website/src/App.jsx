@@ -1,28 +1,28 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, ChevronRight } from 'lucide-react';
+import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, ChevronRight, BatteryCharging, Layers, Sun } from 'lucide-react';
 
 function App() {
   const features = [
     {
       icon: <MonitorPlay className="w-6 h-6 text-blue-400" />,
       title: 'Media Controls',
-      description: 'Native Spotify integration with a multi-layered liquid ambient glow that flows and sloshes in real-time.'
+      description: 'Native Spotify integration with a dynamic audio waveform and liquid ambient glow that pulses with the beat.'
     },
     {
-      icon: <Activity className="w-6 h-6 text-cyan-400" />,
-      title: 'Liquid Fluid UI',
-      description: 'An industry-leading experience where light physically drops like liquid and pulses beautifully with the beat.'
+      icon: <BatteryCharging className="w-6 h-6 text-green-400" />,
+      title: 'Intelligent Indicators',
+      description: 'A compact notch state featuring live battery rings, network blips, CPU spikes, and hardware metrics at a glance.'
     },
     {
       icon: <Timer className="w-6 h-6 text-orange-400" />,
-      title: 'Pomodoro Timer',
-      description: 'Adjustable Work and Break intervals perfectly synced with native Windows OS notifications.'
+      title: 'Active Timers',
+      description: 'Live Pomodoro and Stopwatch counters that seamlessly replace the clock in the collapsed state when running.'
     },
     {
-      icon: <Activity className="w-6 h-6 text-green-400" />,
+      icon: <Activity className="w-6 h-6 text-cyan-400" />,
       title: 'Hardware & Network',
-      description: 'Live CPU, RAM, and internet speeds tracked in real-time with smart background polling to save resources.'
+      description: 'Live CPU, RAM, and internet speeds tracked in real-time via beautifully designed expanded UI panels.'
     },
     {
       icon: <Settings2 className="w-6 h-6 text-purple-400" />,
@@ -30,9 +30,24 @@ function App() {
       description: 'Change global Volume and Brightness seamlessly using quick mouse-wheel scroll gestures over the island.'
     },
     {
+      icon: <Layers className="w-6 h-6 text-yellow-400" />,
+      title: 'Flawless Layering',
+      description: 'Custom engine strictly enforcing highest z-index, keeping the island flawlessly above all full-screen apps and games.'
+    },
+    {
+      icon: <Sun className="w-6 h-6 text-pink-400" />,
+      title: 'Smart Greetings',
+      description: 'A personalized, time-aware greeting that smoothly expands to welcome you upon waking or starting your machine.'
+    },
+    {
+      icon: <Activity className="w-6 h-6 text-red-400" />,
+      title: 'Liquid Physics',
+      description: 'A premium, snappy spring-physics animation system mimicking native hardware filleting and seamless expansions.'
+    },
+    {
       icon: <ShieldCheck className="w-6 h-6 text-emerald-400" />,
-      title: 'Secure Architecture',
-      description: 'Built safely with fully isolated Electron contexts, utilizing preload scripts for peak performance and safety.'
+      title: 'Secure & Efficient',
+      description: 'Built safely with fully isolated Electron contexts, utilizing smart background polling to ensure near-zero resource drain.'
     }
   ];
 
