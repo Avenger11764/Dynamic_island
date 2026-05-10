@@ -23,3 +23,17 @@
     text-shadow: 0 0 40px rgba(255,255,255,0.4);
   }
 }
+
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 40s linear infinite;
+}
+
+.pause-animation {
+  animation-play-state: paused;
+}
+
