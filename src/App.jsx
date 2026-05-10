@@ -47,6 +47,24 @@ export default function App() {
 
   const isNotification = Boolean(clipboardUrl || batteryEvent || meetingAlert);
 
+  const [isDeepIdle, setIsDeepIdle] = useState(false);
+  const idleTimerRef = useRef(null);
+  const isCompletelyIdle = (!isExpanded && !isNotification && !greeting);
+
+  useEffect(() => {
+    if (isCompletelyIdle) {
+      idleTimerRef.current = setTimeout(() => {
+        setIsDeepIdle(true);
+      }, 20000); // 20 seconds
+    } else {
+      setIsDeepIdle(false);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    }
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    }
+  }, [isCompletelyIdle]);
+
   // Battery Polling
   useEffect(() => {
     if ('getBattery' in navigator) {
@@ -263,14 +281,15 @@ export default function App() {
             : (isExpanded 
                ? 400 
                : (greeting ? 240 : (privacy.cam && privacy.mic ? 200 : (privacy.cam || privacy.mic ? 180 : 160)))),
-          height: isNotification ? 80 : (isExpanded ? (viewMode === 'network' ? 260 : (viewMode === 'stats' ? 240 : (viewMode === 'pomodoro' ? 220 : (['volume', 'brightness'].includes(viewMode) ? 140 : 220)))) : 36),
+          height: isNotification ? 80 : (isExpanded ? (viewMode === 'network' ? 260 : (viewMode === 'stats' ? 240 : (viewMode === 'pomodoro' ? 220 : (['volume', 'brightness'].includes(viewMode) ? 140 : 220)))) : (isDeepIdle ? 26 : 36)),
+          opacity: 1,
           borderBottomLeftRadius: (isExpanded || isNotification) ? 24 : 12,
           borderBottomRightRadius: (isExpanded || isNotification) ? 24 : 12,
           borderTopLeftRadius: 0,
           y: -1
         }}
         transition={{ type: "spring", stiffness: 400, damping: 30, mass: 0.5 }}
-        className={`relative z-10 text-white flex flex-col transition-colors duration-200 ${(isExpanded || isNotification) ? 'bg-[#000000] shadow-[0_20px_80px_rgba(0,0,0,0.7)]' : 'bg-[#000000] shadow-[0_10px_40px_rgba(0,0,0,0.9)]'}`}
+        className="relative z-10 text-white flex flex-col transition-colors duration-200 bg-[#000000]"
         style={{ pointerEvents: 'auto', originY: 0 }}
       >
         <div className="absolute top-0 -left-[12px] w-[12px] h-[12px] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 0% 100%, transparent 12px, #000000 12px)' }}></div>
