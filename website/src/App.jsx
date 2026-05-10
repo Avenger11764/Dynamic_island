@@ -228,36 +228,72 @@ function App() {
       {/* Showcase Gallery */}
       <section className="py-24 px-6">
         <div className="max-w-7xl mx-auto">
-          <h2 className="text-3xl md:text-5xl font-bold text-white mb-4 text-center">Seamless Modes</h2>
-          <p className="text-gray-400 text-center mb-16 max-w-2xl mx-auto">Featuring gravity-based physics: watch the liquid light drop from the top to the bottom as you switch into music mode.</p>
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">Seamless Modes</h2>
+            <p className="text-gray-400 max-w-2xl mx-auto">Featuring gravity-based physics: watch the liquid light drop from the top to the bottom as you switch into music mode.</p>
+          </motion.div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <motion.div whileHover={{ scale: 1.02 }} className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10">
+            <motion.div 
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+              whileHover={{ scale: 1.02, y: -5 }} 
+              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10"
+            >
               <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
                 <Timer className="w-6 h-6 text-orange-400"/> Pomodoro Focus
               </h4>
-              <img src="/assets/pomodoro_mode.png" alt="Pomodoro Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-orange-500/20 transition-all" />
+              <img src="/assets/pomodoro_mode.png" alt="Pomodoro Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-orange-500/20 transition-all duration-500" />
             </motion.div>
             
-            <motion.div whileHover={{ scale: 1.02 }} className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10">
+            <motion.div 
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              whileHover={{ scale: 1.02, y: -5 }} 
+              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10"
+            >
               <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
                 <Activity className="w-6 h-6 text-green-400"/> Network Speed
               </h4>
-              <img src="/assets/network_stats.png" alt="Network Stats" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-green-500/20 transition-all" />
+              <img src="/assets/network_stats.png" alt="Network Stats" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-green-500/20 transition-all duration-500" />
             </motion.div>
             
-            <motion.div whileHover={{ scale: 1.02 }} className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10">
+            <motion.div 
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.6, delay: 0.3 }}
+              whileHover={{ scale: 1.02, y: -5 }} 
+              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10"
+            >
               <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
                 <Settings2 className="w-6 h-6 text-blue-400"/> Hardware Monitor
               </h4>
-              <img src="/assets/hardware_stats.png" alt="Hardware Stats" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-blue-500/20 transition-all" />
+              <img src="/assets/hardware_stats.png" alt="Hardware Stats" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-blue-500/20 transition-all duration-500" />
             </motion.div>
 
-            <motion.div whileHover={{ scale: 1.02 }} className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10">
+            <motion.div 
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              whileHover={{ scale: 1.02, y: -5 }} 
+              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10"
+            >
               <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
                 <ShieldCheck className="w-6 h-6 text-gray-400"/> Compact Idle
               </h4>
-              <img src="/assets/compact_mode.png" alt="Compact Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-white/10 transition-all" />
+              <img src="/assets/compact_mode.png" alt="Compact Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-white/10 transition-all duration-500" />
             </motion.div>
           </div>
         </div>
