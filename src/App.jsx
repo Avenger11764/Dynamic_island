@@ -11,6 +11,17 @@ export default function App() {
   const [privacy, setPrivacy] = useState({ cam: false, mic: false });
   const [localProgress, setLocalProgress] = useState(0);
   const [network, setNetwork] = useState({ rx: 0, tx: 0 });
+  const [battery, setBattery] = useState({ level: 100, charging: false });
+  const [greeting, setGreeting] = useState(null);
+
+  useEffect(() => {
+    const hour = new Date().getHours();
+    let text = "Good Evening";
+    if (hour < 12) text = "Good Morning";
+    else if (hour < 17) text = "Good Afternoon";
+    setGreeting(text);
+    setTimeout(() => setGreeting(null), 4000);
+  }, []);
 
   const [viewMode, setViewMode] = useState('media');
   const viewModeRef = useRef('media');
@@ -40,9 +51,11 @@ export default function App() {
   useEffect(() => {
     if ('getBattery' in navigator) {
       navigator.getBattery().then(bat => {
+        setBattery({ level: Math.round(bat.level * 100), charging: bat.charging });
         let lastCharging = bat.charging;
         let lastLevel = bat.level;
         bat.addEventListener('chargingchange', () => {
+          setBattery(prev => ({ ...prev, charging: bat.charging }));
           if (bat.charging !== lastCharging) {
              lastCharging = bat.charging;
              setBatteryEvent({ charging: bat.charging, level: Math.round(bat.level * 100) });
@@ -50,6 +63,7 @@ export default function App() {
           }
         });
         bat.addEventListener('levelchange', () => {
+          setBattery(prev => ({ ...prev, level: Math.round(bat.level * 100) }));
           if (!bat.charging && Math.round(bat.level*100) === 20 && Math.round(lastLevel*100) > 20) {
              setBatteryEvent({ charging: false, level: Math.round(bat.level * 100), low: true });
              setTimeout(() => setBatteryEvent(null), 8000);
@@ -211,17 +225,7 @@ export default function App() {
 
   const isSpotify = Boolean(spotifyState?.isSpotify);
 
-  useEffect(() => {
-    let interval;
-    if (spotifyState?.is_playing && isSpotify && !isExpanded) {
-      interval = setInterval(() => {
-        setShowSongName(prev => !prev);
-      }, 4000); // Toggle every 4 seconds
-    } else {
-      setShowSongName(false);
-    }
-    return () => clearInterval(interval);
-  }, [spotifyState?.is_playing, isSpotify, isExpanded]);
+
 
   const handleMouseEnter = () => {
     if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', false);
@@ -255,21 +259,23 @@ export default function App() {
         initial={{ borderBottomLeftRadius: 100, borderBottomRightRadius: 100, borderTopLeftRadius: 0, borderTopRightRadius: 0 }}
         animate={{
           width: isNotification
-            ? 340
+            ? 360
             : (isExpanded 
-               ? 380 
-               : (privacy.cam && privacy.mic ? 160 : (privacy.cam || privacy.mic ? 140 : (showSongName ? 180 : 120)))),
-          height: isNotification ? 80 : (isExpanded ? (viewMode === 'network' ? 250 : (viewMode === 'stats' ? 230 : (viewMode === 'pomodoro' ? 210 : (['volume', 'brightness'].includes(viewMode) ? 140 : 200)))) : 36),
-          borderBottomLeftRadius: (isExpanded || isNotification) ? 32 : 100,
-          borderBottomRightRadius: (isExpanded || isNotification) ? 32 : 100,
+               ? 400 
+               : (greeting ? 240 : (privacy.cam && privacy.mic ? 200 : (privacy.cam || privacy.mic ? 180 : 160)))),
+          height: isNotification ? 80 : (isExpanded ? (viewMode === 'network' ? 260 : (viewMode === 'stats' ? 240 : (viewMode === 'pomodoro' ? 220 : (['volume', 'brightness'].includes(viewMode) ? 140 : 220)))) : 36),
+          borderBottomLeftRadius: (isExpanded || isNotification) ? 24 : 12,
+          borderBottomRightRadius: (isExpanded || isNotification) ? 24 : 12,
           borderTopLeftRadius: 0,
-          borderTopRightRadius: 0,
           y: -1
         }}
-        transition={{ type: "spring", stiffness: 350, damping: 25, mass: 0.8 }}
-        className={`relative z-10 text-white shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden border-b border-l border-r border-white/10 transition-colors duration-500 ${(isExpanded || isNotification) ? 'bg-black/75 backdrop-blur-2xl' : 'bg-black/95 backdrop-blur-md'}`}
+        transition={{ type: "spring", stiffness: 400, damping: 30, mass: 0.5 }}
+        className={`relative z-10 text-white flex flex-col transition-colors duration-200 ${(isExpanded || isNotification) ? 'bg-[#000000] shadow-[0_20px_80px_rgba(0,0,0,0.7)]' : 'bg-[#000000] shadow-[0_10px_40px_rgba(0,0,0,0.9)]'}`}
         style={{ pointerEvents: 'auto', originY: 0 }}
       >
+        <div className="absolute top-0 -left-[12px] w-[12px] h-[12px] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 0% 100%, transparent 12px, #000000 12px)' }}></div>
+        <div className="absolute top-0 -right-[12px] w-[12px] h-[12px] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 100% 100%, transparent 12px, #000000 12px)' }}></div>
+        <div className="w-full h-full flex flex-col overflow-hidden relative z-10" style={{ borderBottomLeftRadius: 'inherit', borderBottomRightRadius: 'inherit' }}>
         <AnimatePresence>
           {isExpanded && (
             <motion.div 
@@ -354,42 +360,61 @@ export default function App() {
           {(!isExpanded && !isNotification) ? (
             <motion.div
               key="collapsed"
-              className="w-full h-full flex items-center justify-center gap-3 z-10"
+              className="w-full h-full flex items-center justify-between px-4 z-10"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.1 } }}
             >
+              <div className="flex items-center gap-2">
+                 <div className="relative w-[14px] h-[14px] flex items-center justify-center mt-[-2px]">
+                    <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                       <circle cx="18" cy="18" r="16" fill="none" className="stroke-white/10" strokeWidth="4" />
+                       <circle cx="18" cy="18" r="16" fill="none" className={battery.charging ? 'stroke-green-500' : (battery.level < 20 ? 'stroke-red-500' : 'stroke-white/80')} strokeWidth="4" strokeDasharray="100" strokeDashoffset={100 - battery.level} strokeLinecap="round" />
+                    </svg>
+                 </div>
+                 <div className="flex gap-1 mt-[-2px]">
+                    <div className={`w-1.5 h-1.5 rounded-full ${(network.rx > 1024*500 || network.tx > 1024*500) ? 'bg-purple-500 shadow-[0_0_5px_#a855f7]' : 'bg-white/10'}`} />
+                    <div className={`w-1.5 h-1.5 rounded-full ${hardware.cpu > 50 ? 'bg-blue-500 shadow-[0_0_5px_#3b82f6]' : 'bg-white/10'}`} />
+                 </div>
+              </div>
+
               <AnimatePresence mode="wait">
-                {showSongName && isSpotify ? (
-                   <motion.span 
-                    key="songname"
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: -2 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    className="font-bold text-[10px] tracking-tight truncate max-w-[120px] text-green-400"
-                  >
-                    {spotifyState?.item?.name}
-                  </motion.span>
-                ) : (
-                  <motion.span 
-                    key="time"
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: -2 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    className="font-bold text-xs tracking-wider"
-                  >
-                    {time}
-                  </motion.span>
-                )}
+                 {greeting ? (
+                    <motion.span key="greeting" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className="font-bold text-[11px] tracking-wide text-white/90">
+                      {greeting}
+                    </motion.span>
+                 ) : isPomoRunning ? (
+                    <motion.span key="pomotimer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className="font-mono font-bold text-[11px] tracking-wider text-orange-400">
+                      {String(Math.floor(pomodoro / 60)).padStart(2, '0')}:{String(pomodoro % 60).padStart(2, '0')}
+                    </motion.span>
+                 ) : isSwRunning ? (
+                    <motion.span key="swtimer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className="font-mono font-bold text-[11px] tracking-wider text-yellow-400">
+                      {String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:{String(stopwatch % 60).padStart(2, '0')}
+                    </motion.span>
+                 ) : (
+                    <motion.span key="time" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className="font-bold text-xs tracking-wider">
+                      {time}
+                    </motion.span>
+                 )}
               </AnimatePresence>
               
-              {(privacy.mic || privacy.cam || spotifyState?.is_playing) && (
-                <div className="flex items-center gap-1.5 mt-[-2px]">
-                  {spotifyState?.is_playing && <Music size={12} className={isSpotify ? "text-green-500" : "text-blue-400"} />}
-                  {privacy.mic && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)]" />}
-                  {privacy.cam && <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)]" />}
-                </div>
-              )}
+              <div className="flex items-center justify-end gap-1.5 w-[20px]">
+                 {spotifyState?.is_playing ? (
+                    <div className="flex items-end justify-center gap-[2px] h-[10px] mt-[-3px]">
+                       <motion.div animate={{ height: [4, 10, 4] }} transition={{ repeat: Infinity, duration: 0.5, ease: "easeInOut" }} className={`w-[2px] rounded-t-sm ${isSpotify ? 'bg-green-500' : 'bg-blue-400'}`} />
+                       <motion.div animate={{ height: [8, 4, 12, 8] }} transition={{ repeat: Infinity, duration: 0.6, ease: "easeInOut" }} className={`w-[2px] rounded-t-sm ${isSpotify ? 'bg-green-500' : 'bg-blue-400'}`} />
+                       <motion.div animate={{ height: [5, 12, 5] }} transition={{ repeat: Infinity, duration: 0.4, ease: "easeInOut" }} className={`w-[2px] rounded-t-sm ${isSpotify ? 'bg-green-500' : 'bg-blue-400'}`} />
+                    </div>
+                 ) : (
+                    <div className="w-[10px]" />
+                 )}
+                 {(privacy.mic || privacy.cam) && (
+                   <div className="flex gap-1 mt-[-3px]">
+                     {privacy.mic && <div className="w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)]" />}
+                     {privacy.cam && <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)]" />}
+                   </div>
+                 )}
+              </div>
             </motion.div>
           ) : clipboardUrl ? (
             <motion.div
@@ -464,7 +489,7 @@ export default function App() {
                 </motion.div>
               ) : (
                 <>
-                  <div className="w-full h-full p-2 flex flex-col justify-start">
+                  <div className="w-full p-2 flex flex-col justify-start z-20">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-2">
                         <div 
@@ -711,6 +736,7 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </motion.div>
     </div>
   );

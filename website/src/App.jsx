@@ -43,32 +43,7 @@ function App() {
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center">
-              <svg width="36" height="36" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_15px_rgba(56,189,248,0.3)] hover:scale-105 transition-transform">
-                <defs>
-                  <linearGradient id="island-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#38BDF8" />
-                    <stop offset="100%" stopColor="#A855F7" />
-                  </linearGradient>
-                  <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feGaussianBlur stdDeviation="1.5" result="blur" />
-                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                  </filter>
-                </defs>
-                
-                {/* Outer expanding echo ring */}
-                <rect x="2" y="8" width="28" height="16" rx="8" stroke="url(#island-grad)" strokeWidth="1" strokeOpacity="0.4" fill="none" />
-                
-                {/* The main Island pill */}
-                <rect x="6" y="10" width="20" height="12" rx="6" fill="#020617" stroke="url(#island-grad)" strokeWidth="1.5" filter="url(#glow)" />
-                
-                {/* Camera/Sensor dot */}
-                <circle cx="21" cy="16" r="2.5" fill="url(#island-grad)" />
-                
-                {/* Activity indicator / Sound waves */}
-                <rect x="10" y="14" width="1.5" height="4" rx="0.75" fill="#38BDF8" />
-                <rect x="13" y="13" width="1.5" height="6" rx="0.75" fill="#A855F7" />
-                <rect x="16" y="14.5" width="1.5" height="3" rx="0.75" fill="#38BDF8" />
-              </svg>
+              <img src="/favicon.png" alt="Dynamic Island Logo" className="w-10 h-10 rounded-xl drop-shadow-[0_0_15px_rgba(56,189,248,0.3)] hover:scale-105 transition-transform" />
             </div>
             <span className="text-white font-semibold text-xl tracking-tight">Dynamic Island</span>
           </div>
