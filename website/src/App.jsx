@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, ChevronRight, BatteryCharging, Layers, Sun } from 'lucide-react';
 
 function App() {
+  const carouselRef = useRef(null);
+  
   const features = [
     {
       icon: <MonitorPlay className="w-6 h-6 text-blue-400" />,
@@ -135,35 +137,40 @@ function App() {
         </div>
       </section>
 
-      {/* Features Grid */}
-      <section className="py-24 px-6 border-t border-white/5 bg-white/[0.02]">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-20">
+      {/* Features Carousel */}
+      <section className="py-24 border-t border-white/5 bg-white/[0.02] overflow-hidden flex flex-col relative" ref={carouselRef}>
+        <div className="max-w-7xl mx-auto px-6 w-full">
+          <div className="text-left mb-16">
             <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">Premium functionality.</h2>
-            <p className="text-gray-400 text-lg max-w-2xl mx-auto">Everything you need, right at the top of your screen. Built with extreme attention to detail and performance.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((feature, i) => (
-              <motion.div 
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1, duration: 0.5 }}
-                className="glass-card p-8 rounded-3xl hover:bg-white/[0.08] transition-colors group border border-white/10 bg-white/[0.03]"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-6 border border-white/10 group-hover:scale-110 transition-transform duration-300">
-                  {feature.icon}
-                </div>
-                <h3 className="text-xl font-semibold text-white mb-3">{feature.title}</h3>
-                <p className="text-gray-400 leading-relaxed text-sm">
-                  {feature.description}
-                </p>
-              </motion.div>
-            ))}
+            <p className="text-gray-400 text-lg max-w-2xl">Everything you need, right at the top of your screen. Drag left or right to explore all capabilities.</p>
           </div>
         </div>
+
+        <motion.div 
+          drag="x"
+          dragConstraints={carouselRef}
+          dragElastic={0.2}
+          className="flex gap-6 px-6 md:px-16 w-max cursor-grab active:cursor-grabbing pb-8"
+        >
+          {features.map((feature, i) => (
+            <motion.div 
+              key={i}
+              initial={{ opacity: 0, x: 100, scale: 0.95 }}
+              whileInView={{ opacity: 1, x: 0, scale: 1 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.6, delay: i * 0.1, type: "spring", bounce: 0.4 }}
+              className="glass-card p-8 rounded-3xl hover:bg-white/[0.08] transition-colors group border border-white/10 bg-white/[0.03] w-[300px] md:w-[360px] shrink-0"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-6 border border-white/10 group-hover:scale-110 group-hover:bg-white/10 transition-all duration-300">
+                {feature.icon}
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-3">{feature.title}</h3>
+              <p className="text-gray-400 leading-relaxed text-sm">
+                {feature.description}
+              </p>
+            </motion.div>
+          ))}
+        </motion.div>
       </section>
 
       {/* Showcase Gallery */}
