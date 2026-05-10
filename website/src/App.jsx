@@ -356,7 +356,7 @@ function App() {
                   <div className="mb-6 group-hover:scale-110 transition-transform duration-500">
                     <img src="/favicon.png" alt="Dynamic Island App Logo" className="w-28 h-28 rounded-3xl drop-shadow-[0_0_40px_rgba(56,189,248,0.5)]" />
                   </div>
-                  <h3 className="text-2xl font-bold text-white mb-2">Dynamic_Island_Setup.exe</h3>
+                  <h3 className="text-2xl font-bold text-white mb-2">Dynamic Island for Windows</h3>
                   <p className="text-gray-400 mb-8">Latest Version for Windows (64-bit)</p>
                   
                   <a href="/Dynamic_Island_Setup.exe" download className="w-full bg-white text-black hover:bg-gray-200 font-bold py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-95 flex items-center justify-center gap-2 relative z-10">
