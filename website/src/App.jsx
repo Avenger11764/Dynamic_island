@@ -92,9 +92,9 @@ function App() {
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center">
-              <img src="/favicon.png" alt="Dynamic Island Logo" className="w-10 h-10 rounded-xl drop-shadow-[0_0_15px_rgba(56,189,248,0.3)] hover:scale-105 transition-transform" />
+              <img src="/favicon.png" alt="Smart Notch Logo" className="w-10 h-10 rounded-xl drop-shadow-[0_0_15px_rgba(56,189,248,0.3)] hover:scale-105 transition-transform" />
             </div>
-            <span className="text-white font-semibold text-xl tracking-tight">Dynamic Island</span>
+            <span className="text-white font-semibold text-xl tracking-tight">Smart Notch</span>
           </div>
           <div className="flex items-center gap-6">
             <a href="https://github.com/Avenger11764/Dynamic_island" target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white transition-colors flex items-center gap-2 text-sm font-medium">
@@ -137,7 +137,7 @@ function App() {
               The notch experience, <br /> reimagined for Windows.
             </h1>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed">
-              A sleek, butter-smooth, and highly functional Dynamic Island utility built natively for Windows. Control media, track time, and monitor your system in elegance.
+              A sleek, butter-smooth, and highly functional Smart Notch utility built natively for Windows. Control media, track time, and monitor your system in elegance.
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -318,14 +318,14 @@ function App() {
           <div className="flex flex-col md:flex-row items-center gap-16">
             <div className="flex-1">
               <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">Up and running in seconds.</h2>
-              <p className="text-gray-400 text-lg mb-8 leading-relaxed">We built Dynamic Island to be entirely frictionless. No complex setups, no bloatware. Just a single installer that sets everything up automatically.</p>
+              <p className="text-gray-400 text-lg mb-8 leading-relaxed">We built Smart Notch to be entirely frictionless. No complex setups, no bloatware. Just a single installer that sets everything up automatically.</p>
               
               <div className="space-y-6">
                 <div className="flex gap-4 items-start">
                   <div className="w-10 h-10 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold shrink-0 border border-blue-500/30">1</div>
                   <div>
                     <h4 className="text-white font-semibold text-lg mb-1">Download Installer</h4>
-                    <p className="text-gray-400 text-sm">Download the lightweight `Dynamic_Island_Setup.exe` directly.</p>
+                    <p className="text-gray-400 text-sm">Download the lightweight `Smart_Notch_Setup.exe` directly.</p>
                   </div>
                 </div>
                 <div className="flex gap-4 items-start">
@@ -354,9 +354,9 @@ function App() {
                   <div className="absolute inset-0 bg-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
                   
                   <div className="mb-6 group-hover:scale-110 transition-transform duration-500">
-                    <img src="/favicon.png" alt="Dynamic Island App Logo" className="w-28 h-28 rounded-3xl drop-shadow-[0_0_40px_rgba(56,189,248,0.5)]" />
+                    <img src="/favicon.png" alt="Smart Notch App Logo" className="w-28 h-28 rounded-3xl drop-shadow-[0_0_40px_rgba(56,189,248,0.5)]" />
                   </div>
-                  <h3 className="text-2xl font-bold text-white mb-2">Dynamic Island for Windows</h3>
+                  <h3 className="text-2xl font-bold text-white mb-2">Smart Notch for Windows</h3>
                   <p className="text-gray-400 mb-8">Latest Version for Windows (64-bit)</p>
                   
                   <a href="/Dynamic_Island_Setup.exe" download className="w-full bg-white text-black hover:bg-gray-200 font-bold py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-95 flex items-center justify-center gap-2 relative z-10">
@@ -404,9 +404,9 @@ function App() {
           <div className="space-y-4">
             {[
               { q: "Does this drain battery or use a lot of RAM?", a: "No! We've optimized the application using Context Isolation and smart polling mechanisms. It intelligently sleeps background workers when not in view, keeping resource usage extremely minimal." },
-              { q: "Is Dynamic Island open source?", a: "Yes, it is 100% open source. You can view the code, contribute, or build it yourself directly from our GitHub repository." },
+              { q: "Is Smart Notch open source?", a: "Yes, it is 100% open source. You can view the code, contribute, or build it yourself directly from our GitHub repository." },
               { q: "Can I connect my own Spotify account?", a: "Absolutely. The media player integrates directly with Spotify to pull live track data and beautifully ambient album art." },
-              { q: "Does it work on Windows 10?", a: "While optimized for the aesthetic of Windows 11, Dynamic Island runs flawlessly on Windows 10 as well." }
+              { q: "Does it work on Windows 10?", a: "While optimized for the aesthetic of Windows 11, Smart Notch runs flawlessly on Windows 10 as well." }
             ].map((faq, i) => (
               <div key={i} className="glass-card p-6 rounded-2xl border border-white/5 bg-white/[0.02]">
                 <h4 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
@@ -450,7 +450,7 @@ function App() {
       {/* Footer */}
       <footer className="border-t border-white/10 py-12 px-6 bg-[#030712]">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-gray-500">
-          <p>© 2026 Dynamic Island for Windows. Built natively with Electron.</p>
+          <p>© 2026 Smart Notch for Windows. Built natively with Electron.</p>
           <div className="flex items-center gap-6">
             <a href="https://github.com/Avenger11764/Dynamic_island" className="hover:text-white transition-colors">GitHub Repository</a>
             <a href="#" className="hover:text-white transition-colors">Download Installer</a>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--suppress XmlUnusedNamespaceDeclaration -->
+<!--
+  Package.appxmanifest – Smart Notch
+  Product   : Smart Notch
+  Publisher : Devavinash (CN=AE5CAEC9-8659-4C4C-818A-0BB872795E9F)
+  Version   : 1.0.1.0
+-->
+<Package
+   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities">
+
+  <Identity Name="Devavinash.DynamicIslandWindows"
+    ProcessorArchitecture="${arch}"
+    Publisher='CN=AE5CAEC9-8659-4C4C-818A-0BB872795E9F'
+    Version="1.0.1.0" />
+
+  <Properties>
+    <DisplayName>Smart Notch</DisplayName>
+    <PublisherDisplayName>Dev_avinash</PublisherDisplayName>
+    <Description>Smart Notch – a Dynamic Island experience for Windows.</Description>
+    <Logo>assets\SmartNotch-StoreLogo.png</Logo>
+  </Properties>
+
+  <Resources>
+    <Resource Language="en-US" />
+  </Resources>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+  </Dependencies>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+  <Applications>
+    <Application Id="SmartNotch" Executable="${executable}" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        BackgroundColor="#000000"
+        DisplayName="Smart Notch"
+        Description="Smart Notch – a Dynamic Island experience for Windows."
+        Square150x150Logo="assets\SmartNotch-Square150x150Logo.png"
+        Square44x44Logo="assets\SmartNotch-Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="assets\SmartNotch-Wide310x150Logo.png"
+          Square310x310Logo="assets\SmartNotch-Square310x310Logo.png"
+          ShortName="SmartNotch">
+          <uap:ShowNameOnTiles>
+            <uap:ShowOn Tile="square150x150Logo" />
+            <uap:ShowOn Tile="wide310x150Logo" />
+            <uap:ShowOn Tile="square310x310Logo" />
+          </uap:ShowNameOnTiles>
+        </uap:DefaultTile>
+        <uap:SplashScreen Image="assets\SmartNotch-SplashScreen.png" BackgroundColor="#000000" />
+      </uap:VisualElements>
+      <Extensions>
+        <desktop:Extension Category="windows.startupTask" Executable="${executable}" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="SmartNotchStartup" Enabled="false" DisplayName="Smart Notch" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>
