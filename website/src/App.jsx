@@ -250,19 +250,7 @@ function App() {
           </motion.div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <motion.div 
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              whileHover={{ scale: 1.02, y: -5 }} 
-              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10"
-            >
-              <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
-                <Timer className="w-6 h-6 text-orange-400"/> Pomodoro Focus
-              </h4>
-              <img src="/assets/pomodoro_mode_v2.png" alt="Pomodoro Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-orange-500/20 transition-all duration-500" />
-            </motion.div>
+
             
             <motion.div 
               initial={{ opacity: 0, y: 40 }}
