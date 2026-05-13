@@ -9,17 +9,13 @@ A sleek, Smart Notch style application for Windows desktops built with Electron 
 |:---:|:---:|
 | ![Compact Mode](./assets/compact_mode_v2.png) | ![Spotify Player](./assets/media_player_v2.png) |
 
-| Stopwatch Mode | Hardware Stats Mode |
+|  Settings & Customization | Hardware Stats Mode |
 |:---:|:---:|
-| ![Stopwatch](./assets/stopwatch_v2.png) | ![Hardware Stats](./assets/hardware_stats_v2.png) |
+| ![Settings Mode](./assets/settings_mode_v2.png) | ![Hardware Stats](./assets/hardware_stats_v2.png) |
 
 | Network Speed Mode | Pomodoro Timer Mode |
 |:---:|:---:|
 | ![Network Speed](./assets/network_stats_v2.png) | ![Pomodoro Timer](./assets/pomodoro_mode_v2.png) |
-
-| Settings & Customization | |
-|:---:|:---:|
-| ![Settings Mode](./assets/settings_mode_v2.png) | |
 
 ## Features
 - **Media Controls**: Native Spotify integration with a dynamic audio waveform and liquid ambient glow that pulses with the beat.
