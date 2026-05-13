@@ -300,12 +300,12 @@ function App() {
               viewport={{ once: true, margin: "-50px" }}
               transition={{ duration: 0.6, delay: 0.5 }}
               whileHover={{ scale: 1.02, y: -5 }} 
-              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10 md:col-span-2"
+              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10"
             >
               <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
                 <Palette className="w-6 h-6 text-fuchsia-400"/> Settings & Customization
               </h4>
-              <img src="/assets/settings_mode_v2.png" alt="Settings Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-fuchsia-500/20 transition-all duration-500 max-w-2xl mx-auto" />
+              <img src="/assets/settings_mode_v2.png" alt="Settings Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-fuchsia-500/20 transition-all duration-500" />
             </motion.div>
           </div>
         </div>
