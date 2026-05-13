@@ -306,6 +306,7 @@ function App() {
                 <Palette className="w-6 h-6 text-fuchsia-400"/> Settings & Customization
               </h4>
               <img src="/assets/settings_mode_v2.png" alt="Settings Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-fuchsia-500/20 transition-all duration-500 max-w-2xl mx-auto" />
+            </motion.div>
           </div>
         </div>
       </section>
