@@ -170,7 +170,7 @@ function App() {
           >
             <div className="glass-card p-4 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-md">
               <img 
-                src="/assets/media_player.png" 
+                src="/assets/media_player_v2.png" 
                 alt="Media Player Island" 
                 className="w-full rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)]"
               />
@@ -261,7 +261,7 @@ function App() {
               <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
                 <Timer className="w-6 h-6 text-orange-400"/> Pomodoro Focus
               </h4>
-              <img src="/assets/pomodoro_mode.png" alt="Pomodoro Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-orange-500/20 transition-all duration-500" />
+              <img src="/assets/pomodoro_mode_v2.png" alt="Pomodoro Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-orange-500/20 transition-all duration-500" />
             </motion.div>
             
             <motion.div 
@@ -275,7 +275,7 @@ function App() {
               <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
                 <Activity className="w-6 h-6 text-green-400"/> Network Speed
               </h4>
-              <img src="/assets/network_stats.png" alt="Network Stats" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-green-500/20 transition-all duration-500" />
+              <img src="/assets/network_stats_v2.png" alt="Network Stats" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-green-500/20 transition-all duration-500" />
             </motion.div>
             
             <motion.div 
@@ -289,7 +289,7 @@ function App() {
               <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
                 <Settings2 className="w-6 h-6 text-blue-400"/> Hardware Monitor
               </h4>
-              <img src="/assets/hardware_stats.png" alt="Hardware Stats" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-blue-500/20 transition-all duration-500" />
+              <img src="/assets/hardware_stats_v2.png" alt="Hardware Stats" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-blue-500/20 transition-all duration-500" />
             </motion.div>
 
             <motion.div 
@@ -303,8 +303,21 @@ function App() {
               <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
                 <ShieldCheck className="w-6 h-6 text-gray-400"/> Compact Idle
               </h4>
-              <img src="/assets/compact_mode.png" alt="Compact Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-white/10 transition-all duration-500" />
+              <img src="/assets/compact_mode_v2.png" alt="Compact Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-white/10 transition-all duration-500" />
             </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.6, delay: 0.5 }}
+              whileHover={{ scale: 1.02, y: -5 }} 
+              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10 md:col-span-2"
+            >
+              <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
+                <Palette className="w-6 h-6 text-fuchsia-400"/> Settings & Customization
+              </h4>
+              <img src="/assets/settings_mode_v2.png" alt="Settings Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-fuchsia-500/20 transition-all duration-500 max-w-2xl mx-auto" />
           </div>
         </div>
       </section>

@@ -451,9 +451,9 @@ export default function App() {
           y: -1,
           backgroundColor: (!isExpanded && !isNotification) ? (config.idleColor || config.bgColor) : config.bgColor
         }}
-        style={{ pointerEvents: 'auto', originY: 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 30, mass: 0.5 }}
-        className={`relative z-10 text-white flex flex-col transition-all duration-500 ${getGlowStyle()} ${config.cornerShape === 'pill' ? 'rounded-b-[24px]' : 'rounded-b-[12px]'}`}
+        style={{ pointerEvents: 'auto', originY: 0, willChange: 'width, height, border-radius' }}
+        transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.4, restDelta: 0.001 }}
+        className={`relative z-10 text-white flex flex-col transition-shadow duration-500 ${getGlowStyle()} ${config.cornerShape === 'pill' ? 'rounded-b-[24px]' : 'rounded-b-[12px]'}`}
       >
         <div className="absolute top-0 -left-[12px] w-[12px] h-[12px] pointer-events-none transition-colors duration-500" style={{ backgroundImage: `radial-gradient(circle at 0% 100%, transparent 12px, ${(!isExpanded && !isNotification) ? (config.idleColor || config.bgColor) : config.bgColor} 12px)` }}></div>
         <div className="absolute top-0 -right-[12px] w-[12px] h-[12px] pointer-events-none transition-colors duration-500" style={{ backgroundImage: `radial-gradient(circle at 100% 100%, transparent 12px, ${(!isExpanded && !isNotification) ? (config.idleColor || config.bgColor) : config.bgColor} 12px)` }}></div>
