@@ -4,6 +4,23 @@ const http = require('http');
 const fs = require('fs');
 const SpotifyWebApi = require('spotify-web-api-node');
 
+// ── Single-instance lock ──────────────────────────────────────────────────────
+// Must be the very first logic that runs so a duplicate process exits before
+// any windows, IPC handlers, or polling timers are created.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  // Another instance is already running – quit immediately without doing anything.
+  app.quit();
+  process.exit(0);
+}
+// When a second launch attempt is detected, focus the existing window.
+app.on('second-instance', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 function logg(msg) {
   try { fs.appendFileSync(path.join(app.getPath('userData'), 'app-debug.log'), new Date().toISOString() + ': ' + msg + '\n'); } catch(e){}
 }
@@ -389,6 +406,24 @@ function createWindow() {
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
+  // ── Stay-on-top guard ────────────────────────────────────────────────────
+  // Some apps (full-screen games, UAC dialogs, etc.) can push Electron windows
+  // below them. This listener detects when we lose the top position and
+  // immediately re-asserts it.
+  mainWindow.on('always-on-top-changed', (_event, isAlwaysOnTop) => {
+    if (!isAlwaysOnTop && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    }
+  });
+
+  // Belt-and-suspenders: periodically re-assert always-on-top so that even
+  // apps that don't trigger the event (e.g. some D3D11 overlays) are handled.
+  setInterval(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    }
+  }, 3000);
+
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
   ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
@@ -417,21 +452,9 @@ function createWindow() {
   }
 }
 
+// (Single-instance lock is now at the top of the file)
+
 app.whenReady().then(() => {
-  if (app.isPackaged) {
-    // Create a Scheduled Task to run with highest privileges on logon
-    // This is required because the app has requestedExecutionLevel: requireAdministrator
-    const exePath = app.getPath('exe');
-    const taskName = "DynamicIslandAutoStart";
-    // We use cmd.exe /c to execute schtasks properly
-    const command = `schtasks /create /f /tn "${taskName}" /tr "\\"${exePath}\\" --hidden" /sc onlogon /rl highest`;
-    
-    exec(command, (error) => {
-      if (error) {
-        console.log('Failed to create scheduled task for auto-start:', error.message);
-      }
-    });
-  }
   createWindow();
   authenticateSpotify();
   startClipboardPolling();

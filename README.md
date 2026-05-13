@@ -23,10 +23,12 @@ A sleek, Smart Notch style application for Windows desktops built with Electron 
 - **Active Timers**: Live Pomodoro and Stopwatch counters that seamlessly replace the clock in the collapsed state when running.
 - **Hardware & Network**: Live CPU, RAM, and internet speeds tracked in real-time via beautifully designed expanded UI panels.
 - **System Controls**: Change global Volume and Brightness seamlessly using quick mouse-wheel scroll gestures over the island.
+- **Customization**: Cosmic Minimalist Theme with a full-spectrum color picker for notch accents and smart UI contrast based on your background.
 - **Flawless Layering**: Custom engine strictly enforcing highest z-index, keeping the notch flawlessly above all full-screen apps and games.
 - **Smart Greetings**: A personalized, time-aware greeting that smoothly expands to welcome you upon waking or starting your machine.
 - **Liquid Physics**: A premium, snappy spring-physics animation system mimicking native hardware filleting and seamless expansions.
 - **Secure & Efficient**: Built safely with fully isolated Electron contexts, utilizing smart background polling to ensure near-zero resource drain.
+- **Auto-Start & Single-Instance**: Smart Notch seamlessly boots with Windows and uses a strict process lock to prevent duplicate apps from running.
 
 ## Installation
 

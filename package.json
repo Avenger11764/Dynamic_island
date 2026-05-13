@@ -1,7 +1,7 @@
 {
   "name": "smart-notch",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.3",
   "main": "main.js",
   "author": "Avinash",
   "description": "Smart Notch – a Dynamic Island experience for Windows.",
@@ -29,7 +29,9 @@
       "applicationId": "SmartNotch",
       "displayName": "Smart Notch",
       "backgroundColor": "#000000",
-      "languages": ["en-US"],
+      "languages": [
+        "en-US"
+      ],
       "customManifestPath": "appxmanifest.xml"
     },
     "directories": {

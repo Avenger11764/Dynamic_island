@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, ChevronRight, ChevronLeft, BatteryCharging, Layers, Sun } from 'lucide-react';
+import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, ChevronRight, ChevronLeft, BatteryCharging, Layers, Sun, Palette, Power } from 'lucide-react';
 
 function App() {
   const carouselRef = useRef(null);
@@ -82,6 +82,16 @@ function App() {
       icon: <ShieldCheck className="w-6 h-6 text-emerald-400" />,
       title: 'Secure & Efficient',
       description: 'Built safely with fully isolated Electron contexts, utilizing smart background polling to ensure near-zero resource drain.'
+    },
+    {
+      icon: <Palette className="w-6 h-6 text-fuchsia-400" />,
+      title: 'Customization',
+      description: 'Cosmic Minimalist Theme with a full-spectrum color picker for notch accents and smart UI contrast based on your background.'
+    },
+    {
+      icon: <Power className="w-6 h-6 text-teal-400" />,
+      title: 'Auto-Start & Reliability',
+      description: 'Seamlessly boots with Windows and uses a strict process lock to prevent duplicate islands from cluttering your screen.'
     }
   ];
 
