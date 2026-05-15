@@ -151,10 +151,15 @@ function App() {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <a href="/Dynamic_Island_Setup.exe" download className="bg-white text-black px-8 py-4 rounded-full font-semibold text-base hover:bg-gray-100 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)] active:scale-95 flex items-center gap-2">
-                <Download className="w-5 h-5" />
-                Download Setup
-              </a>
+              <ms-store-badge
+                productid="9N1D46F5X565"
+                productname="Smart Notch"
+                window-mode="direct"
+                theme="dark"
+                size="large"
+                language="en-us"
+                animation="on">
+              </ms-store-badge>
               <a href="https://github.com/Avenger11764/Dynamic_island" target="_blank" rel="noreferrer" className="glass px-8 py-4 rounded-full font-semibold text-white text-base hover:bg-white/10 transition-all active:scale-95 flex items-center gap-2 border border-white/10">
                 View Source <ChevronRight className="w-5 h-5" />
               </a>
@@ -371,9 +376,17 @@ function App() {
                   <h3 className="text-2xl font-bold text-white mb-2">Smart Notch for Windows</h3>
                   <p className="text-gray-400 mb-8">Latest Version for Windows (64-bit)</p>
                   
-                  <a href="/Dynamic_Island_Setup.exe" download className="w-full bg-white text-black hover:bg-gray-200 font-bold py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-95 flex items-center justify-center gap-2 relative z-10">
-                    Download Now
-                  </a>
+                  <div className="flex justify-center mt-4 relative z-10">
+                    <ms-store-badge
+                      productid="9N1D46F5X565"
+                      productname="Smart Notch"
+                      window-mode="direct"
+                      theme="dark"
+                      size="large"
+                      language="en-us"
+                      animation="on">
+                    </ms-store-badge>
+                  </div>
                 </div>
               </motion.div>
             </div>
@@ -452,10 +465,17 @@ function App() {
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <h2 className="text-5xl md:text-7xl font-bold text-white mb-8 tracking-tight">Ready to elevate your desktop?</h2>
           <p className="text-xl text-gray-400 mb-12 max-w-2xl mx-auto">Download the free installer today and join thousands of users experiencing the next level of Windows productivity.</p>
-          <a href="/Dynamic_Island_Setup.exe" download className="bg-white text-black px-10 py-5 rounded-full font-semibold text-lg hover:scale-105 transition-transform active:scale-95 flex items-center gap-3 mx-auto shadow-[0_0_40px_rgba(255,255,255,0.2)] w-max">
-            <Download className="w-6 h-6" />
-            Download for Windows
-          </a>
+          <div className="flex justify-center mt-8">
+            <ms-store-badge
+              productid="9N1D46F5X565"
+              productname="Smart Notch"
+              window-mode="direct"
+              theme="dark"
+              size="large"
+              language="en-us"
+              animation="on">
+            </ms-store-badge>
+          </div>
         </div>
       </section>
 
