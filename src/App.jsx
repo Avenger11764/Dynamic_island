@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, SkipForward, SkipBack, CloudSun, Music, Link as LinkIcon, ExternalLink, X, Timer as TimerIcon, Activity, ChevronRight, RotateCcw, Battery, BatteryCharging, Calendar, Sparkles, Power, LayoutGrid, Calculator, Folder, Settings as SettingsIcon, Signal, Volume2, Sun, Download, Home, Coffee, Briefcase, File, Trash2, Plus, Minus } from 'lucide-react';
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Play, Pause, SkipForward, SkipBack, CloudSun, Music, Link as LinkIcon, ExternalLink, X, Timer as TimerIcon, Activity, ChevronRight, RotateCcw, Battery, BatteryCharging, Calendar, Sparkles, Power, LayoutGrid, Calculator, Folder, Settings as SettingsIcon, Signal, Volume2, Sun, Download, Home, Coffee, Briefcase, File, Trash2, Plus, Minus, Monitor, MonitorOff, Cpu, HardDrive, Wifi, Clock, GripVertical, GripHorizontal, Rocket, ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
 const ipcRenderer = window.electronAPI || null;
 
@@ -58,6 +58,528 @@ const RainBackground = React.memo(({ accentColor }) => {
   );
 });
 
+// ── Shelf Bar Component (full-width top bar for "Always On Screen OFF" mode) ──
+const ShelfBar = React.memo(({ 
+  isVisible, time, formatDate, weather, spotifyState, isSpotify, localProgress, 
+  hardware, network, battery, privacy, config, onTogglePlay, onPrev, onSkip,
+  onOpenMediaApp, onOpenWeather, onQuit, onShowSettings, formatSpeed, getCurrentLyric,
+  pomodoro, isPomoRunning, pomoMode, isSwRunning, stopwatch, onBoost, isBoosting,
+  onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
+  batteryEvent, boostAlert, boostProgress
+}) => {
+  // Parse accent color for inline styles (works with ANY hex color)
+  const isRgb = config.accentColor === 'rgb';
+  const accentHex = (!isRgb && config.accentColor?.startsWith('#')) ? config.accentColor : '#06b6d4';
+  const hexToRgba = (hex, a) => {
+    const r = parseInt(hex.slice(1,3), 16);
+    const g = parseInt(hex.slice(3,5), 16);
+    const b = parseInt(hex.slice(5,7), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  };
+
+  // Glow intensity mapping
+  const glowMap = {
+    none: 'none',
+    low: `0 4px 15px ${hexToRgba(accentHex, 0.15)}`,
+    medium: `0 4px 30px ${hexToRgba(accentHex, 0.3)}`,
+    high: `0 4px 50px ${hexToRgba(accentHex, 0.45)}`
+  };
+  const glowStyle = isRgb ? undefined : (glowMap[config.glowIntensity] || glowMap.medium);
+
+  const isPlaying = spotifyState?.is_playing;
+  const hasAlbumArt = Boolean(spotifyState?.item?.album?.images?.[0]?.url);
+  const albumUrl = spotifyState?.item?.album?.images?.[0]?.url;
+
+  const isSide = config.screenPosition === 'left' || config.screenPosition === 'right';
+  const isLeft = config.screenPosition === 'left';
+
+  const initialX = isSide ? (isLeft ? -160 : 160) : 0;
+  const initialY = isSide ? 0 : -64;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: initialX, y: initialY }}
+      animate={{ opacity: isVisible ? 1 : 0, x: isVisible ? 0 : initialX, y: isVisible ? 0 : initialY }}
+      exit={{ opacity: 0, x: initialX, y: initialY }}
+      transition={{ type: 'spring', stiffness: 220, damping: 26, mass: 0.8 }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      className={`shelf-bar fixed z-50 backdrop-blur-xl ${isSide ? 'custom-scrollbar' : ''}
+        ${isSide ? `top-0 bottom-0 flex flex-col items-center justify-start py-4 px-2 gap-4 overflow-y-auto overflow-x-hidden ${isLeft ? 'border-r' : 'border-l'}` : 'top-0 left-0 right-0 flex items-center justify-between px-6 py-2 border-b overflow-hidden'}
+        ${isLeft ? 'left-0' : (isSide ? 'right-0' : '')}
+        ${isRgb ? 'rgb-border rgb-shadow-med' : ''}`}
+      style={{ 
+        backgroundColor: `${config.bgColor}e6`,
+        ...(isSide ? { width: '160px' } : { height: '64px' }),
+        pointerEvents: isVisible ? 'auto' : 'none',
+        borderColor: isRgb ? undefined : hexToRgba(accentHex, 0.3),
+        boxShadow: isRgb ? undefined : glowStyle
+      }}
+    >
+      {/* Background Animations — full width */}
+      {config.bgAnimation !== 'off' && (
+        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden" style={{ mixBlendMode: 'screen' }}>
+          {config.bgAnimation === 'liquid' && (
+            <>
+              {/* Blob 1 */}
+              <motion.div 
+                animate={isSide ? { 
+                  y: isPlaying ? ['-5%', '30%', '-5%'] : ['-5%', '15%', '-5%'],
+                  scale: isPlaying ? [1, 1.4, 1] : [1, 1.15, 1], 
+                  opacity: isPlaying ? [0.4, 0.8, 0.4] : [0.25, 0.5, 0.25]
+                } : { 
+                  x: isPlaying ? ['-5%', '30%', '-5%'] : ['-5%', '15%', '-5%'],
+                  scale: isPlaying ? [1, 1.4, 1] : [1, 1.15, 1], 
+                  opacity: isPlaying ? [0.4, 0.8, 0.4] : [0.25, 0.5, 0.25]
+                }}
+                transition={{ duration: isPlaying ? 2.5 : 6, repeat: Infinity, ease: 'easeInOut' }}
+                className={`absolute rounded-[100px] blur-[50px] ${isSide ? 'left-0 top-0 w-[160px] h-[50%]' : 'top-[-30px] left-0 w-[50%] h-[100px]'}`}
+                style={{ background: hasAlbumArt 
+                  ? `url(${albumUrl}) center/cover` 
+                  : 'linear-gradient(135deg, #a855f7, #3b82f6, #06b6d4)' }}
+              />
+              {/* Blob 2 */}
+              <motion.div 
+                animate={isSide ? { 
+                  y: isPlaying ? ['10%', '-25%', '10%'] : ['5%', '-10%', '5%'],
+                  scale: isPlaying ? [1, 1.35, 1] : [1, 1.1, 1], 
+                  opacity: isPlaying ? [0.35, 0.75, 0.35] : [0.2, 0.45, 0.2]
+                } : { 
+                  x: isPlaying ? ['10%', '-25%', '10%'] : ['5%', '-10%', '5%'],
+                  scale: isPlaying ? [1, 1.35, 1] : [1, 1.1, 1], 
+                  opacity: isPlaying ? [0.35, 0.75, 0.35] : [0.2, 0.45, 0.2]
+                }}
+                transition={{ duration: isPlaying ? 3 : 7, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
+                className={`absolute rounded-[100px] blur-[55px] ${isSide ? 'left-0 top-[25%] w-[160px] h-[55%]' : 'top-[-25px] left-[25%] w-[55%] h-[90px]'}`}
+                style={{ mixBlendMode: 'screen', background: hasAlbumArt 
+                  ? `url(${albumUrl}) center/cover` 
+                  : 'linear-gradient(135deg, #06b6d4, #a855f7, #ec4899)' }}
+              />
+              {/* Blob 3 */}
+              <motion.div 
+                animate={isSide ? { 
+                  y: isPlaying ? ['5%', '-20%', '5%'] : ['0%', '-8%', '0%'],
+                  scale: isPlaying ? [1, 1.3, 1] : [1, 1.1, 1],
+                  opacity: isPlaying ? [0.3, 0.7, 0.3] : [0.2, 0.4, 0.2]
+                } : { 
+                  x: isPlaying ? ['5%', '-20%', '5%'] : ['0%', '-8%', '0%'],
+                  scale: isPlaying ? [1, 1.3, 1] : [1, 1.1, 1],
+                  opacity: isPlaying ? [0.3, 0.7, 0.3] : [0.2, 0.4, 0.2]
+                }}
+                transition={{ duration: isPlaying ? 2.8 : 8, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }}
+                className={`absolute rounded-[100px] blur-[60px] ${isSide ? 'left-0 top-[50%] w-[160px] h-[55%]' : 'top-[-20px] left-[50%] w-[55%] h-[85px]'}`}
+                style={{ mixBlendMode: 'screen', background: hasAlbumArt 
+                  ? `url(${albumUrl}) center/cover` 
+                  : 'linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899)' }}
+              />
+            </>
+          )}
+          {config.bgAnimation === 'aurora' && (
+            <>
+              <motion.div animate={isSide ? { y: ['-20%', '20%', '-20%'] } : { x: ['-20%', '20%', '-20%'] }} transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }} className={`absolute blur-[40px] rounded-[100%] bg-gradient-to-r from-teal-400/50 to-emerald-500/50 ${isSide ? 'left-0 top-[5%] w-[160px] h-[60%]' : 'top-[-15px] left-[5%] w-[60%] h-[80px]'}`} />
+              <motion.div animate={isSide ? { y: ['20%', '-20%', '20%'] } : { x: ['20%', '-20%', '20%'] }} transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }} className={`absolute blur-[45px] rounded-[100%] bg-gradient-to-r from-purple-500/40 to-blue-500/40 ${isSide ? 'left-0 top-[30%] w-[160px] h-[65%]' : 'top-[-10px] left-[30%] w-[65%] h-[70px]'}`} />
+              <motion.div animate={isSide ? { y: ['-10%', '15%', '-10%'] } : { x: ['-10%', '15%', '-10%'] }} transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }} className={`absolute blur-[35px] rounded-[100%] bg-gradient-to-r from-cyan-300/30 to-transparent ${isSide ? 'left-0 top-[15%] w-[160px] h-[50%]' : 'top-[-5px] left-[15%] w-[50%] h-[60px]'}`} />
+            </>
+          )}
+          {config.bgAnimation === 'rain' && <RainBackground accentColor={config.accentColor} />}
+          {config.bgAnimation === 'matrix' && <MatrixBackground />}
+          {config.bgAnimation === 'hyperspace' && <HyperspaceBackground isPlaying={isPlaying} />}
+          {config.bgAnimation === 'cosmic' && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <motion.div animate={{ rotate: 360 }} transition={{ duration: 25, repeat: Infinity, ease: 'linear' }} className="absolute w-[200px] h-[200px] rounded-full border border-white/10">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-cyan-400 shadow-[0_0_10px_#06b6d4]" />
+              </motion.div>
+              <motion.div animate={{ rotate: -360 }} transition={{ duration: 35, repeat: Infinity, ease: 'linear' }} className="absolute w-[350px] h-[350px] rounded-full border border-white/5">
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-2 h-2 rounded-full bg-purple-400 shadow-[0_0_8px_#a855f7]" />
+              </motion.div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Side position: compact vertical layout */}
+      {isSide ? (
+        <>
+          {/* Clock + Date */}
+          <div className="flex flex-col items-center relative z-10 w-full mt-2 mb-2">
+            <span className={`text-4xl font-black tracking-tight leading-none ${isRgb ? 'rgb-text' : 'text-white'}`} style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
+              {time.replace(/\s*[aApP]\.?[mM]\.?/, '')}
+            </span>
+            <span className="text-xs text-white/40 font-bold tracking-widest uppercase mt-2">{formatDate()}</span>
+          </div>
+
+          <div className="w-24 h-px bg-white/10 my-2" />
+
+          {/* Weather */}
+          {config.showWeather !== false && (
+            <>
+              <div 
+                className="flex items-center gap-3 cursor-pointer hover:bg-white/5 rounded-xl px-4 py-3 transition-colors w-full justify-center relative z-10"
+                onClick={onOpenWeather}
+              >
+                <CloudSun size={28} className="text-yellow-300 flex-shrink-0" />
+                <div className="flex flex-col items-start overflow-hidden">
+                  <span className="text-xl font-bold text-white leading-none">{weather.temp}</span>
+                  <span className="text-[11px] text-white/50 capitalize truncate w-full mt-1" title={weather.desc}>{weather.desc}</span>
+                </div>
+              </div>
+              <div className="w-24 h-px bg-white/10 my-2" />
+            </>
+          )}
+
+          {/* Media Controls */}
+          {spotifyState?.item && (
+            <>
+              <div className="flex flex-col items-center gap-3 w-full relative z-10 px-2 mt-2">
+                <div className="w-28 h-28 rounded-2xl overflow-hidden shadow-2xl relative group">
+                  {spotifyState.item.album?.images?.[0] ? (
+                    <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                  ) : (
+                    <div className="w-full h-full bg-purple-600/50 flex items-center justify-center"><Music size={32} className="text-white/80" /></div>
+                  )}
+                  {/* Playback overlay on hover could go here, but controls are below */}
+                </div>
+                <div className="flex flex-col items-center w-full text-center">
+                  <span className="text-sm font-bold text-white truncate w-full">{spotifyState.item.name}</span>
+                  <span className="text-[11px] text-white/50 truncate w-full mt-0.5">{spotifyState.item.artists?.map(a => a.name).join(', ')}</span>
+                </div>
+                <div className="flex items-center gap-4 mt-2">
+                  <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={onPrev}>
+                    <SkipBack size={16} />
+                  </button>
+                  <button className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all text-white shadow-lg hover:scale-105" onClick={onTogglePlay}>
+                    {spotifyState.is_playing ? <Pause size={18} /> : <Play size={18} className="translate-x-[2px]" />}
+                  </button>
+                  <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={onSkip}>
+                    <SkipForward size={16} />
+                  </button>
+                </div>
+              </div>
+              <div className="w-24 h-px bg-white/10 my-4" />
+            </>
+          )}
+
+          {/* Timers */}
+          {(isPomoRunning || isSwRunning) && (
+            <div className="flex flex-col gap-3 relative z-10 w-full px-4 mt-2">
+              {isPomoRunning && (
+                <div className="flex items-center justify-center gap-2 bg-red-500/10 px-3 py-2 rounded-xl border border-red-500/20 w-full">
+                  <Coffee size={14} className="text-red-400 flex-shrink-0" />
+                  <span className="font-mono text-sm font-bold text-red-300">
+                    {String(Math.floor(pomodoro / 60)).padStart(2, '0')}:{String(pomodoro % 60).padStart(2, '0')}
+                  </span>
+                </div>
+              )}
+              {isSwRunning && (
+                <div className="flex items-center justify-center gap-2 bg-yellow-500/10 px-3 py-2 rounded-xl border border-yellow-500/20 w-full">
+                  <TimerIcon size={14} className="text-yellow-400 flex-shrink-0" />
+                  <span className="font-mono text-sm font-bold text-yellow-300">
+                    {String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:{String(stopwatch % 60).padStart(2, '0')}
+                  </span>
+                </div>
+              )}
+              <div className="w-24 h-px bg-white/10 my-1 mx-auto" />
+            </div>
+          )}
+
+          {/* Stats & Battery */}
+          <div className="flex flex-col gap-4 relative z-10 w-full px-5 mt-2">
+            {config.showHardware !== false && (
+              <>
+                <div className="flex items-center justify-between" title={`CPU: ${hardware.cpu}%`}>
+                  <div className="flex items-center gap-2.5"><Cpu size={16} className={hardware.cpu > 70 ? 'text-red-400' : 'text-cyan-400'} /><span className="text-[11px] font-medium text-white/50">CPU</span></div>
+                  <span className="text-[13px] font-bold text-white tabular-nums">{hardware.cpu}%</span>
+                </div>
+                <div className="flex items-center justify-between" title={`RAM: ${hardware.ram}%`}>
+                  <div className="flex items-center gap-2.5"><HardDrive size={16} className={hardware.ram > 80 ? 'text-red-400' : 'text-purple-400'} /><span className="text-[11px] font-medium text-white/50">RAM</span></div>
+                  <span className="text-[13px] font-bold text-white tabular-nums">{hardware.ram}%</span>
+                </div>
+                <div className="flex items-center justify-between" title={`Network`}>
+                  <div className="flex items-center gap-2.5"><Wifi size={16} className={network.tx > 0 || network.rx > 0 ? 'text-blue-400' : 'text-white/40'} /><span className="text-[11px] font-medium text-white/50">NET</span></div>
+                  <span className="text-[11px] font-bold text-white tabular-nums truncate w-[60px] text-right">{formatSpeed(network.rx)}</span>
+                </div>
+              </>
+            )}
+            <div className="flex items-center justify-between" title={`Battery: ${battery.level}%`}>
+              <div className="flex items-center gap-2.5"><Battery size={16} className={battery.charging ? 'text-green-400' : (battery.level < 20 ? 'text-red-400' : 'text-emerald-400')} /><span className="text-[11px] font-medium text-white/50">PWR</span></div>
+              <span className="text-[13px] font-bold text-white tabular-nums">{battery.level}%</span>
+            </div>
+            <button 
+               className="mt-2 w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg py-1.5 flex items-center justify-center gap-2 text-xs font-bold transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_20px_rgba(6,182,212,0.6)] disabled:opacity-50"
+               onClick={onBoost}
+               disabled={isBoosting}
+            >
+               <Rocket size={14} className={isBoosting ? "animate-pulse" : ""} />
+               <span>BOOST</span>
+            </button>
+          </div>
+
+          <div className="mt-auto flex items-center justify-center gap-4 w-full mb-6 relative z-10">
+            {/* Settings */}
+            <button 
+              title="Settings"
+              className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center transition-colors text-white/60 hover:text-white"
+              onClick={onShowSettings}
+            >
+              <SettingsIcon size={18} />
+            </button>
+            {/* Quit */}
+            <button 
+              title="Quit"
+              className="w-10 h-10 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors"
+              onClick={onQuit}
+            >
+              <Power size={18} />
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+      {/* Left Section: Clock + Date */}
+      <div className="flex items-center gap-5 min-w-[280px] relative z-10">
+        <div className="flex flex-col">
+          <motion.span 
+            className={`text-3xl font-black tracking-tight leading-none ${isRgb ? 'rgb-text' : 'text-white'}`}
+            style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}
+          >
+            {time}
+          </motion.span>
+          <span className="text-[11px] text-white/40 font-medium tracking-wider uppercase mt-0.5">{formatDate()}</span>
+        </div>
+
+        {/* Divider */}
+        <div className="w-px h-10 bg-white/10" />
+
+        {/* Weather */}
+        {config.showWeather !== false && (
+          <div 
+            className="flex items-center gap-2.5 cursor-pointer hover:bg-white/5 rounded-xl px-3 py-2 transition-colors"
+            onClick={onOpenWeather}
+          >
+            <CloudSun size={20} className="text-yellow-300" />
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-white leading-none">{weather.temp}</span>
+              <span className="text-[10px] text-white/40 leading-none mt-0.5">{weather.desc}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Center Section: Media Player */}
+      <div className="flex items-center gap-4 flex-1 justify-center max-w-[500px] relative z-10">
+        {spotifyState?.item ? (
+          <>
+            <div className="w-11 h-11 rounded-xl overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg flex-shrink-0">
+              {spotifyState.item.album?.images?.[0] ? (
+                <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover" />
+              ) : (
+                <Music size={20} className="text-white/90" />
+              )}
+            </div>
+            <div 
+              className="flex flex-col min-w-0 max-w-[180px] cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => onOpenMediaApp(spotifyState?.sourceAppId)}
+            >
+              <span className="font-bold text-sm leading-tight truncate">{spotifyState.item.name || 'Not Playing'}</span>
+              <span className="text-[11px] text-white/50 truncate">{spotifyState.item.artists?.[0]?.name || ''}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={onPrev}>
+                <SkipBack size={14} />
+              </button>
+              <button className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-white" onClick={onTogglePlay}>
+                {spotifyState.is_playing ? <Pause size={16} /> : <Play size={16} className="translate-x-[1px]" />}
+              </button>
+              <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={onSkip}>
+                <SkipForward size={14} />
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center gap-2 text-white/30">
+            <Music size={18} />
+            <span className="text-sm font-medium">No Media Playing</span>
+          </div>
+        )}
+      </div>
+
+      {/* Lyrics Section — between media and stats */}
+      {spotifyState?.lyrics?.length > 0 && (
+        <>
+          <div className="w-px h-8 bg-white/10 flex-shrink-0 relative z-10" />
+          <div className="flex items-center justify-center w-[200px] relative z-10 flex-shrink-0 overflow-hidden">
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={getCurrentLyric() || '_empty'}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: getCurrentLyric() ? 1 : 0, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2 }}
+                className="text-[12px] font-medium text-white/70 text-center leading-snug line-clamp-2 italic"
+                style={{ textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}
+              >
+                {getCurrentLyric() ? `♪ ${getCurrentLyric()}` : '\u00A0'}
+              </motion.span>
+            </AnimatePresence>
+          </div>
+        </>
+      )}
+
+      {/* Right Section: Stats + Battery + Privacy + Controls */}
+      <div className="flex items-center gap-4 min-w-[280px] justify-end relative z-10">
+        {/* Timers (if running) */}
+        {isPomoRunning && (
+          <div className="flex items-center gap-1.5 bg-red-500/10 px-3 py-1.5 rounded-full border border-red-500/20">
+            <Coffee size={12} className="text-red-400" />
+            <span className="font-mono text-xs font-bold text-red-300">
+              {String(Math.floor(pomodoro / 60)).padStart(2, '0')}:{String(pomodoro % 60).padStart(2, '0')}
+            </span>
+          </div>
+        )}
+        {isSwRunning && (
+          <div className="flex items-center gap-1.5 bg-yellow-500/10 px-3 py-1.5 rounded-full border border-yellow-500/20">
+            <TimerIcon size={12} className="text-yellow-400" />
+            <span className="font-mono text-xs font-bold text-yellow-300">
+              {String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:{String(stopwatch % 60).padStart(2, '0')}
+            </span>
+          </div>
+        )}
+
+        {/* Hardware mini stats */}
+        {config.showHardware !== false && (
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="flex items-center gap-1 flex-shrink-0" title={`CPU: ${hardware.cpu}%`}>
+              <Cpu size={13} className={hardware.cpu > 70 ? 'text-red-400' : 'text-green-400'} />
+              <span className="text-[11px] font-bold text-white/70 tabular-nums w-[30px] text-right">{hardware.cpu}%</span>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0" title={`RAM: ${hardware.ram}%`}>
+              <HardDrive size={13} className={hardware.ram > 80 ? 'text-red-400' : 'text-blue-400'} />
+              <span className="text-[11px] font-bold text-white/70 tabular-nums w-[30px] text-right">{hardware.ram}%</span>
+            </div>
+            <div className="flex items-center gap-0.5 flex-shrink-0" title={`↓${formatSpeed(network.rx)} ↑${formatSpeed(network.tx)}`}>
+              <Wifi size={12} className={(network.rx > 1024*500 || network.tx > 1024*500) ? 'text-purple-400' : 'text-white/30'} />
+              <span className="text-[10px] font-bold text-white/50 tabular-nums w-[68px] text-left">{formatSpeed(network.rx)}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="w-px h-8 bg-white/10" />
+
+        {/* Battery */}
+        <div className="flex items-center gap-1.5" title={`Battery: ${battery.level}%${battery.charging ? ' (Charging)' : ''}`}>
+          <div className="relative w-[16px] h-[16px] flex items-center justify-center">
+            <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="16" fill="none" className="stroke-white/10" strokeWidth="4" />
+              <circle cx="18" cy="18" r="16" fill="none" 
+                className={battery.charging ? 'stroke-green-500' : (battery.level < 20 ? 'stroke-red-500' : 'stroke-white/70')} 
+                strokeWidth="4" strokeDasharray="100" strokeDashoffset={100 - battery.level} strokeLinecap="round" />
+            </svg>
+          </div>
+          <span className="text-[11px] font-bold text-white/60 tabular-nums">{battery.level}%</span>
+        </div>
+
+        {/* Privacy dots */}
+        {(privacy.mic || privacy.cam) && (
+          <div className="flex gap-1.5">
+            {privacy.mic && <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)] animate-pulse" />}
+            {privacy.cam && <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)] animate-pulse" />}
+          </div>
+        )}
+
+        {/* Settings + Quit */}
+        <button 
+           onClick={onBoost} 
+           disabled={isBoosting}
+           className="w-8 h-8 rounded-full bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500 hover:text-white flex items-center justify-center transition-colors disabled:opacity-50"
+           title="Boost System"
+        >
+           <Rocket size={14} className={isBoosting ? "animate-pulse" : ""} />
+        </button>
+        <button 
+          title="Settings" 
+          className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center transition-colors text-white/50 hover:text-white"
+          onClick={onShowSettings}
+        >
+          <SettingsIcon size={14} />
+        </button>
+        <button 
+          title="Quit"
+          className="w-7 h-7 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors"
+          onClick={onQuit}
+        >
+          <Power size={12} />
+        </button>
+      </div>
+        </>
+      )}
+
+      {/* Notification overlay */}
+      <AnimatePresence>
+        {(batteryEvent || boostAlert || isBoosting) && (
+          <motion.div 
+            initial={{ opacity: 0, y: isSide ? -20 : -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: isSide ? -20 : -10 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+            className={`absolute inset-0 z-[35] bg-[#070708f2] flex items-center justify-center border-white/10 backdrop-blur-xl
+              ${isSide 
+                ? 'w-full h-full flex-col px-4 py-8 justify-center text-center' 
+                : 'w-full h-full px-8 gap-6 justify-center'}`}
+          >
+            {batteryEvent && (
+              <div className={`flex ${isSide ? 'flex-col text-center' : 'row'} items-center gap-4`}>
+                 <div className={`w-12 h-12 rounded-full ${batteryEvent.low ? 'bg-red-500/20 text-red-500' : (batteryEvent.charging ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400')} flex items-center justify-center flex-shrink-0 animate-pulse`}>
+                    {batteryEvent.charging ? <BatteryCharging size={24} /> : <Battery size={24} />}
+                 </div>
+                 <div className="flex flex-col text-left">
+                    <span className="font-bold text-base text-white">{batteryEvent.low ? 'Battery Low' : (batteryEvent.charging ? 'Charging Started' : 'Power Disconnected')}</span>
+                    <span className="text-xs text-white/50">{batteryEvent.level}% remaining</span>
+                 </div>
+              </div>
+            )}
+
+            {isBoosting && (
+              <div className={`flex ${isSide ? 'flex-col text-center animate-pulse' : 'row'} items-center gap-4 w-full justify-center`}>
+                 <div className="w-12 h-12 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center flex-shrink-0">
+                    <Rocket size={24} className="animate-ping" />
+                 </div>
+                 <div className={`flex flex-col max-w-[240px] w-full ${isSide ? 'items-center text-center' : 'items-start text-left'}`}>
+                    <span className="font-bold text-sm text-white">Boosting System...</span>
+                    <span className="text-xs text-cyan-300 truncate w-full mt-0.5">
+                      {boostProgress ? `Killed ${boostProgress.name} (-${boostProgress.mb}MB, -${boostProgress.cpu}% CPU)` : 'Scanning memory...'}
+                    </span>
+                    <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mt-2 relative">
+                       <motion.div 
+                         className="absolute top-0 left-0 h-full bg-cyan-400 w-1/3 rounded-full" 
+                         initial={{ x: "-100%" }} 
+                         animate={{ x: "300%" }} 
+                         transition={{ duration: 1, repeat: Infinity, ease: "linear" }} 
+                       />
+                    </div>
+                 </div>
+              </div>
+            )}
+
+            {boostAlert && (
+              <div className={`flex ${isSide ? 'flex-col text-center' : 'row'} items-center gap-4`}>
+                 <div className="w-12 h-12 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center flex-shrink-0">
+                    <Rocket size={24} className="animate-bounce" />
+                 </div>
+                 <div className="flex flex-col text-left">
+                    <span className="font-bold text-base text-white">System Boosted</span>
+                    <span className="text-xs text-cyan-300">Freed {boostAlert.freedMB} MB RAM & {boostAlert.freedCPU}% CPU</span>
+                 </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+});
+
 export default function App() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [time, setTime] = useState('');
@@ -93,7 +615,9 @@ export default function App() {
     showPomodoro: true,
     showStopwatch: false,
     autoHide: true,
-    clockFormat: '12h'
+    clockFormat: '12h',
+    mode: 'notch',
+    screenPosition: 'top'
   };
   const [config, setConfig] = useState(() => {
     try {
@@ -101,14 +625,40 @@ export default function App() {
       const parsed = saved ? JSON.parse(saved) : defaultConfig;
       // Remove any stored offsetX — we now track position with a motion value
       delete parsed.offsetX;
+      // Migrate old alwaysOnScreen to new mode system
+      if (!parsed.mode) {
+        parsed.mode = parsed.alwaysOnScreen === false ? 'bar' : 'notch';
+      }
+      delete parsed.alwaysOnScreen;
       return parsed;
     } catch(e) { return defaultConfig; }
   });
   useEffect(() => {
     localStorage.setItem('smart-notch-config', JSON.stringify(config));
   }, [config]);
+
+  const isRgb = config.accentColor === 'rgb';
+  const accentHex = (!isRgb && config.accentColor?.startsWith('#')) ? config.accentColor : '#06b6d4';
+
+  // Send screen position to main process when it changes
+  useEffect(() => {
+    if (ipcRenderer && config.screenPosition) {
+      ipcRenderer.send('set-screen-position', config.screenPosition, { ignoreBounds: window.isDraggingUpdate });
+      window.isDraggingUpdate = false;
+    }
+  }, [config.screenPosition]);
+
+  useEffect(() => {
+    if (!ipcRenderer) return;
+    const handleWindowDragged = (newPos) => {
+      window.isDraggingUpdate = true;
+      setConfig(prev => ({...prev, screenPosition: newPos}));
+    };
+    ipcRenderer.on('window-dragged-to', handleWindowDragged);
+    return () => ipcRenderer.removeAllListeners('window-dragged-to');
+  }, []);
   
-  // Helpers for Tailwind classes based on config
+  // Helpers for Tailwind classes and dynamic inline styles based on config
   const getGlowStyle = () => {
      if (config.glowIntensity === 'none') return '';
      
@@ -117,20 +667,32 @@ export default function App() {
         if (config.glowIntensity === 'low') return 'rgb-shadow-low';
         return 'rgb-shadow-med';
      }
+     return '';
+  };
 
-     const colors = {
-        '#06b6d4': { h: 'shadow-[0_0_50px_rgba(6,182,212,0.4)]', m: 'shadow-[0_0_30px_rgba(6,182,212,0.25)]', l: 'shadow-[0_0_15px_rgba(6,182,212,0.15)]' },
-        '#a855f7': { h: 'shadow-[0_0_50px_rgba(168,85,247,0.4)]', m: 'shadow-[0_0_30px_rgba(168,85,247,0.25)]', l: 'shadow-[0_0_15px_rgba(168,85,247,0.15)]' },
-        '#00cc44': { h: 'shadow-[0_0_50px_rgba(34,197,94,0.4)]', m: 'shadow-[0_0_30px_rgba(34,197,94,0.25)]', l: 'shadow-[0_0_15px_rgba(34,197,94,0.15)]' },
-        '#ec4899': { h: 'shadow-[0_0_50px_rgba(236,72,153,0.4)]', m: 'shadow-[0_0_30px_rgba(236,72,153,0.25)]', l: 'shadow-[0_0_15px_rgba(236,72,153,0.15)]' },
-        '#ff6600': { h: 'shadow-[0_0_50px_rgba(249,115,22,0.4)]', m: 'shadow-[0_0_30px_rgba(249,115,22,0.25)]', l: 'shadow-[0_0_15px_rgba(249,115,22,0.15)]' },
-        '#ffffff': { h: 'shadow-[0_0_50px_rgba(255,255,255,0.4)]', m: 'shadow-[0_0_30px_rgba(255,255,255,0.25)]', l: 'shadow-[0_0_15px_rgba(255,255,255,0.15)]' }
-     };
+  const getNotchGlowStyle = () => {
+     if (config.glowIntensity === 'none') return {};
+     if (config.accentColor === 'rgb') return {};
      
-     const c = colors[config.accentColor] || (config.accentColor.startsWith('#') ? { h: '', m: '', l: '' } : colors['#06b6d4']);
-     if (config.glowIntensity === 'high') return c.h;
-     if (config.glowIntensity === 'low') return c.l;
-     return c.m;
+     const hex = config.accentColor.startsWith('#') ? config.accentColor : '#06b6d4';
+     const hexToRgba = (hex, a) => {
+       try {
+         const r = parseInt(hex.slice(1,3), 16);
+         const g = parseInt(hex.slice(3,5), 16);
+         const b = parseInt(hex.slice(5,7), 16);
+         return `rgba(${r},${g},${b},${a})`;
+       } catch(e) { return `rgba(6,182,212,${a})`; }
+     };
+
+     const sizeMap = {
+       low: { size: '15px', alpha: 0.15 },
+       medium: { size: '30px', alpha: 0.25 },
+       high: { size: '50px', alpha: 0.4 }
+     };
+     const { size, alpha } = sizeMap[config.glowIntensity] || sizeMap.medium;
+     return {
+       boxShadow: `0 0 ${size} ${hexToRgba(hex, alpha)}`
+     };
   };
 
   const getTextGlowStyle = (isGreeting) => {
@@ -138,36 +700,83 @@ export default function App() {
       if (config.accentColor === 'rgb') return 'rgb-text';
       
       const colors = {
-          '#06b6d4': isGreeting ? 'text-cyan-300 drop-shadow-[0_0_8px_rgba(103,232,249,0.8)]' : 'text-cyan-100 drop-shadow-[0_0_5px_rgba(103,232,249,0.6)]',
-          '#a855f7': isGreeting ? 'text-purple-300 drop-shadow-[0_0_8px_rgba(216,180,254,0.8)]' : 'text-purple-100 drop-shadow-[0_0_5px_rgba(216,180,254,0.6)]',
-          '#00cc44': isGreeting ? 'text-green-300 drop-shadow-[0_0_8px_rgba(134,239,172,0.8)]' : 'text-green-100 drop-shadow-[0_0_5px_rgba(134,239,172,0.6)]',
-          '#ec4899': isGreeting ? 'text-pink-300 drop-shadow-[0_0_8px_rgba(249,168,212,0.8)]' : 'text-pink-100 drop-shadow-[0_0_5px_rgba(249,168,212,0.6)]',
-          '#ff6600': isGreeting ? 'text-orange-300 drop-shadow-[0_0_8px_rgba(253,186,116,0.8)]' : 'text-orange-100 drop-shadow-[0_0_5px_rgba(253,186,116,0.6)]',
-          '#ffffff': isGreeting ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'text-white/90 drop-shadow-[0_0_5px_rgba(255,255,255,0.6)]'
+          '#06b6d4': isGreeting ? 'text-cyan-300' : 'text-cyan-100',
+          '#a855f7': isGreeting ? 'text-purple-300' : 'text-purple-100',
+          '#00cc44': isGreeting ? 'text-green-300' : 'text-green-100',
+          '#ec4899': isGreeting ? 'text-pink-300' : 'text-pink-100',
+          '#ff6600': isGreeting ? 'text-orange-300' : 'text-orange-100',
+          '#ffffff': isGreeting ? 'text-white' : 'text-white/90'
       };
-      return colors[config.accentColor] || (config.accentColor.startsWith('#') ? (idleTextColor === 'black' ? 'text-black' : 'text-white') : colors['#06b6d4']);
+      return colors[config.accentColor] || (config.accentColor.startsWith('#') ? 'text-white/90' : 'text-cyan-100');
+  };
+
+  const getTextShadowStyle = (isGreeting) => {
+     if (config.glowIntensity === 'none') return {};
+     if (config.accentColor === 'rgb') return {};
+     
+     const hex = config.accentColor.startsWith('#') ? config.accentColor : '#06b6d4';
+     const size = isGreeting ? '8px' : '5px';
+     const alpha = isGreeting ? 0.8 : 0.6;
+     
+     const hexToRgba = (hex, a) => {
+       try {
+         const r = parseInt(hex.slice(1,3), 16);
+         const g = parseInt(hex.slice(3,5), 16);
+         const b = parseInt(hex.slice(5,7), 16);
+         return `rgba(${r},${g},${b},${a})`;
+       } catch(e) { return `rgba(6,182,212,${a})`; }
+     };
+     
+     return {
+       textShadow: `0 0 ${size} ${hexToRgba(hex, alpha)}`
+     };
   };
 
   const getPanelBorderStyle = () => {
-     if (config.panelStyle === 'solid') return 'bg-[#111] border border-white/5';
-     if (config.panelStyle === 'glass') return 'bg-white/5 border border-white/5 backdrop-blur-md';
+     if (config.panelStyle === 'solid') return 'bg-[#0f0f11] border border-white/[0.05] shadow-2xl';
+     if (config.panelStyle === 'glass') return 'bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]';
      
      // dark-glass
-     if (config.accentColor === 'rgb') return 'bg-black/50 backdrop-blur-md border rgb-border';
-     const borders = {
-         '#06b6d4': 'border-cyan-500/30',
-         '#a855f7': 'border-purple-500/30',
-         '#00cc44': 'border-green-500/30',
-         '#ec4899': 'border-pink-500/30',
-         '#ff6600': 'border-orange-500/30',
-         '#ffffff': 'border-white/30'
-     };
-     return `bg-black/50 backdrop-blur-md border ${borders[config.accentColor] || (config.accentColor.startsWith('#') ? 'border-white/10' : borders['#06b6d4'])}`;
+     if (config.accentColor === 'rgb') return 'bg-black/[0.6] backdrop-blur-2xl border rgb-border shadow-2xl';
+     return 'bg-black/[0.6] backdrop-blur-2xl border shadow-2xl';
+  };
 
+  const getPanelBorderStyleInline = () => {
+    if (config.panelStyle === 'solid' || config.accentColor === 'rgb') return {};
+    
+    const hex = config.accentColor.startsWith('#') ? config.accentColor : '#06b6d4';
+    const opacity = config.panelStyle === 'glass' ? 0.08 : 0.15;
+    
+    const hexToRgba = (hex, a) => {
+      try {
+        const r = parseInt(hex.slice(1,3), 16);
+        const g = parseInt(hex.slice(3,5), 16);
+        const b = parseInt(hex.slice(5,7), 16);
+        return `rgba(${r},${g},${b},${a})`;
+      } catch(e) { return `rgba(255,255,255,${a})`; }
+    };
+    
+    return {
+      borderColor: hexToRgba(hex, opacity)
+    };
+  };
+
+  const getRadius = (stateType) => {
+    if (config.cornerShape === 'rounded') {
+      return stateType === 'expanded' ? 12 : 6;
+    }
+    return stateType === 'expanded' ? 24 : 16;
   };
 
   const viewModeRef = useRef('media');
   useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
+
+  const [shelfSettingsOpen, setShelfSettingsOpen] = useState(false);
+  const shelfSettingsOpenRef = useRef(false);
+  useEffect(() => { shelfSettingsOpenRef.current = shelfSettingsOpen; }, [shelfSettingsOpen]);
+
+  const configRef = useRef(config);
+  useEffect(() => { configRef.current = config; }, [config]);
 
   const [hardware, setHardware] = useState({ cpu: 0, ram: 0 });
   const [weather, setWeather] = useState({ temp: '--', desc: 'Fetching...' });
@@ -185,9 +794,14 @@ export default function App() {
 
   const [batteryEvent, setBatteryEvent] = useState(null);
   const [meetingAlert, setMeetingAlert] = useState(null);
-  const [showSongName, setShowSongName] = useState(false);
+  const [boostAlert, setBoostAlert] = useState(null);
+  const [isBoosting, setIsBoosting] = useState(false);
+  const [boostProgress, setBoostProgress] = useState(null);
+  const isMouseOverShelfRef = useRef(false);
 
-  const isNotification = Boolean(clipboardUrl || batteryEvent || meetingAlert);
+  const isNotification = Boolean(clipboardUrl || batteryEvent || meetingAlert || boostAlert || isBoosting);
+  const isNotificationRef = useRef(false);
+  isNotificationRef.current = isNotification;
 
   const [isDeepIdle, setIsDeepIdle] = useState(false);
   const idleTimerRef = useRef(null);
@@ -310,7 +924,16 @@ export default function App() {
   useEffect(() => {
     const handleWheel = (e) => {
       if (!isExpanded) return;
-      if (viewModeRef.current === 'settings') return; // Let user scroll settings freely
+      // Allow scrolling inside scrollable panels freely without adjusting volume/brightness
+      if (
+        viewModeRef.current === 'settings' || 
+        shelfSettingsOpenRef.current || 
+        e.target.closest('.overflow-y-auto') || 
+        e.target.closest('.custom-scrollbar') || 
+        e.target.closest('.overflow-auto')
+      ) {
+        return;
+      }
       if (e.deltaY !== 0) {
         if (e.shiftKey) {
           if (ipcRenderer) ipcRenderer.send('adjust-brightness', e.deltaY > 0 ? -10 : 10);
@@ -339,13 +962,13 @@ export default function App() {
         setTimeout(() => setClipboardUrl(null), 6000);
       });
       ipcRenderer.on('hardware-stats', (stats) => {
-        if (viewModeRef.current === 'stats') setHardware(stats);
+        setHardware(stats);
       });
       ipcRenderer.on('privacy-dots', (state) => {
         setPrivacy(state);
       });
       ipcRenderer.on('network-stats', (stats) => {
-        if (viewModeRef.current === 'network') setNetwork(stats);
+        setNetwork(stats);
       });
       return () => {
         ipcRenderer.removeAllListeners('spotify-state');
@@ -375,7 +998,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [spotifyState?.is_playing]);
 
-  const getCurrentLyric = () => {
+  const getCurrentLyric = useCallback(() => {
     if (!spotifyState?.lyrics || spotifyState.lyrics.length === 0) return null;
     let active = '';
     for (let i = 0; i < spotifyState.lyrics.length; i++) {
@@ -386,13 +1009,223 @@ export default function App() {
        }
     }
     return active;
-  };
+  }, [spotifyState?.lyrics, localProgress]);
 
   const isSpotify = Boolean(spotifyState?.isSpotify);
 
 
 
+  // ── Shelf mode (Always On Screen: OFF) ──
+  const [shelfVisible, setShelfVisible] = useState(false);
+  const shelfVisibleRef = useRef(false);
+  shelfVisibleRef.current = shelfVisible;
+  const isIntroActiveRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [snapDirection, setSnapDirection] = useState('top');
+  const shelfTimeoutRef = useRef(null);
+
+  const handleCustomDragStart = (e) => {
+    if (e.target.closest('button') || e.target.closest('.no-drag') || e.target.closest('[role="button"]') || e.target.closest('.cursor-pointer')) {
+      return;
+    }
+    e.preventDefault();
+    setIsDragging(true);
+    
+    const target = e.currentTarget;
+    try {
+      target.setPointerCapture(e.pointerId);
+    } catch (err) {
+      console.warn("Failed to set pointer capture:", err);
+    }
+
+    if (ipcRenderer) ipcRenderer.send('custom-drag-start');
+
+    let rafId = null;
+    const handlePointerMove = (moveEvent) => {
+      moveEvent.preventDefault();
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          if (ipcRenderer) ipcRenderer.send('custom-drag-move');
+          rafId = null;
+        });
+      }
+    };
+
+    const handlePointerUpOrCancel = (endEvent) => {
+      endEvent.preventDefault();
+      setIsDragging(false);
+      
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      
+      try {
+        target.releasePointerCapture(endEvent.pointerId);
+      } catch (err) {}
+
+      if (ipcRenderer) ipcRenderer.send('custom-drag-end');
+
+      target.removeEventListener('pointermove', handlePointerMove);
+      target.removeEventListener('pointerup', handlePointerUpOrCancel);
+      target.removeEventListener('pointercancel', handlePointerUpOrCancel);
+      target.removeEventListener('lostpointercapture', handlePointerUpOrCancel);
+    };
+
+    target.addEventListener('pointermove', handlePointerMove);
+    target.addEventListener('pointerup', handlePointerUpOrCancel);
+    target.addEventListener('pointercancel', handlePointerUpOrCancel);
+    target.addEventListener('lostpointercapture', handlePointerUpOrCancel);
+  };
+
+  const handleCustomDragMove = () => {};
+  const handleCustomDragEnd = () => {};
+  const handleCustomDragCancel = () => {};
+
+  useEffect(() => {
+    if (ipcRenderer) {
+      const handleSnapPreview = (event, direction) => {
+        setSnapDirection(direction);
+      };
+      const handleSnapEnd = (event, direction) => {
+        setIsDragging(false);
+      };
+      
+      ipcRenderer.on('drag-snap-preview', handleSnapPreview);
+      ipcRenderer.on('drag-snap-end', handleSnapEnd);
+      
+      return () => {
+        ipcRenderer.removeAllListeners('drag-snap-preview');
+        ipcRenderer.removeAllListeners('drag-snap-end');
+      };
+    }
+  }, []);
+
+  // Switch window mode when config changes
+  useEffect(() => {
+    if (!ipcRenderer) return;
+    if (config.mode === 'bar') {
+      const isSide = config.screenPosition === 'left' || config.screenPosition === 'right';
+      ipcRenderer.send('set-window-mode', 'shelf');
+      ipcRenderer.send('set-shelf-height', isSide ? 160 : 64);
+      ipcRenderer.send('set-ignore-mouse-events', false);
+      setShelfVisible(true);
+      isIntroActiveRef.current = true;
+      // Auto-hide after intro
+      const introTimer = setTimeout(() => {
+        isIntroActiveRef.current = false;
+        setShelfVisible(false);
+        ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+        setTimeout(() => {
+          if (!shelfVisibleRef.current) {
+            ipcRenderer.send('set-shelf-height', 6);
+          }
+        }, 400);
+      }, 4000); // Keep visible for 4 seconds so users see what happened
+      return () => {
+        clearTimeout(introTimer);
+        isIntroActiveRef.current = false;
+      };
+    } else {
+      ipcRenderer.send('set-window-mode', 'notch');
+      ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+      setShelfVisible(false);
+      isIntroActiveRef.current = false;
+    }
+  }, [config.mode]);
+
+  // Edge detection for bar mode — show bar when mouse reaches screen edge
+  useEffect(() => {
+    if (config.mode !== 'bar') return;
+
+    const handleMouseMove = (e) => {
+      const isLeft = config.screenPosition === 'left';
+      const isRight = config.screenPosition === 'right';
+      const atEdge = isLeft ? e.clientX <= 4 : (isRight ? e.clientX >= window.innerWidth - 4 : e.clientY <= 4);
+      
+      if (atEdge && !shelfVisible) {
+        setShelfVisible(true);
+        if (ipcRenderer) {
+          const isSideLocal = config.screenPosition === 'left' || config.screenPosition === 'right';
+          ipcRenderer.send('set-shelf-height', isSideLocal ? 160 : 64);
+          ipcRenderer.send('set-ignore-mouse-events', false);
+        }
+        if (shelfTimeoutRef.current) {
+          clearTimeout(shelfTimeoutRef.current);
+          shelfTimeoutRef.current = null;
+        }
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [config.mode, config.screenPosition, shelfVisible]);
+
+  const handleShelfMouseEnter = () => {
+    isIntroActiveRef.current = false; // Cancel intro if user interacts
+    isMouseOverShelfRef.current = true;
+    if (shelfTimeoutRef.current) {
+      clearTimeout(shelfTimeoutRef.current);
+      shelfTimeoutRef.current = null;
+    }
+    setShelfVisible(true);
+    if (ipcRenderer) {
+      const isSide = config.screenPosition === 'left' || config.screenPosition === 'right';
+      ipcRenderer.send('set-shelf-height', shelfSettingsOpenRef.current ? (isSide ? 516 : 420) : (isSide ? 160 : 64));
+      ipcRenderer.send('set-ignore-mouse-events', false);
+    }
+  };
+
+  const handleShelfMouseLeave = () => {
+    isMouseOverShelfRef.current = false;
+    if (isNotificationRef.current) return; // Prevent closing if notification is active
+    
+    if (shelfTimeoutRef.current) clearTimeout(shelfTimeoutRef.current);
+    
+    shelfTimeoutRef.current = setTimeout(() => {
+      setShelfVisible(false);
+      setShelfSettingsOpen(false);
+      shelfSettingsOpenRef.current = false;
+      if (ipcRenderer) {
+        ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+        setTimeout(() => {
+          if (!shelfVisibleRef.current) {
+            ipcRenderer.send('set-shelf-height', 6);
+          }
+        }, 400);
+      }
+    }, 150);
+  };
+
+  useEffect(() => {
+    if (config.mode !== 'bar') return;
+    if (!ipcRenderer) return;
+    if (isIntroActiveRef.current) return; // Skip automatic hiding logic during the switch intro
+
+    if (isNotification) {
+      setShelfVisible(true);
+      const isSide = config.screenPosition === 'left' || config.screenPosition === 'right';
+      ipcRenderer.send('set-shelf-height', isSide ? 160 : 64);
+      ipcRenderer.send('set-ignore-mouse-events', false);
+    } else {
+      if (!isMouseOverShelfRef.current) {
+        setShelfVisible(false);
+        setShelfSettingsOpen(false);
+        shelfSettingsOpenRef.current = false;
+        ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+        setTimeout(() => {
+          if (!shelfVisibleRef.current) {
+            ipcRenderer.send('set-shelf-height', 6);
+          }
+        }, 400);
+      }
+    }
+  }, [isNotification, config.mode, config.screenPosition]);
+
+  const dismissCooldownRef = useRef(false);
+
   const handleMouseEnter = () => {
+    if (dismissCooldownRef.current) return; // Don't re-expand during cooldown
     if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', false);
     setIsExpanded(true);
   };
@@ -402,16 +1235,47 @@ export default function App() {
     if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
   };
 
-  const formatDate = () => {
-    const options = { weekday: 'short', month: 'short', day: 'numeric' };
-    return new Date().toLocaleDateString('en-US', options);
+  const handleDismissNotch = () => {
+    dismissCooldownRef.current = true;
+    setIsExpanded(false);
+    if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+    // Allow re-expansion after a short cooldown
+    setTimeout(() => { dismissCooldownRef.current = false; }, 500);
   };
 
-  const formatSpeed = (bytes) => {
+  // Collapse notch/bar when user clicks or moves outside the window
+  useEffect(() => {
+    if (!ipcRenderer) return;
+    const handleBlur = () => {
+      if (config.mode === 'notch') {
+        handleDismissNotch();
+      } else if (config.mode === 'bar') {
+        handleShelfMouseLeave();
+      }
+    };
+    const handleForceCollapse = () => {
+      if (config.mode === 'bar') {
+        handleShelfMouseLeave();
+      }
+    };
+    ipcRenderer.on('window-blur', handleBlur);
+    ipcRenderer.on('force-collapse-shelf', handleForceCollapse);
+    return () => {
+      ipcRenderer.removeAllListeners('window-blur');
+      ipcRenderer.removeAllListeners('force-collapse-shelf');
+    };
+  }, [config.mode]);
+
+  const formatDate = useCallback(() => {
+    const options = { weekday: 'short', month: 'short', day: 'numeric' };
+    return new Date().toLocaleDateString('en-US', options);
+  }, []);
+
+  const formatSpeed = useCallback((bytes) => {
     if (bytes < 1024) return `${bytes} B/s`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB/s`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB/s`;
-  };
+  }, []);
 
   // Returns 'black' or 'white' depending on luminance of a hex color
   const getContrastColor = (hex) => {
@@ -429,35 +1293,372 @@ export default function App() {
   const idleTextClass = idleTextColor === 'black' ? 'text-black' : 'text-white';
   const idleSubTextClass = idleTextColor === 'black' ? 'text-black/60' : 'text-white/70';
 
+  // ── Shelf Mode Render ──
+  const isSidePosition = config.screenPosition === 'left' || config.screenPosition === 'right';
+
+  const handleTogglePlay = useCallback(() => {
+    const nextState = !spotifyState?.is_playing;
+    setSpotifyState(prev => prev ? {...prev, is_playing: nextState} : prev);
+    if (ipcRenderer) ipcRenderer.send(nextState ? 'spotify-play' : 'spotify-pause');
+  }, [spotifyState?.is_playing]);
+
+  const handlePrev = useCallback(() => ipcRenderer?.send('spotify-prev'), []);
+  const handleSkip = useCallback(() => ipcRenderer?.send('spotify-skip'), []);
+  const handleOpenMediaApp = useCallback((appId) => { if (ipcRenderer) ipcRenderer.send('open-media-app', appId); }, []);
+  const handleOpenWeather = useCallback(() => { if (ipcRenderer) ipcRenderer.send('open-weather'); }, []);
+  const handleQuit = useCallback(() => ipcRenderer?.send('quit-app'), []);
+  const handleShowSettings = useCallback(() => {
+    setShelfSettingsOpen(prev => {
+      const nextState = !prev;
+      shelfSettingsOpenRef.current = nextState;
+      if (ipcRenderer) {
+        const isSideLocal = config.screenPosition === 'left' || config.screenPosition === 'right';
+        ipcRenderer.send('set-shelf-height', nextState ? (isSideLocal ? 516 : 420) : (isSideLocal ? 160 : 64));
+      }
+      return nextState;
+    });
+  }, [config.screenPosition]);
+
+  const handleBoost = useCallback(async () => {
+    if (isBoosting) return;
+    setIsBoosting(true);
+    setBoostProgress(null);
+    
+    const onProgress = (e, data) => setBoostProgress(data);
+    if (ipcRenderer) ipcRenderer.on('boost-progress', onProgress);
+
+    try {
+      const res = await ipcRenderer.invoke('boost-system');
+      setBoostAlert({ freedMB: res.freedMB, freedCPU: res.freedCPU, killed: res.killed });
+      setTimeout(() => setBoostAlert(null), 5000);
+    } finally {
+      if (ipcRenderer) ipcRenderer.removeAllListeners('boost-progress');
+      setIsBoosting(false);
+    }
+  }, [isBoosting]);
+
+  if (config.mode === 'bar') {
+    return (
+      <div 
+        className="w-full h-full fixed top-0 left-0" 
+        style={{ pointerEvents: 'none' }}
+      >
+        {/* Invisible trigger zone at screen edge */}
+        <div 
+          className={`fixed z-[100] ${isSidePosition 
+            ? (config.screenPosition === 'left' ? 'top-0 left-0 bottom-0 w-[6px]' : 'top-0 right-0 bottom-0 w-[6px]')
+            : 'top-0 left-0 right-0 h-[6px]'
+          }`}
+          style={{ pointerEvents: shelfVisible ? 'none' : 'auto', backgroundColor: 'rgba(255, 255, 255, 0.01)' }}
+          onMouseEnter={handleShelfMouseEnter}
+        />
+        
+        {/* Bar wrapper with mouse leave detection */}
+        <div
+          className="w-full h-full absolute inset-0"
+          onMouseEnter={handleShelfMouseEnter}
+          onMouseLeave={handleShelfMouseLeave}
+          style={{ pointerEvents: shelfVisible ? 'auto' : 'none' }}
+        >
+          <AnimatePresence>
+            {shelfVisible && (
+              <ShelfBar
+                isVisible={shelfVisible}
+                time={time}
+                formatDate={formatDate}
+                weather={weather}
+                spotifyState={spotifyState}
+                isSpotify={isSpotify}
+                localProgress={localProgress}
+                hardware={hardware}
+                network={network}
+                battery={battery}
+                privacy={privacy}
+                config={config}
+                getCurrentLyric={getCurrentLyric}
+                formatSpeed={formatSpeed}
+                pomodoro={pomodoro}
+                isPomoRunning={isPomoRunning}
+                pomoMode={pomoMode}
+                isSwRunning={isSwRunning}
+                stopwatch={stopwatch}
+                onTogglePlay={handleTogglePlay}
+                onPrev={handlePrev}
+                onSkip={handleSkip}
+                onOpenMediaApp={handleOpenMediaApp}
+                onOpenWeather={handleOpenWeather}
+                onQuit={handleQuit}
+                onShowSettings={handleShowSettings}
+                onBoost={handleBoost}
+                isBoosting={isBoosting}
+                batteryEvent={batteryEvent}
+                boostAlert={boostAlert}
+                boostProgress={boostProgress}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Bar Settings Panel */}
+          <AnimatePresence>
+            {shelfSettingsOpen && (() => {
+              const isSide = config.screenPosition === 'left' || config.screenPosition === 'right';
+              const isLeft = config.screenPosition === 'left';
+              return (
+                <motion.div
+                  initial={isSide ? { x: isLeft ? -20 : 20, opacity: 0, width: 0 } : { y: -20, opacity: 0, height: 0 }}
+                  animate={isSide ? { x: 0, opacity: 1, width: 356 } : { y: 0, opacity: 1, height: 'auto' }}
+                  exit={isSide ? { x: isLeft ? -20 : 20, opacity: 0, width: 0 } : { y: -20, opacity: 0, height: 0 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  className={`fixed z-40 backdrop-blur-xl overflow-hidden ${
+                    isSide 
+                      ? `top-0 bottom-0 ${isLeft ? 'left-[160px] border-r' : 'right-[160px] border-l'} border-white/10` 
+                      : 'top-[64px] left-0 right-0 border-b border-white/10'
+                  }`}
+                  style={{ 
+                    backgroundColor: `${config.bgColor}ee`,
+                    pointerEvents: 'auto'
+                  }}
+                >
+                  <div className={`${isSide ? 'w-[356px] h-full overflow-y-auto px-5 py-6 flex flex-col gap-8' : 'max-w-[900px] mx-auto px-6 py-5 grid grid-cols-3 gap-6'} relative`}>
+                    <button 
+                      className={`absolute ${isSide ? 'top-4 right-4' : 'top-2 right-2'} w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/50 hover:text-white transition-colors z-50`}
+                      onClick={() => {
+                        setShelfSettingsOpen(false);
+                        shelfSettingsOpenRef.current = false;
+                        if (ipcRenderer) {
+                          const isSideLocal = config.screenPosition === 'left' || config.screenPosition === 'right';
+                          ipcRenderer.send('set-shelf-height', isSideLocal ? 160 : 64);
+                        }
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                    {/* Column 1: Mode + Behavior */}
+                  <div className="flex flex-col gap-4">
+                    <span className="text-[10px] font-bold text-white/40 tracking-[0.2em] uppercase">Behavior</span>
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-white/70">Mode</span>
+                      <div className="flex bg-white/10 rounded-lg p-1 w-full gap-1">
+                        <button className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${config.mode === 'notch' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, mode: 'notch'})}>Notch</button>
+                        <button className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${config.mode === 'bar' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, mode: 'bar'})}>Bar</button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white/70">Show Weather</span>
+                      <button className={`w-10 h-6 rounded-full p-1 transition-colors ${config.showWeather !== false ? 'bg-green-500' : 'bg-white/20'}`} onClick={() => setConfig({...config, showWeather: config.showWeather === false ? true : false})}>
+                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${config.showWeather !== false ? 'translate-x-4' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white/70">Show Hardware Stats</span>
+                      <button className={`w-10 h-6 rounded-full p-1 transition-colors ${config.showHardware !== false ? 'bg-green-500' : 'bg-white/20'}`} onClick={() => setConfig({...config, showHardware: config.showHardware === false ? true : false})}>
+                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${config.showHardware !== false ? 'translate-x-4' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-2 mt-1">
+                      <span className="text-xs font-semibold text-white/70">Clock Format</span>
+                      <div className="flex bg-white/10 rounded-lg p-1 w-full gap-1">
+                        <button className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${config.clockFormat === '12h' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, clockFormat: '12h'})}>12h</button>
+                        <button className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${config.clockFormat === '24h' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, clockFormat: '24h'})}>24h</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Column 2: Background Animation */}
+                  <div className="flex flex-col gap-4">
+                    <span className="text-[10px] font-bold text-white/40 tracking-[0.2em] uppercase">Background</span>
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-white/70">Animation</span>
+                      <div className="flex flex-wrap bg-white/10 rounded-lg p-1 w-full gap-1">
+                        {[['off','Off'],['liquid','Liquid'],['cosmic','Orbits'],['aurora','Aurora'],['matrix','Matrix'],['hyperspace','Starfield'],['rain','Rain']].map(([val,label]) => (
+                          <button key={val} className={`flex-1 min-w-[30%] py-1.5 text-[10px] font-bold rounded-md transition-colors ${config.bgAnimation === val ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, bgAnimation: val})}>{label}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-white/70">Island Color</span>
+                      <div className="flex items-center gap-2 flex-wrap bg-white/10 rounded-lg p-2 w-full">
+                        {['#000000','#111111','#1a1a2e','#06b6d4','#3b82f6','#a855f7','#ec4899','#ffffff'].map(color => (
+                          <button key={color} onClick={() => setConfig({...config, bgColor: color})} className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${config.bgColor === color ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: color }} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Column 3: Accent & Glow */}
+                  <div className="flex flex-col gap-4">
+                    <span className="text-[10px] font-bold text-white/40 tracking-[0.2em] uppercase">Style</span>
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-white/70">Accent Color</span>
+                      <div className="flex items-center gap-2 flex-wrap bg-white/10 rounded-lg p-2 w-full">
+                        {['#ff0000','#ff6600','#ffcc00','#00cc44','#06b6d4','#3b82f6','#a855f7','#ec4899','#ffffff'].map(color => (
+                          <button key={color} onClick={() => setConfig({...config, accentColor: color})} className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${config.accentColor === color ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: color }} />
+                        ))}
+                        <button title="RGB" onClick={() => setConfig({...config, accentColor: 'rgb'})} className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 rgb-bg ${config.accentColor === 'rgb' ? 'border-white scale-110' : 'border-transparent'}`} />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold text-white/70">Glow Intensity</span>
+                      <div className="flex bg-white/10 rounded-lg p-1 w-full gap-1">
+                        {[['none','Off'],['low','Low'],['medium','Med'],['high','High']].map(([val,label]) => (
+                          <button key={val} className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-colors ${config.glowIntensity === val ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, glowIntensity: val})}>{label}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                </motion.div>
+              );
+            })()}
+          </AnimatePresence>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full h-full flex justify-center items-start overflow-hidden pointer-events-none fixed top-0 left-0" style={{ pointerEvents: 'none' }}>
-      <motion.div
+    <div className={`w-full h-full flex overflow-hidden fixed top-0 left-0 ${
+      config.screenPosition === 'left' ? 'justify-start items-center' :
+      config.screenPosition === 'right' ? 'justify-end items-center' :
+      config.screenPosition === 'top-left' ? 'justify-start items-start' :
+      config.screenPosition === 'top-right' ? 'justify-end items-start' :
+      'justify-center items-start'
+    }`} style={{ pointerEvents: isExpanded ? 'auto' : 'none' }}
+       onClick={() => { if (isExpanded) handleDismissNotch(); }}
+    >
+      {(() => {
+        const isSideNotch = config.screenPosition === 'left' || config.screenPosition === 'right';
+        return (
+          <motion.div
         onClick={(e) => e.stopPropagation()}
         onContextMenu={() => { if(ipcRenderer) ipcRenderer.send('show-context-menu'); }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        initial={{ borderBottomLeftRadius: 100, borderBottomRightRadius: 100, borderTopLeftRadius: 0, borderTopRightRadius: 0 }}
-        animate={{
-          width: isNotification
-            ? 360
-            : (isExpanded 
-               ? 400 
-               : (greeting ? 240 : (privacy.cam && privacy.mic ? 200 : (privacy.cam || privacy.mic ? 180 : 160)))),
-          height: isNotification ? 80 : (isExpanded ? (viewMode === 'settings' ? 320 : (viewMode === 'network' ? 260 : (viewMode === 'stats' ? 240 : (viewMode === 'pomodoro' ? 220 : (['volume', 'brightness'].includes(viewMode) ? 140 : 220))))) : (isDeepIdle ? 26 : 36)),
-          opacity: 1,
-          borderBottomLeftRadius: (isExpanded || isNotification) ? 24 : 12,
-          borderBottomRightRadius: (isExpanded || isNotification) ? 24 : 12,
-          borderTopLeftRadius: 0,
-          y: -1,
-          backgroundColor: (!isExpanded && !isNotification) ? (config.idleColor || config.bgColor) : config.bgColor
+        initial={{ 
+          borderBottomLeftRadius: config.screenPosition === 'left' ? 0 : 100, 
+          borderBottomRightRadius: config.screenPosition === 'right' ? 0 : 100, 
+          borderTopLeftRadius: (config.screenPosition === 'left' || config.screenPosition?.startsWith('top')) ? 0 : 100, 
+          borderTopRightRadius: (config.screenPosition === 'right' || config.screenPosition?.startsWith('top')) ? 0 : 100
         }}
-        style={{ pointerEvents: 'auto', originY: 0, willChange: 'width, height, border-radius' }}
-        transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.4, restDelta: 0.001 }}
-        className={`relative z-10 text-white flex flex-col transition-shadow duration-500 ${getGlowStyle()} ${config.cornerShape === 'pill' ? 'rounded-b-[24px]' : 'rounded-b-[12px]'}`}
+        animate={{
+          width: isDragging
+            ? 140
+            : (isNotification
+               ? 360
+               : (isExpanded 
+                  ? (isSideNotch ? (viewMode === 'settings' ? 400 : 260) : 400) 
+                  : (isSideNotch ? (isDeepIdle ? 26 : 36) : (greeting ? 240 : (privacy.cam && privacy.mic ? 200 : (privacy.cam || privacy.mic ? 180 : 160)))))),
+          height: isDragging
+            ? 64
+            : (isNotification 
+               ? 80 
+               : (isExpanded ? (isSideNotch && viewMode !== 'settings' ? 400 : (viewMode === 'settings' ? 320 : (viewMode === 'network' ? 260 : (viewMode === 'stats' ? 240 : (viewMode === 'pomodoro' ? 220 : (['volume', 'brightness'].includes(viewMode) ? 140 : 220)))))) : (isSideNotch ? (greeting ? 260 : (privacy.cam && privacy.mic ? 220 : (privacy.cam || privacy.mic ? 200 : 180))) : (isDeepIdle ? 26 : 36)))),
+          opacity: 1,
+          borderBottomLeftRadius: config.screenPosition === 'left' ? 0 : (isDragging ? 16 : ((isExpanded || isNotification) ? getRadius('expanded') : getRadius('collapsed'))),
+          borderBottomRightRadius: config.screenPosition === 'right' ? 0 : (isDragging ? 16 : ((isExpanded || isNotification) ? getRadius('expanded') : getRadius('collapsed'))),
+          borderTopLeftRadius: (config.screenPosition === 'left' || config.screenPosition?.startsWith('top')) ? (isDragging ? 16 : 0) : (isDragging ? 16 : ((isExpanded || isNotification) ? getRadius('expanded') : getRadius('collapsed'))),
+          borderTopRightRadius: (config.screenPosition === 'right' || config.screenPosition?.startsWith('top') || !config.screenPosition) ? (isDragging ? 16 : 0) : (isDragging ? 16 : ((isExpanded || isNotification) ? getRadius('expanded') : getRadius('collapsed'))),
+          marginTop: config.screenPosition === 'left' || config.screenPosition === 'right' ? 0 : -1,
+          marginLeft: config.screenPosition === 'left' ? -1 : (config.screenPosition === 'right' ? 1 : 0),
+          backgroundColor: isDragging ? 'rgba(0,0,0,0)' : ((!isExpanded && !isNotification) ? (config.idleColor || config.bgColor) : config.bgColor)
+        }}
+        style={{ pointerEvents: 'auto', willChange: 'width, height, border-radius',
+          originY: (config.screenPosition === 'left' || config.screenPosition === 'right') ? 0.5 : 0,
+          originX: config.screenPosition === 'left' ? 0 : (config.screenPosition === 'right' ? 1 : 0.5),
+          ...getNotchGlowStyle()
+        }}
+        transition={{ 
+          type: "spring", 
+          stiffness: 500, 
+          damping: 32, 
+          mass: 0.4, 
+          restDelta: 0.001,
+          width: isDragging ? { duration: 0 } : undefined,
+          height: isDragging ? { duration: 0 } : undefined,
+          borderBottomLeftRadius: isDragging ? { duration: 0 } : undefined,
+          borderBottomRightRadius: isDragging ? { duration: 0 } : undefined,
+          borderTopLeftRadius: isDragging ? { duration: 0 } : undefined,
+          borderTopRightRadius: isDragging ? { duration: 0 } : undefined
+        }}
+        className={`relative z-10 text-white flex flex-col transition-shadow duration-500 ${getGlowStyle()} group`}
+        onPointerDown={handleCustomDragStart}
+        onPointerMove={handleCustomDragMove}
+        onPointerUp={handleCustomDragEnd}
+        onPointerCancel={handleCustomDragCancel}
       >
-        <div className="absolute top-0 -left-[12px] w-[12px] h-[12px] pointer-events-none transition-colors duration-500" style={{ backgroundImage: `radial-gradient(circle at 0% 100%, transparent 12px, ${(!isExpanded && !isNotification) ? (config.idleColor || config.bgColor) : config.bgColor} 12px)` }}></div>
-        <div className="absolute top-0 -right-[12px] w-[12px] h-[12px] pointer-events-none transition-colors duration-500" style={{ backgroundImage: `radial-gradient(circle at 100% 100%, transparent 12px, ${(!isExpanded && !isNotification) ? (config.idleColor || config.bgColor) : config.bgColor} 12px)` }}></div>
-        <div className="w-full h-full flex flex-col overflow-hidden relative z-10" style={{ borderBottomLeftRadius: 'inherit', borderBottomRightRadius: 'inherit' }}>
+        {/* Corner ears — only for top positions, hidden during drag */}
+        {!isDragging && (!config.screenPosition || config.screenPosition.startsWith('top')) && (
+          <>
+            <div className="absolute top-0 -left-[12px] w-[12px] h-[12px] pointer-events-none transition-colors duration-500" style={{ backgroundImage: `radial-gradient(circle at 0% 100%, transparent 12px, ${(!isExpanded && !isNotification) ? (config.idleColor || config.bgColor) : config.bgColor} 12px)` }}></div>
+            <div className="absolute top-0 -right-[12px] w-[12px] h-[12px] pointer-events-none transition-colors duration-500" style={{ backgroundImage: `radial-gradient(circle at 100% 100%, transparent 12px, ${(!isExpanded && !isNotification) ? (config.idleColor || config.bgColor) : config.bgColor} 12px)` }}></div>
+          </>
+        )}
+
+        {/* Drag pill indicator — small rounded pill shown during drag */}
+        {isDragging && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 10 }}
+            transition={{ type: 'spring', stiffness: 450, damping: 28 }}
+            className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+          >
+            <motion.div 
+              layout
+              className="rounded-2xl flex flex-col items-center justify-center gap-1.5 p-3"
+              style={{ 
+                width: 140, 
+                height: 64, 
+                backgroundColor: 'rgba(10, 10, 12, 0.95)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                boxShadow: `0 12px 40px rgba(0,0,0,0.7), 0 0 20px ${accentHex}22`
+              }}
+            >
+              <motion.div layout className="flex items-center gap-1">
+                <GripHorizontal size={12} className="text-white/30 animate-pulse" />
+                <span className="text-[8px] font-mono tracking-widest text-white/40 uppercase font-bold">DRAGGING</span>
+              </motion.div>
+              
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={snapDirection}
+                  initial={{ opacity: 0, y: 5, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -5, scale: 0.9 }}
+                  transition={{ duration: 0.15, ease: 'easeOut' }}
+                  className="flex items-center gap-1.5 text-white/90"
+                >
+                  {snapDirection === 'left' && (
+                    <>
+                      <motion.div animate={{ x: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 0.8 }}>
+                        <ArrowLeft size={12} className="text-cyan-400" />
+                      </motion.div>
+                      <span className="text-[9px] font-mono tracking-widest uppercase font-semibold">LEFT DOCK</span>
+                    </>
+                  )}
+                  {snapDirection === 'right' && (
+                    <>
+                      <span className="text-[9px] font-mono tracking-widest uppercase font-semibold">RIGHT DOCK</span>
+                      <motion.div animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 0.8 }}>
+                        <ArrowRight size={12} className="text-cyan-400" />
+                      </motion.div>
+                    </>
+                  )}
+                  {snapDirection === 'top' && (
+                    <>
+                      <motion.div animate={{ y: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 0.8 }}>
+                        <ArrowUp size={12} className="text-cyan-400" />
+                      </motion.div>
+                      <span className="text-[9px] font-mono tracking-widest uppercase font-semibold">TOP DOCK</span>
+                    </>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
+          </motion.div>
+        )}
+
+        <div className="w-full h-full flex flex-col overflow-hidden relative z-10" style={{ borderRadius: 'inherit', opacity: isDragging ? 0 : 1, transition: isDragging ? 'none' : 'opacity 0.25s ease' }}>
         <AnimatePresence>
           {isExpanded && (
             <motion.div 
@@ -589,12 +1790,12 @@ export default function App() {
           {(!isExpanded && !isNotification) ? (
             <motion.div
               key="collapsed"
-              className={`w-full h-full flex items-center justify-between px-4 z-10 ${idleTextClass}`}
+              className={`w-full h-full flex ${isSideNotch ? 'flex-col items-center justify-between py-4' : 'items-center justify-between px-4'} z-10 ${idleTextClass} relative group`}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.1 } }}
             >
-              <div className="flex items-center gap-2">
+              <div className={`flex ${isSideNotch ? 'flex-col gap-3 mt-1' : 'items-center gap-2'}`}>
                  <div className="relative w-[14px] h-[14px] flex items-center justify-center mt-[-2px]">
                     <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
                        <circle cx="18" cy="18" r="16" fill="none" className={idleTextColor === 'black' ? 'stroke-black/10' : 'stroke-white/10'} strokeWidth="4" />
@@ -602,43 +1803,64 @@ export default function App() {
                        <circle cx="18" cy="18" r="16" fill="none" className={battery.charging ? 'stroke-green-500' : (battery.level < 20 ? 'stroke-red-500' : (idleTextColor === 'black' ? 'stroke-black/80' : 'stroke-white/80'))} strokeWidth="4" strokeDasharray="100" strokeDashoffset={100 - battery.level} strokeLinecap="round" />
                     </svg>
                  </div>
-                 <div className="flex gap-1 mt-[-2px]">
+                 <div className={`flex ${isSideNotch ? 'flex-col gap-1.5 items-center' : 'gap-1 mt-[-2px]'}`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${(network.rx > 1024*500 || network.tx > 1024*500) ? 'bg-purple-500 shadow-[0_0_5px_#a855f7]' : (idleTextColor === 'black' ? 'bg-black/10' : 'bg-white/10')}`} />
                     <div className={`w-1.5 h-1.5 rounded-full ${hardware.cpu > 50 ? 'bg-blue-500 shadow-[0_0_5px_#3b82f6]' : (idleTextColor === 'black' ? 'bg-black/10' : 'bg-white/10')}`} />
                  </div>
               </div>
                <AnimatePresence mode="wait">
                  {greeting ? (
-                    <motion.span key="greeting" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-bold text-[11px] tracking-wide ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(true)}`}>
+                    <motion.span key="greeting" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(true)}`} style={{ writingMode: isSideNotch ? 'vertical-rl' : 'horizontal-tb', textOrientation: isSideNotch ? 'upright' : 'mixed', ...(idleTextColor === 'black' ? {} : getTextShadowStyle(true)) }}>
                       {greeting}
                     </motion.span>
                  ) : isPomoRunning ? (
-                    <motion.span key="pomotimer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-mono font-bold text-[11px] tracking-wider ${config.glowIntensity !== 'none' ? 'text-orange-300 drop-shadow-[0_0_8px_rgba(253,186,116,0.8)]' : 'text-orange-400'}`}>
-                      {String(Math.floor(pomodoro / 60)).padStart(2, '0')}:{String(pomodoro % 60).padStart(2, '0')}
-                    </motion.span>
+                    <motion.span key="pomotimer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-mono font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${config.glowIntensity !== 'none' ? 'text-orange-300' : 'text-orange-400'}`} style={{ ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}), ...(config.glowIntensity !== 'none' ? { textShadow: '0 0 8px rgba(253,186,116,0.8)' } : {}) }}>
+                       {isSideNotch ? (
+                         <>
+                           <span className="text-[12px] font-black">{String(Math.floor(pomodoro / 60)).padStart(2, '0')}</span>
+                           <span className="text-[12px] font-black text-orange-400/80">{String(pomodoro % 60).padStart(2, '0')}</span>
+                         </>
+                       ) : (
+                         `${String(Math.floor(pomodoro / 60)).padStart(2, '0')}:${String(pomodoro % 60).padStart(2, '0')}`
+                       )}
+                     </motion.span>
                  ) : isSwRunning ? (
-                    <motion.span key="swtimer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-mono font-bold text-[11px] tracking-wider ${config.glowIntensity !== 'none' ? 'text-yellow-300 drop-shadow-[0_0_8px_rgba(253,224,71,0.8)]' : 'text-yellow-400'}`}>
-                      {String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:{String(stopwatch % 60).padStart(2, '0')}
-                    </motion.span>
+                    <motion.span key="swtimer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-mono font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${config.glowIntensity !== 'none' ? 'text-yellow-300' : 'text-yellow-400'}`} style={{ ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}), ...(config.glowIntensity !== 'none' ? { textShadow: '0 0 8px rgba(253,224,71,0.8)' } : {}) }}>
+                       {isSideNotch ? (
+                         <>
+                           <span className="text-[12px] font-black">{String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}</span>
+                           <span className="text-[12px] font-black text-yellow-400/80">{String(stopwatch % 60).padStart(2, '0')}</span>
+                         </>
+                       ) : (
+                         `${String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:${String(stopwatch % 60).padStart(2, '0')}`
+                       )}
+                     </motion.span>
                  ) : (
-                    <motion.span key="time" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-bold text-xs tracking-wider ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(false)}`}>
-                      {time}
-                    </motion.span>
+                    <motion.span key="time" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-bold text-xs ${isSideNotch ? 'tracking-normal text-center' : 'tracking-widest'} ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(false)}`} style={{ ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}), ...(idleTextColor === 'black' ? {} : getTextShadowStyle(false)) }}>
+                       {isSideNotch ? (
+                         <>
+                           <span className="text-[12px] font-extrabold">{time.split(':')[0] || '12'}</span>
+                           <span className={`text-[12px] font-extrabold ${idleTextColor === 'black' ? 'text-black/80' : 'text-white/80'}`}>{time.split(':')[1] ? time.split(':')[1].replace(/[^0-9]/g, '') : '00'}</span>
+                         </>
+                       ) : (
+                         time
+                       )}
+                     </motion.span>
                  )}
               </AnimatePresence>
               
-              <div className="flex items-center justify-end gap-1.5 w-[20px]">
+              <div className={`flex items-center ${isSideNotch ? 'flex-col gap-3 w-full mb-1' : 'justify-end gap-1.5 w-[20px]'}`}>
                  {spotifyState?.is_playing ? (
-                    <div className="flex items-end justify-center gap-[2px] h-[10px] mt-[-3px]">
+                    <div className={`flex items-end justify-center ${isSideNotch ? 'gap-[2px] h-[14px]' : 'gap-[2px] h-[10px] mt-[-3px]'}`}>
                        <motion.div animate={{ height: [4, 10, 4] }} transition={{ repeat: Infinity, duration: 0.5, ease: "easeInOut" }} className={`w-[2px] rounded-t-sm ${isSpotify ? 'bg-green-500' : 'bg-blue-400'}`} />
                        <motion.div animate={{ height: [8, 4, 12, 8] }} transition={{ repeat: Infinity, duration: 0.6, ease: "easeInOut" }} className={`w-[2px] rounded-t-sm ${isSpotify ? 'bg-green-500' : 'bg-blue-400'}`} />
                        <motion.div animate={{ height: [5, 12, 5] }} transition={{ repeat: Infinity, duration: 0.4, ease: "easeInOut" }} className={`w-[2px] rounded-t-sm ${isSpotify ? 'bg-green-500' : 'bg-blue-400'}`} />
                     </div>
                  ) : (
-                    <div className="w-[10px]" />
+                    <div className={isSideNotch ? 'h-[14px]' : 'w-[10px]'} />
                  )}
                  {(privacy.mic || privacy.cam) && (
-                   <div className="flex gap-1 mt-[-3px]">
+                   <div className={`flex ${isSideNotch ? 'flex-col gap-1.5' : 'gap-1 mt-[-3px]'}`}>
                      {privacy.mic && <div className={`w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
                      {privacy.cam && <div className={`w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
                    </div>
@@ -716,68 +1938,179 @@ export default function App() {
                       </button>
                    </div>
                 </motion.div>
+              ) : isBoosting ? (
+                <motion.div key="boosting-state" className="w-full h-full p-2 flex items-center justify-center gap-4" initial={{opacity:0}} animate={{opacity:1}}>
+                   <div className="w-12 h-12 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center flex-shrink-0">
+                      <Rocket size={24} className="animate-ping" />
+                   </div>
+                   <div className="flex flex-col w-48">
+                      <span className="font-bold text-lg text-white">Boosting System...</span>
+                      <span className="text-sm text-cyan-300 truncate">
+                        {boostProgress ? `Killed ${boostProgress.name} (-${boostProgress.mb}MB, -${boostProgress.cpu}% CPU)` : 'Scanning memory...'}
+                      </span>
+                      <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mt-2 relative">
+                         <motion.div 
+                           className="absolute top-0 left-0 h-full bg-cyan-400 w-1/3 rounded-full" 
+                           initial={{ x: "-100%" }} 
+                           animate={{ x: "300%" }} 
+                           transition={{ duration: 1, repeat: Infinity, ease: "linear" }} 
+                         />
+                      </div>
+                   </div>
+                </motion.div>
+              ) : boostAlert ? (
+                <motion.div key="boost-state" className="w-full h-full p-2 flex items-center justify-center gap-4" initial={{opacity:0}} animate={{opacity:1}}>
+                   <div className="w-12 h-12 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center flex-shrink-0">
+                      <Rocket size={24} className="animate-bounce" />
+                   </div>
+                   <div className="flex flex-col">
+                      <span className="font-bold text-lg text-white">System Boosted</span>
+                      <span className="text-sm text-cyan-300">Freed {boostAlert.freedMB} MB RAM & {boostAlert.freedCPU}% CPU</span>
+                   </div>
+                </motion.div>
               ) : (
                 <>
-                  <div className="w-full p-2 flex flex-col justify-start z-20">
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-2">
-                        {config.showWeather !== false && (
-                          <div 
-                            className="flex items-center gap-2 bg-white/10 py-1.5 px-3 rounded-full hover:bg-white/20 transition-colors cursor-pointer" 
-                            style={{ pointerEvents: 'auto' }}
-                            title="Weather"
-                            onClick={() => { if (ipcRenderer) ipcRenderer.send('open-weather'); }}
-                          >
-                            <CloudSun size={16} className="text-yellow-300" />
-                            <span className="text-sm font-medium">{weather.temp}</span>
+                  <div className="w-full p-2 flex flex-col justify-start z-20" style={{ WebkitAppRegion: 'no-drag' }}>
+                    {isSideNotch && viewMode !== 'settings' ? (
+                      <div className="flex flex-col gap-3 w-full">
+                        {/* Top row: Weather and Quit */}
+                        <div className="flex items-center justify-between w-full px-1.5 pt-1">
+                          {config.showWeather !== false ? (
+                            <div 
+                              className="flex items-center gap-1.5 bg-white/10 py-1 px-2.5 rounded-full hover:bg-white/20 transition-colors cursor-pointer" 
+                              style={{ pointerEvents: 'auto', WebkitAppRegion: 'no-drag' }}
+                              title="Weather"
+                              onClick={(e) => { e.stopPropagation(); if (ipcRenderer) ipcRenderer.send('open-weather'); }}
+                            >
+                              <CloudSun size={14} className="text-yellow-300" />
+                              <span className="text-xs font-semibold">{weather.temp}</span>
+                            </div>
+                          ) : <div />}
+                          
+                          <div className="flex items-center gap-2">
+                            <div className="flex gap-1 mx-1">
+                              {privacy.mic && <div className={`w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
+                              {privacy.cam && <div className={`w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
+                            </div>
+                            <button 
+                              title="Quit Dynamic Island"
+                              className="w-7 h-7 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                              style={{ pointerEvents: 'auto' }}
+                              onClick={() => ipcRenderer.send('quit-app')}
+                            >
+                              <Power size={12} />
+                            </button>
                           </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2" style={{ pointerEvents: 'auto' }}>
-                        <button title="Settings" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'settings' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('settings')}>
-                          <SettingsIcon size={14} />
-                        </button>
-                        {config.showPomodoro !== false && (
-                          <button title="Pomodoro Timer" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'pomodoro' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('pomodoro')}>
-                            <Coffee size={14} />
-                          </button>
-                        )}
-                        {config.showStopwatch && (
-                          <button title="Stopwatch" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'stopwatch' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('stopwatch')}>
-                            <TimerIcon size={14} />
-                          </button>
-                        )}
-                        {config.showHardware !== false && (
-                          <>
-                            <button title="Hardware Stats" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'stats' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('stats')}>
-                              <Activity size={14} />
-                            </button>
-                            <button title="Network Stats" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'network' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('network')}>
-                              <Signal size={14} />
-                            </button>
-                          </>
-                        )}
-                        <button title="Media Player" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'media' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('media')}>
-                          <Music size={14} />
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <div className="flex gap-1.5 mx-1">
-                          {privacy.mic && <div className={`w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
-                          {privacy.cam && <div className={`w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
                         </div>
-                        <button 
-                          title="Quit Dynamic Island"
-                          className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
-                          style={{ pointerEvents: 'auto' }}
-                          onClick={() => ipcRenderer.send('quit-app')}
-                        >
-                          <Power size={14} />
-                        </button>
+
+                        {/* Middle row: Mode switcher buttons */}
+                        <div className="flex items-center justify-center gap-1.5 w-full bg-white/5 py-1 px-2 rounded-xl border border-white/5" style={{ pointerEvents: 'auto', WebkitAppRegion: 'no-drag' }}>
+                          <button title="Settings" className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'settings' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} onClick={(e) => { e.stopPropagation(); setViewMode('settings'); }}>
+                            <SettingsIcon size={13} />
+                          </button>
+                          {config.showPomodoro !== false && (
+                            <button title="Pomodoro Timer" className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'pomodoro' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} onClick={(e) => { e.stopPropagation(); setViewMode('pomodoro'); }}>
+                              <Coffee size={13} />
+                            </button>
+                          )}
+                          {config.showStopwatch && (
+                            <button title="Stopwatch" className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'stopwatch' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} onClick={(e) => { e.stopPropagation(); setViewMode('stopwatch'); }}>
+                              <TimerIcon size={13} />
+                            </button>
+                          )}
+                          {config.showHardware !== false && (
+                            <>
+                              <button title="Hardware Stats" className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'stats' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} onClick={(e) => { e.stopPropagation(); setViewMode('stats'); }}>
+                                <Activity size={13} />
+                              </button>
+                              <button title="Network Stats" className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'network' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} onClick={(e) => { e.stopPropagation(); setViewMode('network'); }}>
+                                <Signal size={13} />
+                              </button>
+                            </>
+                          )}
+                          <button title="Media Player" className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'media' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} onClick={() => setViewMode('media')}>
+                            <Music size={13} />
+                          </button>
+                          <button 
+                            title="Boost System" 
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${isBoosting ? 'bg-cyan-500/50 text-white shadow-md' : 'text-cyan-400 hover:text-white hover:bg-cyan-500/80'} disabled:opacity-50`} 
+                            onClick={(e) => { e.stopPropagation(); handleBoost(); }}
+                            disabled={isBoosting}
+                          >
+                            <Rocket size={13} className={isBoosting ? "animate-pulse" : ""} />
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      // Original layout for top positions
+                      <div className={`flex items-center justify-between w-full`}>
+                        <div className="flex items-center gap-2">
+                          {config.showWeather !== false && (
+                            <div 
+                              className="flex items-center gap-2 bg-white/10 py-1.5 px-3 rounded-full hover:bg-white/20 transition-colors cursor-pointer" 
+                              style={{ pointerEvents: 'auto', WebkitAppRegion: 'no-drag' }}
+                              title="Weather"
+                              onClick={(e) => { e.stopPropagation(); if (ipcRenderer) ipcRenderer.send('open-weather'); }}
+                            >
+                              <CloudSun size={16} className="text-yellow-300" />
+                              <span className="text-sm font-medium">{weather.temp}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2" style={{ pointerEvents: 'auto', WebkitAppRegion: 'no-drag' }}>
+                          <button title="Settings" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'settings' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={(e) => { e.stopPropagation(); setViewMode('settings'); }}>
+                            <SettingsIcon size={14} />
+                          </button>
+                          {config.showPomodoro !== false && (
+                            <button title="Pomodoro Timer" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'pomodoro' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={(e) => { e.stopPropagation(); setViewMode('pomodoro'); }}>
+                              <Coffee size={14} />
+                            </button>
+                          )}
+                          {config.showStopwatch && (
+                            <button title="Stopwatch" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'stopwatch' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={(e) => { e.stopPropagation(); setViewMode('stopwatch'); }}>
+                              <TimerIcon size={14} />
+                            </button>
+                          )}
+                          {config.showHardware !== false && (
+                            <>
+                              <button title="Hardware Stats" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'stats' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={(e) => { e.stopPropagation(); setViewMode('stats'); }}>
+                                <Activity size={14} />
+                              </button>
+                              <button title="Network Stats" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'network' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={(e) => { e.stopPropagation(); setViewMode('network'); }}>
+                                <Signal size={14} />
+                              </button>
+                            </>
+                          )}
+                          <button title="Media Player" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'media' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={() => setViewMode('media')}>
+                            <Music size={14} />
+                          </button>
+                          <button 
+                            title="Boost System" 
+                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isBoosting ? 'bg-cyan-500/50 text-white' : 'bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500 hover:text-white'} disabled:opacity-50`} 
+                            onClick={(e) => { e.stopPropagation(); handleBoost(); }}
+                            disabled={isBoosting}
+                          >
+                            <Rocket size={14} className={isBoosting ? "animate-pulse" : ""} />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className="flex gap-1.5 mx-1">
+                            {privacy.mic && <div className={`w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
+                            {privacy.cam && <div className={`w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
+                          </div>
+                          <button 
+                            title="Quit Dynamic Island"
+                            className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                            style={{ pointerEvents: 'auto' }}
+                            onClick={() => ipcRenderer.send('quit-app')}
+                          >
+                            <Power size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <AnimatePresence>
@@ -787,7 +2120,10 @@ export default function App() {
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
-                          className="absolute left-0 right-0 top-10 bottom-[76px] flex flex-col justify-center items-center w-full px-5 z-10 pointer-events-none"
+                          className={isSideNotch && viewMode !== 'settings'
+                            ? "absolute left-0 right-0 top-[108px] h-[70px] flex flex-col justify-center items-center w-full px-4 z-10 pointer-events-none"
+                            : "absolute left-0 right-0 top-10 bottom-[76px] flex flex-col justify-center items-center w-full px-5 z-10 pointer-events-none"
+                          }
                       >
                          <AnimatePresence mode="wait">
                            <motion.div 
@@ -799,7 +2135,7 @@ export default function App() {
                               className="w-full text-center"
                            >
                               <span 
-                                 className="text-[14px] font-semibold text-white/90 tracking-wide line-clamp-2 leading-snug inline-block"
+                                 className={`${isSideNotch && viewMode !== 'settings' ? 'text-[12px]' : 'text-[14px]'} font-semibold text-white/90 tracking-wide line-clamp-2 leading-snug inline-block`}
                                  style={{ textShadow: '0 2px 14px rgba(0,0,0,0.9)' }}
                               >
                                  {getCurrentLyric() || <span className="opacity-0">♪</span>}
@@ -810,122 +2146,170 @@ export default function App() {
                     )}
                   </AnimatePresence>
 
-                  <div className={`flex items-center justify-between mt-auto rounded-2xl relative overflow-hidden transition-all duration-300 ${getPanelBorderStyle()} ${viewMode === 'settings' ? 'p-4 h-[300px] items-start flex-col overflow-y-auto custom-scrollbar pr-1' : (viewMode === 'network' ? 'p-3 h-[160px]' : (viewMode === 'stats' ? 'p-4 h-[120px]' : (viewMode === 'pomodoro' ? 'p-4 h-[100px]' : 'p-3 h-[76px]')))}`} style={{ pointerEvents: 'auto' }}>
+                  <div className={`flex items-center mt-auto rounded-2xl relative ${viewMode === 'settings' ? 'overflow-hidden' : 'overflow-visible'} transition-all duration-300 ${getPanelBorderStyle()} ${isSideNotch && viewMode !== 'settings' ? 'flex-col justify-start' : 'justify-between'} ${viewMode === 'settings' ? 'p-4 h-full items-start flex-col overflow-y-auto custom-scrollbar pr-1' : (viewMode === 'network' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[125px]' : 'p-3 h-[160px]') : (viewMode === 'stats' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[180px]' : 'p-4 h-[120px]') : (viewMode === 'pomodoro' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[160px]' : 'p-4 h-[100px]') : (viewMode === 'media' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[210px]' : 'p-3 h-[76px]') : (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[145px]' : 'p-3 h-[76px]')))))}`} style={{ pointerEvents: 'auto', ...getPanelBorderStyleInline() }}>
                     <AnimatePresence mode="wait">
                       {viewMode === 'media' && (
-                        <motion.div key="media" className="w-full flex items-center justify-between" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
-                              {spotifyState?.item?.album?.images?.[0] ? (
-                                <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover" />
-                              ) : (
-                                <Music size={24} className="text-white/90" />
-                              )}
+                        <motion.div key="media" className={`w-full flex ${isSideNotch && viewMode !== 'settings' ? 'flex-col gap-2.5 justify-center text-center items-center' : 'items-center justify-between'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          {isSideNotch && viewMode !== 'settings' ? (
+                            <div className="flex flex-col items-center gap-2.5 w-full">
+                              <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center relative group cursor-pointer" onClick={() => { if (ipcRenderer) ipcRenderer.send('open-media-app', spotifyState?.sourceAppId); }}>
+                                {spotifyState?.item?.album?.images?.[0] ? (
+                                  <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                ) : (
+                                  <Music size={32} className="text-white/80 animate-pulse" />
+                                )}
+                              </div>
+                              <div 
+                                className="flex flex-col items-center text-center cursor-pointer hover:opacity-80 transition-opacity w-full px-2"
+                                onClick={() => { if (ipcRenderer) ipcRenderer.send('open-media-app', spotifyState?.sourceAppId); }}
+                              >
+                                <span className="font-extrabold text-xs text-white leading-tight truncate w-full hover:underline">
+                                  {spotifyState?.item?.name || 'Not Playing'}
+                                </span>
+                                <span className="text-[10px] text-white/50 truncate w-full mt-0.5">
+                                  {spotifyState?.item?.artists?.map(a => a.name).join(', ') || 'Spotify offline'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 mt-1 justify-center">
+                                <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={() => ipcRenderer?.send('spotify-prev')}>
+                                  <SkipBack size={14} />
+                                </button>
+                                <button className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition-all text-white shadow-md hover:scale-105" onClick={() => {
+                                    const nextState = !spotifyState?.is_playing;
+                                    setSpotifyState(prev => prev ? {...prev, is_playing: nextState} : prev);
+                                    if (ipcRenderer) ipcRenderer.send(nextState ? 'spotify-play' : 'spotify-pause');
+                                }}>
+                                  {spotifyState?.is_playing ? <Pause size={15} /> : <Play size={15} className="translate-x-[1px]" />}
+                                </button>
+                                <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={() => ipcRenderer?.send('spotify-skip')}>
+                                  <SkipForward size={14} />
+                                </button>
+                              </div>
                             </div>
-                            <div 
-                              className="flex flex-col max-w-[140px] cursor-pointer hover:opacity-80 transition-opacity"
-                              onClick={() => { if (ipcRenderer) ipcRenderer.send('open-media-app', spotifyState?.sourceAppId); }}
-                            >
-                              <span className="font-bold text-base leading-tight truncate hover:underline">
-                                {spotifyState?.item?.name || 'Not Playing'}
-                              </span>
-                              <span className="text-xs text-white/50 truncate">
-                                {spotifyState?.item?.artists?.[0]?.name || 'Spotify offline'}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-prev')}>
-                              <SkipBack size={16} />
-                            </button>
-                            <button className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors shadow-sm" onClick={() => {
-                                const nextState = !spotifyState?.is_playing;
-                                setSpotifyState(prev => prev ? {...prev, is_playing: nextState} : prev);
-                                if (ipcRenderer) ipcRenderer.send(nextState ? 'spotify-play' : 'spotify-pause');
-                            }}>
-                              {spotifyState?.is_playing ? <Pause size={18} /> : <Play size={18} className="translate-x-[1px]" />}
-                            </button>
-                            <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-skip')}>
-                              <SkipForward size={16} />
-                            </button>
-                          </div>
+                          ) : (
+                            <>
+                              <div className={`flex items-center gap-2 w-full`}>
+                                <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
+                                  {spotifyState?.item?.album?.images?.[0] ? (
+                                    <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Music size={24} className="text-white/90" />
+                                  )}
+                                </div>
+                                <div 
+                                  className="flex flex-col cursor-pointer hover:opacity-80 transition-opacity max-w-[140px]"
+                                  onClick={() => { if (ipcRenderer) ipcRenderer.send('open-media-app', spotifyState?.sourceAppId); }}
+                                >
+                                  <span className="font-bold text-sm leading-tight truncate hover:underline">
+                                    {spotifyState?.item?.name || 'Not Playing'}
+                                  </span>
+                                  <span className="text-[10px] text-white/50 truncate">
+                                    {spotifyState?.item?.artists?.[0]?.name || 'Spotify offline'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-prev')}>
+                                  <SkipBack size={14} />
+                                </button>
+                                <button className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors shadow-sm" onClick={() => {
+                                    const nextState = !spotifyState?.is_playing;
+                                    setSpotifyState(prev => prev ? {...prev, is_playing: nextState} : prev);
+                                    if (ipcRenderer) ipcRenderer.send(nextState ? 'spotify-play' : 'spotify-pause');
+                                }}>
+                                  {spotifyState?.is_playing ? <Pause size={16} /> : <Play size={16} className="translate-x-[1px]" />}
+                                </button>
+                                <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-skip')}>
+                                  <SkipForward size={14} />
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </motion.div>
                       )}
 
                       {viewMode === 'stats' && (
-                        <motion.div key="stats" className="w-full flex items-center justify-between" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                          <div className="w-full flex flex-col gap-3">
-                             <div className="flex flex-col">
-                                <div className="flex items-center justify-between text-[10px] font-black tracking-widest mb-1.5 px-0.5 text-white/40 uppercase">
-                                  <span className="flex items-center gap-2"><Activity size={12} className="text-green-400" /> CPU USAGE</span>
-                                  <span className="text-white font-bold">{hardware.cpu}%</span>
-                                </div>
-                                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                                  <motion.div 
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${hardware.cpu}%` }}
-                                    className="h-full bg-gradient-to-r from-green-500 to-emerald-400 shadow-[0_0_10px_rgba(34,197,94,0.3)]" 
-                                  />
-                                </div>
-                             </div>
-                             <div className="flex flex-col">
-                                <div className="flex items-center justify-between text-[10px] font-black tracking-widest mb-1.5 px-0.5 text-white/40 uppercase">
-                                  <span className="flex items-center gap-2"><Activity size={12} className="text-blue-400" /> RAM USAGE</span>
-                                  <span className="text-white font-bold">{hardware.ram}%</span>
-                                </div>
-                                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                                  <motion.div 
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${hardware.ram}%` }}
-                                    className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 shadow-[0_0_10px_rgba(59,130,246,0.3)]" 
-                                  />
-                                </div>
-                             </div>
-                          </div>
+                        <motion.div key="stats" className={`w-full flex ${isSideNotch && viewMode !== 'settings' ? 'flex-col justify-center' : 'items-center justify-between'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                           <div className="w-full flex flex-col gap-3">
+                              <div className="flex flex-col">
+                                 <div className="flex items-center justify-between text-[10px] font-black tracking-widest mb-1.5 px-0.5 text-white/40 uppercase">
+                                   <span className="flex items-center gap-2"><Activity size={12} className="text-green-400" /> CPU USAGE</span>
+                                   <span className="text-white font-bold">{hardware.cpu}%</span>
+                                 </div>
+                                 <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                   <motion.div 
+                                     initial={{ width: 0 }}
+                                     animate={{ width: `${hardware.cpu}%` }}
+                                     className="h-full bg-gradient-to-r from-green-500 to-emerald-400 shadow-[0_0_10px_rgba(34,197,94,0.3)]" 
+                                   />
+                                 </div>
+                              </div>
+                              <div className="flex flex-col">
+                                 <div className="flex items-center justify-between text-[10px] font-black tracking-widest mb-1.5 px-0.5 text-white/40 uppercase">
+                                   <span className="flex items-center gap-2"><Activity size={12} className="text-blue-400" /> RAM USAGE</span>
+                                   <span className="text-white font-bold">{hardware.ram}%</span>
+                                 </div>
+                                 <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                   <motion.div 
+                                     initial={{ width: 0 }}
+                                     animate={{ width: `${hardware.ram}%` }}
+                                     className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 shadow-[0_0_10px_rgba(59,130,246,0.3)]" 
+                                   />
+                                 </div>
+                              </div>
+                              <button 
+                                 className="mt-2 w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg py-1.5 flex items-center justify-center gap-2 text-[10px] font-bold transition-all shadow-md disabled:opacity-50"
+                                 onClick={handleBoost}
+                                 disabled={isBoosting}
+                              >
+                                 <Rocket size={12} className={isBoosting ? "animate-pulse" : ""} />
+                                 <span>BOOST</span>
+                              </button>
+                           </div>
                         </motion.div>
                       )}
 
                       {viewMode === 'network' && (
-                        <motion.div key="network" className="w-full flex flex-col justify-center px-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold text-white/50 tracking-[0.2em] uppercase">Network Speed</span>
-                            <div className="flex items-center gap-1">
-                              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                              <span className="text-[10px] font-bold text-green-500 uppercase">Live</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between gap-3">
-                             <div className="flex-1 bg-white/5 rounded-2xl p-3 border border-white/5 flex flex-col items-center">
-                                <span className="text-[10px] font-black text-white/30 uppercase mb-1">Download</span>
-                                <span className="text-lg font-black text-white tracking-tight">{formatSpeed(network.rx)}</span>
+                        <motion.div key="network" className="w-full flex flex-col justify-center px-1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                           <div className="flex items-center justify-between mb-2">
+                             <span className="text-[10px] font-bold text-white/50 tracking-[0.2em] uppercase">Network Speed</span>
+                             <div className="flex items-center gap-1">
+                               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                               <span className="text-[10px] font-bold text-green-500 uppercase">Live</span>
                              </div>
-                             <div className="flex-1 bg-white/5 rounded-2xl p-3 border border-white/5 flex flex-col items-center">
-                                <span className="text-[10px] font-black text-white/30 uppercase mb-1">Upload</span>
-                                <span className="text-lg font-black text-white tracking-tight">{formatSpeed(network.tx)}</span>
-                             </div>
-                          </div>
+                           </div>
+                           <div className="flex items-center justify-between gap-2 w-full">
+                              <div className="flex-1 bg-white/5 rounded-2xl p-2.5 border border-white/5 flex flex-col items-center">
+                                 <span className="text-[9px] font-black text-white/30 uppercase mb-0.5">Download</span>
+                                 <span className="text-sm font-black text-white tracking-tight">{formatSpeed(network.rx)}</span>
+                              </div>
+                              <div className="flex-1 bg-white/5 rounded-2xl p-2.5 border border-white/5 flex flex-col items-center">
+                                 <span className="text-[9px] font-black text-white/30 uppercase mb-0.5">Upload</span>
+                                 <span className="text-sm font-black text-white tracking-tight">{formatSpeed(network.tx)}</span>
+                              </div>
+                           </div>
                         </motion.div>
                       )}
 
                       {viewMode === 'stopwatch' && (
-                        <motion.div key="stopwatch" className="w-full flex items-center justify-between" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                           <div className="flex items-center gap-4">
-                              <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg">
-                                 <TimerIcon size={24} className="text-white/90" />
+                        <motion.div key="stopwatch" className={`w-full flex ${isSideNotch && viewMode !== 'settings' ? 'flex-col gap-2 justify-center text-center' : 'items-center justify-between'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                           <div className={`flex ${isSideNotch && viewMode !== 'settings' ? 'flex-col text-center items-center' : 'items-center'} gap-3 w-full`}>
+                              <div className="w-10 h-10 rounded-xl overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg">
+                                 <TimerIcon size={20} className="text-white/90 animate-pulse" />
                               </div>
                               <div className="flex flex-col">
-                                 <span className="font-mono text-xl font-bold tracking-wider">
+                                 <span className="font-mono text-lg font-black tracking-wider text-white">
                                     {stopwatch >= 3600 ? `${String(Math.floor(stopwatch / 3600)).padStart(2, '0')}:` : ''}{String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:{String(stopwatch % 60).padStart(2, '0')}
                                  </span>
-                                 <span className="text-[10px] text-white/50 uppercase tracking-widest">Stopwatch</span>
+                                 <span className="text-[9px] text-white/40 uppercase tracking-widest font-bold">Stopwatch</span>
                               </div>
                            </div>
-                           <div className="flex items-center gap-2">
-                              <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={resetSw}>
-                                 <RotateCcw size={16} />
+                           <div className="flex items-center gap-2.5 justify-center w-full mt-1">
+                              <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={resetSw}>
+                                 <RotateCcw size={14} />
                               </button>
-                              <button className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors shadow-sm" onClick={toggleSw}>
-                                 {isSwRunning ? <Pause size={18} /> : <Play size={18} className="translate-x-[1px]" />}
+                              <button className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition-all text-white shadow-md hover:scale-105" onClick={toggleSw}>
+                                 {isSwRunning ? <Pause size={15} /> : <Play size={15} className="translate-x-[1px]" />}
                               </button>
                            </div>
                         </motion.div>
@@ -933,26 +2317,26 @@ export default function App() {
 
                       {viewMode === 'pomodoro' && (
                         <motion.div key="pomodoro" className="w-full flex flex-col justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                          <div className="flex items-center justify-between mb-3 px-2">
+                          <div className={`flex items-center justify-between mb-3 ${isSideNotch && viewMode !== 'settings' ? 'px-0' : 'px-2'}`}>
                              <div className="flex bg-white/10 rounded-full p-1">
-                               <button className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${pomoMode === 'work' ? 'bg-red-500 text-white' : 'text-white/50'}`} onClick={() => switchPomoMode('work')}>Work</button>
-                               <button className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${pomoMode === 'break' ? 'bg-green-500 text-white' : 'text-white/50'}`} onClick={() => switchPomoMode('break')}>Break</button>
+                               <button className={`px-2 py-1 text-[10px] md:px-3 md:py-1 md:text-xs font-bold rounded-full transition-colors ${pomoMode === 'work' ? 'bg-red-500 text-white' : 'text-white/50'}`} onClick={() => switchPomoMode('work')}>Work</button>
+                               <button className={`px-2 py-1 text-[10px] md:px-3 md:py-1 md:text-xs font-bold rounded-full transition-colors ${pomoMode === 'break' ? 'bg-green-500 text-white' : 'text-white/50'}`} onClick={() => switchPomoMode('break')}>Break</button>
                              </div>
-                             <span className="text-[10px] text-white/50 uppercase tracking-widest">{pomoMode} Mode</span>
+                             <span className="text-[9px] md:text-[10px] text-white/50 uppercase tracking-widest ml-1">{pomoMode}</span>
                           </div>
-                          <div className="flex items-center justify-between px-2">
-                             <div className="flex items-center gap-1">
+                          <div className={`flex ${isSideNotch && viewMode !== 'settings' ? 'flex-col gap-3' : 'items-center justify-between'} ${isSideNotch && viewMode !== 'settings' ? 'px-0' : 'px-2'}`}>
+                             <div className="flex items-center gap-1 justify-center w-full">
                                 <button className="w-7 h-7 rounded-full hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors disabled:opacity-10 disabled:hover:bg-transparent" onClick={() => adjustPomoTime(-60)} disabled={isPomoRunning}>
                                   <Minus size={16} />
                                 </button>
-                                <span className="font-mono text-3xl font-black tracking-wider text-white w-20 text-center">
+                                <span className={`${isSideNotch && viewMode !== 'settings' ? 'text-2xl w-16' : 'text-3xl w-20'} font-mono font-black tracking-wider text-white text-center`}>
                                    {String(Math.floor(pomodoro / 60)).padStart(2, '0')}:{String(pomodoro % 60).padStart(2, '0')}
                                 </span>
                                 <button className="w-7 h-7 rounded-full hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors disabled:opacity-10 disabled:hover:bg-transparent" onClick={() => adjustPomoTime(60)} disabled={isPomoRunning}>
                                   <Plus size={16} />
                                 </button>
                              </div>
-                             <div className="flex items-center gap-2">
+                             <div className="flex items-center justify-center gap-2 w-full">
                                 <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={resetPomo}>
                                    <RotateCcw size={16} />
                                 </button>
@@ -980,6 +2364,15 @@ export default function App() {
                               <span className="text-[10px] font-bold text-white/50 tracking-[0.2em] uppercase sticky top-0 bg-inherit z-10">Island Customization</span>
                            </div>
                            
+                           {/* Mode */}
+                           <div className="flex flex-col gap-2">
+                             <span className="text-xs font-semibold text-white/70">Mode (Notch / Bar)</span>
+                             <div className="flex bg-white/10 rounded-lg p-1 w-full gap-1 text-[11px]" style={{ pointerEvents: 'auto' }}>
+                               <button className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${config.mode === 'notch' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, mode: 'notch'})}>Notch</button>
+                               <button className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${config.mode === 'bar' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, mode: 'bar'})}>Bar</button>
+                             </div>
+                           </div>
+
                            {/* BG Animation */}
                            <div className="flex flex-col gap-2">
                              <span className="text-xs font-semibold text-white/70">Background Animation</span>
@@ -1127,7 +2520,9 @@ export default function App() {
           )}
         </AnimatePresence>
         </div>
-      </motion.div>
+        </motion.div>
+        );
+      })()}
     </div>
   );
 }

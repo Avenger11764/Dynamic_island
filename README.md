@@ -30,7 +30,8 @@ A sleek, Smart Notch style application for Windows desktops built with Electron 
 - **Customization**: Cosmic Minimalist Theme with a full-spectrum color picker for notch accents and smart UI contrast based on your background.
 - **Flawless Layering**: Custom engine strictly enforcing highest z-index, keeping the notch flawlessly above all full-screen apps and games.
 - **Smart Greetings**: A personalized, time-aware greeting that smoothly expands to welcome you upon waking or starting your machine.
-- **Liquid Physics**: A premium, snappy spring-physics animation system mimicking native hardware filleting and seamless expansions.
+- **Liquid Physics**: A premium spring-physics system with instant-response drag-and-drop, smart snapping boundaries, and seamless fluid expansions.
+- **Bar/Shelf Mode**: Switch between Notch mode and a docking Shelf Bar. The bar features a 4-second intro layout on mode switches before minimizing to an edge-activation strip.
 - **Secure & Efficient**: Built safely with fully isolated Electron contexts, utilizing smart background polling to ensure near-zero resource drain.
 - **Auto-Start & Single-Instance**: Smart Notch seamlessly boots with Windows and uses a strict process lock to prevent duplicate apps from running.
 
@@ -40,7 +41,7 @@ You can download the compiled installer for Windows from the [Installers](./Inst
 
 1. Download the `App_Installer.zip` file.
 2. Extract the archive.
-3. Run `Smart Notch Setup 1.0.1.exe` to install.
+3. Run `Smart Notch Setup 1.0.4.exe` to install, or deploy the Microsoft Store `Smart Notch 1.0.4.appx` package.
 
 ## Development
 

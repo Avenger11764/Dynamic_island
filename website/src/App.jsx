@@ -46,7 +46,7 @@ function App() {
     {
       icon: <BatteryCharging className="w-6 h-6 text-green-400" />,
       title: 'Intelligent Indicators',
-      description: 'A compact notch state featuring live battery rings, network blips, CPU spikes, and hardware metrics at a glance.'
+      description: 'Intelligent notch and bar states featuring live battery rings, network speed counters, CPU/RAM stats, and hardware metrics.'
     },
     {
       icon: <Timer className="w-6 h-6 text-orange-400" />,
@@ -76,7 +76,7 @@ function App() {
     {
       icon: <Activity className="w-6 h-6 text-red-400" />,
       title: 'Liquid Physics',
-      description: 'A premium, snappy spring-physics animation system mimicking native hardware filleting and seamless expansions.'
+      description: 'A premium spring-physics system with instant-response drag-and-drop, smart snapping boundaries, and seamless fluid expansions.'
     },
     {
       icon: <ShieldCheck className="w-6 h-6 text-emerald-400" />,
@@ -111,7 +111,7 @@ function App() {
               <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="css-i6dzq1"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
               GitHub
             </a>
-            <a href="/Smart_Notch_Setup_1.0.3.exe" download className="bg-white text-black px-5 py-2.5 rounded-full font-medium text-sm hover:bg-gray-100 transition-all active:scale-95 flex items-center gap-2">
+            <a href="/Smart_Notch_Setup_1.0.4.exe" download className="bg-white text-black px-5 py-2.5 rounded-full font-medium text-sm hover:bg-gray-100 transition-all active:scale-95 flex items-center gap-2">
               <Download className="w-4 h-4" />
               Download
             </a>
@@ -154,7 +154,7 @@ function App() {
               <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="hover:scale-105 transition-transform active:scale-95">
                 <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" className="h-[52px]" />
               </a>
-              <a href="/Smart_Notch_Setup_1.0.3.exe" download className="bg-white text-black px-8 py-4 rounded-full font-semibold text-base hover:bg-gray-100 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)] active:scale-95 flex items-center gap-2 h-[52px]">
+              <a href="/Smart_Notch_Setup_1.0.4.exe" download className="bg-white text-black px-8 py-4 rounded-full font-semibold text-base hover:bg-gray-100 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)] active:scale-95 flex items-center gap-2 h-[52px]">
                 <Download className="w-5 h-5" />
                 Download Setup
               </a>
@@ -374,7 +374,7 @@ function App() {
                   <h3 className="text-2xl font-bold text-white mb-2">Smart Notch for Windows</h3>
                   <p className="text-gray-400 mb-8">Latest Version for Windows (64-bit)</p>
                   
-                  <a href="/Smart_Notch_Setup_1.0.3.exe" download className="w-full bg-white text-black hover:bg-gray-200 font-bold py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-95 flex items-center justify-center gap-2 relative z-10">
+                  <a href="/Smart_Notch_Setup_1.0.4.exe" download className="w-full bg-white text-black hover:bg-gray-200 font-bold py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-95 flex items-center justify-center gap-2 relative z-10">
                     <Download className="w-5 h-5" />
                     Download Now
                   </a>
@@ -460,7 +460,7 @@ function App() {
             <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="hover:scale-105 transition-transform active:scale-95">
               <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" className="h-[60px]" />
             </a>
-            <a href="/Smart_Notch_Setup_1.0.3.exe" download className="bg-white text-black px-10 py-5 rounded-full font-semibold text-lg hover:scale-105 transition-transform active:scale-95 flex items-center gap-3 shadow-[0_0_40px_rgba(255,255,255,0.2)]">
+            <a href="/Smart_Notch_Setup_1.0.4.exe" download className="bg-white text-black px-10 py-5 rounded-full font-semibold text-lg hover:scale-105 transition-transform active:scale-95 flex items-center gap-3 shadow-[0_0_40px_rgba(255,255,255,0.2)]">
               <Download className="w-6 h-6" />
               Download for Windows
             </a>

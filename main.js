@@ -188,89 +188,132 @@ function startHardwarePolling() {
   }, 2000);
 }
 
-function startNetworkPolling() {
+const { spawn, exec } = require('child_process');
+
+let vbsPath = '';
+
+function startCombinedBackgroundMonitor() {
   const psScript = `
     $ErrorActionPreference = 'SilentlyContinue'
-    $prev = Get-NetAdapterStatistics
-    while ($true) {
-      Start-Sleep -Seconds 1
-      $curr = Get-NetAdapterStatistics
-      $rx = 0; $tx = 0
-      foreach ($c in $curr) {
-        $p = $prev | Where-Object { $_.InterfaceDescription -eq $c.InterfaceDescription }
-        if ($p) {
-          $diffRx = $c.ReceivedBytes - $p.ReceivedBytes
-          $diffTx = $c.SentBytes - $p.SentBytes
-          if ($diffRx -ge 0) { $rx += $diffRx }
-          if ($diffTx -ge 0) { $tx += $diffTx }
+    
+    function CheckPrivacy ($type) {
+      $path = "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\$type"
+      $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($path)
+      if ($null -eq $key) { return $false }
+      foreach ($subKeyName in $key.GetSubKeyNames()) {
+        $subKey = $key.OpenSubKey($subKeyName)
+        if ($null -ne $subKey) {
+          $stopTime = $subKey.GetValue("LastUsedTimeStop")
+          if ($null -ne $stopTime -and $stopTime -eq 0) {
+            $subKey.Close(); $key.Close()
+            return $true
+          }
+          $subKey.Close()
         }
       }
-      Write-Output "$rx,$tx"
-      $prev = $curr
-    }
-  `;
-
-  const ps = spawn('powershell.exe', ['-NoProfile', '-Command', psScript]);
-  ps.stdout.on('data', (data) => {
-    const lines = data.toString().trim().split('\n');
-    const lastLine = lines[lines.length - 1].trim();
-    const parts = lastLine.split(',');
-    if (parts.length === 2) {
-      const rx = parseInt(parts[0]);
-      const tx = parseInt(parts[1]);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('network-stats', { rx, tx });
+      $npKey = $key.OpenSubKey("NonPackaged")
+      if ($null -ne $npKey) {
+        foreach ($subKeyName in $npKey.GetSubKeyNames()) {
+          $subKey = $npKey.OpenSubKey($subKeyName)
+          if ($null -ne $subKey) {
+            $stopTime = $subKey.GetValue("LastUsedTimeStop")
+            if ($null -ne $stopTime -and $stopTime -eq 0) {
+              $subKey.Close(); $npKey.Close(); $key.Close()
+              return $true
+            }
+            $subKey.Close()
+          }
+        }
+        $npKey.Close()
       }
+      $key.Close()
+      return $false
     }
-  });
-}
-
-const { spawn } = require('child_process');
-
-function startPrivacyDotMonitor() {
-  const psScript = `
-    $ErrorActionPreference = 'SilentlyContinue'
-    function Check ($type) {
-      $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\$type"
-      $inUse = $false
-      Get-ChildItem -Path $path | ForEach-Object {
-        $v = Get-ItemProperty -Path $_.PSPath -Name "LastUsedTimeStop"
-        if ($null -ne $v -and $v.LastUsedTimeStop -eq 0) { $inUse = $true }
-      }
-      Get-ChildItem -Path "$path\\NonPackaged" | ForEach-Object {
-        $v = Get-ItemProperty -Path $_.PSPath -Name "LastUsedTimeStop"
-        if ($null -ne $v -and $v.LastUsedTimeStop -eq 0) { $inUse = $true }
-      }
-      return $inUse
+    
+    $prevRx = [double]0
+    $prevTx = [double]0
+    $nets = Get-CimInstance Win32_PerfRawData_Tcpip_NetworkInterface
+    foreach ($n in $nets) {
+      $prevRx += $n.BytesReceivedPersec
+      $prevTx += $n.BytesSentPersec
     }
+    
     while ($true) {
-      $cam = Check "webcam"
-      $mic = Check "microphone"
-      Write-Output "$cam,$mic"
       Start-Sleep -Seconds 1
+      
+      $cam = CheckPrivacy "webcam"
+      $mic = CheckPrivacy "microphone"
+      
+      $nets = Get-CimInstance Win32_PerfRawData_Tcpip_NetworkInterface
+      $currRx = [double]0
+      $currTx = [double]0
+      foreach ($n in $nets) {
+        $currRx += $n.BytesReceivedPersec
+        $currTx += $n.BytesSentPersec
+      }
+      
+      $diffRx = $currRx - $prevRx
+      $diffTx = $currTx - $prevTx
+      if ($diffRx -lt 0) { $diffRx = 0 }
+      if ($diffTx -lt 0) { $diffTx = 0 }
+      
+      Write-Output "$cam,$mic,$diffRx,$diffTx"
+      
+      $prevRx = $currRx
+      $prevTx = $currTx
     }
   `;
 
   const ps = spawn('powershell.exe', ['-NoProfile', '-Command', psScript]);
   
+  let psStdoutBuffer = '';
   ps.stdout.on('data', (data) => {
-    const lines = data.toString().trim().split('\\n');
-    const output = lines[lines.length - 1].trim().split(',');
-    if (output.length === 2) {
-      const cam = output[0] === 'True';
-      const mic = output[1] === 'True';
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('privacy-dots', { cam, mic });
+    psStdoutBuffer += data.toString();
+    const lines = psStdoutBuffer.split(/\r?\n/);
+    psStdoutBuffer = lines.pop(); // Keep the last incomplete line in the buffer
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const parts = trimmed.split(',');
+      if (parts.length === 4) {
+        const cam = parts[0] === 'True';
+        const mic = parts[1] === 'True';
+        const rx = parseInt(parts[2]);
+        const tx = parseInt(parts[3]);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('privacy-dots', { cam, mic });
+          mainWindow.webContents.send('network-stats', { rx, tx });
+        }
       }
     }
   });
+
+  ps.stderr.on('data', (data) => {
+    logg('Combined background monitor stderr: ' + data.toString().trim());
+  });
+
+  ps.on('close', (code) => {
+    logg('Combined background monitor exited with code ' + code);
+  });
+
+  ps.on('error', (err) => {
+    logg('Combined background monitor spawn/runtime error: ' + err.message);
+  });
 }
 
-const { exec } = require('child_process');
 function pressMediaKey(key) {
   try {
-    exec(`powershell -c "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys([char]${key})"`);
-  } catch(e) {}
+    if (vbsPath) {
+      exec(`wscript.exe "${vbsPath}" ${key}`);
+    } else {
+      exec(`powershell -c "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys([char]${key})"`);
+    }
+  } catch(e) {
+    try {
+      exec(`powershell -c "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys([char]${key})"`);
+    } catch(err){}
+  }
 }
 
 ipcMain.on('spotify-play', () => pressMediaKey(179));
@@ -282,18 +325,40 @@ ipcMain.on('adjust-volume', (e, delta) => {
   const key = delta > 0 ? 175 : 174;
   pressMediaKey(key);
 });
+
+let nextBrightnessDelta = 0;
+let isBrightnessRunning = false;
+
 ipcMain.on('adjust-brightness', (e, delta) => {
-  const ps = `
-    $monitors = Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue
-    $current = Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CurrentBrightness
-    if ($monitors -and $current -ne $null) {
-      $new = $current + (${delta})
-      if ($new -gt 100) { $new = 100 }
-      if ($new -lt 0) { $new = 0 }
-      $monitors | Invoke-WmiMethod -Name WmiSetBrightness -ArgumentList 1, $new
-    }
-  `;
-  exec(`powershell -NoProfile -Command "${ps}"`);
+  nextBrightnessDelta += delta;
+  if (isBrightnessRunning) return;
+  
+  isBrightnessRunning = true;
+  const run = () => {
+    const d = nextBrightnessDelta;
+    nextBrightnessDelta = 0;
+    
+    const ps = `
+      $monitors = Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue
+      $current = Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CurrentBrightness
+      if ($monitors -and $current -ne $null) {
+        $new = $current + (${d})
+        if ($new -gt 100) { $new = 100 }
+        if ($new -lt 0) { $new = 0 }
+        $monitors | Invoke-WmiMethod -Name WmiSetBrightness -ArgumentList 1, $new
+      }
+    `;
+    
+    exec(`powershell -NoProfile -Command "${ps}"`, () => {
+      if (nextBrightnessDelta !== 0) {
+        run();
+      } else {
+        isBrightnessRunning = false;
+      }
+    });
+  };
+  
+  run();
 });
 ipcMain.on('open-file', (e, filePath) => {
   shell.openPath(filePath);
@@ -344,6 +409,352 @@ ipcMain.on('show-context-menu', (event) => {
   menu.popup({ window: BrowserWindow.fromWebContents(event.sender) });
 });
 
+let currentWindowMode = 'notch';
+let currentScreenPosition = 'top';
+
+ipcMain.on('set-window-mode', (event, mode, position) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  currentWindowMode = mode;
+  if (position) currentScreenPosition = position;
+  const pos = currentScreenPosition;
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.bounds;
+
+  if (mode === 'shelf') {
+    if (pos === 'left' || pos === 'right') {
+      // Vertical sidebar
+      const sideWidth = 160;
+      const x = pos === 'left' ? 0 : screenWidth - sideWidth;
+      mainWindow.setBounds({ x, y: 0, width: sideWidth, height: screenHeight });
+    } else {
+      // Horizontal top bar (default for all top positions)
+      mainWindow.setBounds({ x: 0, y: 0, width: screenWidth, height: 64 });
+    }
+    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  } else {
+    // Notch mode — position-aware
+    const windowWidth = 600;
+    const windowHeight = 450;
+    let x, y;
+    if (pos === 'top-left') {
+      x = 20; y = 0;
+    } else if (pos === 'top-right') {
+      x = screenWidth - windowWidth - 20; y = 0;
+    } else if (pos === 'left') {
+      x = 0; y = Math.floor((screenHeight - windowHeight) / 2);
+    } else if (pos === 'right') {
+      x = screenWidth - windowWidth; y = Math.floor((screenHeight - windowHeight) / 2);
+    } else {
+      // 'top' (default center)
+      x = Math.floor((screenWidth - windowWidth) / 2); y = 0;
+    }
+    mainWindow.setBounds({ x, y, width: windowWidth, height: windowHeight });
+    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  }
+});
+
+ipcMain.on('set-screen-position', (event, position, options = {}) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  currentScreenPosition = position;
+  // Re-apply current mode with new position
+  mainWindow.webContents.executeJavaScript('true'); // no-op, just trigger re-render via IPC below
+  if (options.ignoreBounds) return;
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.bounds;
+
+  if (currentWindowMode === 'notch') {
+    const windowWidth = 600;
+    const windowHeight = 450;
+    let x, y;
+    if (position === 'top-left') {
+      x = 20; y = 0;
+    } else if (position === 'top-right') {
+      x = screenWidth - windowWidth - 20; y = 0;
+    } else if (position === 'left') {
+      x = 0; y = Math.floor((screenHeight - windowHeight) / 2);
+    } else if (position === 'right') {
+      x = screenWidth - windowWidth; y = Math.floor((screenHeight - windowHeight) / 2);
+    } else {
+      x = Math.floor((screenWidth - windowWidth) / 2); y = 0;
+    }
+    mainWindow.setBounds({ x, y, width: windowWidth, height: windowHeight });
+  } else if (currentWindowMode === 'shelf') {
+    if (position === 'left' || position === 'right') {
+      const sideWidth = 160;
+      const x = position === 'left' ? 0 : screenWidth - sideWidth;
+      mainWindow.setBounds({ x, y: 0, width: sideWidth, height: screenHeight });
+    } else {
+      mainWindow.setBounds({ x: 0, y: 0, width: screenWidth, height: 64 });
+    }
+  }
+});
+
+let isWindowBeingDragged = false;
+let isWindowAnimating = false;
+let boundsAnimationInterval = null;
+
+function animateWindowBounds(target, duration = 250) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (boundsAnimationInterval) clearInterval(boundsAnimationInterval);
+  
+  isWindowAnimating = true;
+  const start = mainWindow.getBounds();
+  const startTime = Date.now();
+
+  boundsAnimationInterval = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      clearInterval(boundsAnimationInterval);
+      boundsAnimationInterval = null;
+      isWindowAnimating = false;
+      return;
+    }
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(1, elapsed / duration);
+    const ease = 1 - Math.pow(1 - progress, 3);
+
+    const currentX = Math.round(start.x + (target.x - start.x) * ease);
+    const currentY = Math.round(start.y + (target.y - start.y) * ease);
+
+    // Keep width and height constant at target values to prevent texture rebuilding lag
+    mainWindow.setBounds({ x: currentX, y: currentY, width: target.width, height: target.height });
+
+    if (progress >= 1) {
+      clearInterval(boundsAnimationInterval);
+      boundsAnimationInterval = null;
+      isWindowAnimating = false;
+    }
+  }, 10);
+}
+
+let dragStartMousePos = null;
+let dragStartWindowPos = null;
+
+ipcMain.on('custom-drag-start', (event) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  isWindowBeingDragged = true;
+  
+  const cursor = screen.getCursorScreenPoint();
+  const w = 140;
+  const h = 64;
+  const x = cursor.x - Math.floor(w / 2);
+  const y = cursor.y - Math.floor(h / 2);
+  
+  // Set bounds instantly to matches the small drag pill size (stops click blocking)
+  mainWindow.setBounds({ x, y, width: w, height: h });
+  
+  dragStartMousePos = { x: cursor.x, y: cursor.y };
+  dragStartWindowPos = { x, y, width: w, height: h };
+});
+
+ipcMain.on('custom-drag-move', (event) => {
+  if (!mainWindow || mainWindow.isDestroyed() || !isWindowBeingDragged || !dragStartMousePos || !dragStartWindowPos) return;
+  
+  const cursor = screen.getCursorScreenPoint();
+  const dX = cursor.x - dragStartMousePos.x;
+  const dY = cursor.y - dragStartMousePos.y;
+  
+  const newX = dragStartWindowPos.x + dX;
+  const newY = dragStartWindowPos.y + dY;
+  
+  mainWindow.setBounds({
+    x: Math.round(newX),
+    y: Math.round(newY),
+    width: dragStartWindowPos.width,
+    height: dragStartWindowPos.height
+  });
+
+  const display = screen.getPrimaryDisplay();
+  const { width: sw, height: sh } = display.bounds;
+  const dx0 = display.bounds.x;
+  const dy0 = display.bounds.y;
+
+  const curX = cursor.x - dx0;
+  const curY = cursor.y - dy0;
+
+  const sideEdge = 100;
+  const topEdge  = 200;
+
+  let direction = 'top';
+  if (curX < sideEdge && curY > topEdge) {
+    direction = 'left';
+  } else if (curX > sw - sideEdge && curY > topEdge) {
+    direction = 'right';
+  } else {
+    direction = 'top';
+  }
+
+  mainWindow.webContents.send('drag-snap-preview', direction);
+});
+
+ipcMain.on('custom-drag-end', (event) => {
+  if (!mainWindow || mainWindow.isDestroyed() || !isWindowBeingDragged) return;
+  isWindowBeingDragged = false;
+  
+  const startPos = dragStartWindowPos;
+  dragStartMousePos = null;
+  dragStartWindowPos = null;
+  
+  if (boundsAnimationInterval) {
+    clearInterval(boundsAnimationInterval);
+    boundsAnimationInterval = null;
+  }
+  isWindowAnimating = false;
+
+  const display = screen.getPrimaryDisplay();
+  const { width: sw, height: sh } = display.bounds;
+  const dx0 = display.bounds.x;
+  const dy0 = display.bounds.y;
+
+  const cursor = screen.getCursorScreenPoint();
+  const curX = cursor.x - dx0;
+  const curY = cursor.y - dy0;
+
+  logg(`SNAP: cursor=(${curX}, ${curY}) screen=(${sw}x${sh})`);
+
+  const sideEdge = 100;
+  const topEdge  = 200;
+  
+  // Calculate final target window size
+  let ww = 600;
+  let wh = 450;
+  let newPos = 'top';
+
+  if (curX < sideEdge && curY > topEdge) {
+    newPos = 'left';
+  } else if (curX > sw - sideEdge && curY > topEdge) {
+    newPos = 'right';
+  } else {
+    newPos = 'top';
+  }
+
+  if (currentWindowMode === 'shelf') {
+    if (newPos === 'left' || newPos === 'right') {
+      ww = 160;
+      wh = sh;
+    } else {
+      ww = sw;
+      wh = 64;
+    }
+  }
+
+  let finalX, finalY;
+  if (newPos === 'left') {
+    finalX = dx0;
+    finalY = dy0 + Math.floor((sh - wh) / 2);
+  } else if (newPos === 'right') {
+    finalX = dx0 + sw - ww;
+    finalY = dy0 + Math.floor((sh - wh) / 2);
+  } else {
+    finalX = dx0 + curX - Math.floor(ww / 2);
+    finalY = dy0;
+    if (finalX < dx0) finalX = dx0;
+    if (finalX + ww > dx0 + sw) finalX = dx0 + sw - ww;
+  }
+
+  logg(`SNAP: decided newPos=${newPos} -> x=${finalX} y=${finalY}`);
+
+  const bounds = mainWindow.getBounds();
+  const hasMoved = startPos && (Math.abs(bounds.x - startPos.x) > 5 || Math.abs(bounds.y - startPos.y) > 5);
+
+  if (!hasMoved) {
+    // If not moved, restore size instantly
+    mainWindow.setBounds({
+      x: Math.round(finalX),
+      y: Math.round(finalY),
+      width: ww,
+      height: wh
+    });
+    mainWindow.webContents.send('drag-snap-end', currentScreenPosition);
+    return;
+  }
+
+  // Instantly resize the window to target size before animating position (eliminates texture resizing stutter)
+  const startX = Math.round(bounds.x - (ww - bounds.width) / 2);
+  const startY = Math.round(bounds.y - (wh - bounds.height) / 2);
+  
+  mainWindow.setBounds({
+    x: startX,
+    y: startY,
+    width: ww,
+    height: wh
+  });
+
+  animateWindowBounds({ x: Math.round(finalX), y: Math.round(finalY), width: ww, height: wh });
+  mainWindow.webContents.send('window-dragged-to', newPos);
+  mainWindow.webContents.send('drag-snap-end', newPos);
+});
+
+let checkCursorInterval = null;
+let checkCursorTimeout = null;
+
+function startCursorChecking() {
+  if (checkCursorInterval) clearInterval(checkCursorInterval);
+  if (checkCursorTimeout) clearTimeout(checkCursorTimeout);
+  
+  // Wait 400ms for OS resize transition to finish before checking
+  checkCursorTimeout = setTimeout(() => {
+    checkCursorInterval = setInterval(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        clearInterval(checkCursorInterval);
+        checkCursorInterval = null;
+        return;
+      }
+      const bounds = mainWindow.getBounds();
+      const point = screen.getCursorScreenPoint();
+      
+      // We allow a 15px buffer for extremely smooth hover transitions
+      const buffer = 15;
+      const isInside = (
+        point.x >= bounds.x - buffer &&
+        point.x <= bounds.x + bounds.width + buffer &&
+        point.y >= bounds.y - buffer &&
+        point.y <= bounds.y + bounds.height + buffer
+      );
+      
+      if (!isInside) {
+        mainWindow.webContents.send('force-collapse-shelf');
+        clearInterval(checkCursorInterval);
+        checkCursorInterval = null;
+      }
+    }, 120);
+  }, 400);
+}
+
+function stopCursorChecking() {
+  if (checkCursorTimeout) {
+    clearTimeout(checkCursorTimeout);
+    checkCursorTimeout = null;
+  }
+  if (checkCursorInterval) {
+    clearInterval(checkCursorInterval);
+    checkCursorInterval = null;
+  }
+}
+
+ipcMain.on('set-shelf-height', (event, height) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (currentWindowMode !== 'shelf') return;
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.bounds;
+  const pos = currentScreenPosition;
+
+  if (pos === 'left' || pos === 'right') {
+    // For side positions, "height" means width
+    const sideWidth = Math.max(6, Math.min(height, 600));
+    const x = pos === 'left' ? 0 : screenWidth - sideWidth;
+    mainWindow.setBounds({ x, y: 0, width: sideWidth, height: screenHeight });
+  } else {
+    const newHeight = Math.max(6, Math.min(height, 600));
+    mainWindow.setBounds({ x: 0, y: 0, width: screenWidth, height: newHeight });
+  }
+
+  if (height <= 6) {
+    stopCursorChecking();
+  } else {
+    startCursorChecking();
+  }
+});
+
 ipcMain.on('show-notification', (event, { title, body }) => {
   new Notification({ title, body }).show();
 });
@@ -369,18 +780,100 @@ ipcMain.on('kill-task', (e, id) => {
   exec(`taskkill /F /PID ${id}`);
 });
 
-ipcMain.on('start-drag', (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (win) {
-    win.startWindowDrag();
-  }
+ipcMain.handle('boost-system', async (event) => {
+  return new Promise((resolve) => {
+    const ps = `
+      $targets = @('chrome', 'msedge', 'brave', 'firefox', 'opera', 'spotify', 'discord', 'steamwebhelper', 'epicgameslauncher', 'Battle.net', 'LeagueClientUx', 'RiotClientServices', 'slack', 'Teams', 'Zoom', 'WhatsApp', 'WhatsApp.Root', 'Telegram', 'EADesktop', 'EAConnect_Service', 'GalaxyClient', 'upc', 'Dropbox', 'GoogleDrive', 'OneDrive', 'vlc', 'qbittorrent', 'uTorrent')
+      $cores = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+      $procs = Get-Process | Where-Object { $targets -contains $_.Name }
+      if ($procs) {
+          $cpu1 = @{}
+          $procs | ForEach-Object { $cpu1[$_.Id] = $_.CPU }
+          $t1 = Get-Date
+          Start-Sleep -Milliseconds 200
+          $t2 = Get-Date
+          $cpu2 = @{}
+          $procs | ForEach-Object {
+              $p2 = Get-Process -Id $_.Id -ErrorAction SilentlyContinue
+              if ($p2) { $cpu2[$_.Id] = $p2.CPU }
+          }
+          $elapsed = ($t2 - $t1).TotalSeconds
+          
+          $freed = 0
+          $totalCpu = 0
+          $killed = @()
+          
+          $procs | ForEach-Object {
+              $id = $_.Id
+              $name = $_.Name
+              $mb = [math]::Round($_.WorkingSet64 / 1MB, 1)
+              $freed += $_.WorkingSet64
+              
+              $cpuPercent = 0
+              if ($cpu1.ContainsKey($id) -and $cpu2.ContainsKey($id) -and ($null -ne $cpu1[$id]) -and ($null -ne $cpu2[$id])) {
+                  if ($elapsed -gt 0) {
+                      $cpuPercent = [math]::Round((($cpu2[$id] - $cpu1[$id]) / $elapsed) * 100 / $cores, 1)
+                      if ($cpuPercent -lt 0) { $cpuPercent = 0 }
+                  }
+              }
+              $totalCpu += $cpuPercent
+
+              if ($killed -notcontains $name) {
+                  $killed += $name
+                  Write-Output "KILL:$name|$mb|$cpuPercent"
+                  Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+                  Start-Sleep -Milliseconds 300
+              } else {
+                  Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+              }
+          }
+          $totalMb = [math]::Round($freed / 1MB, 1)
+          $names = $killed -join ", "
+          $roundedCpu = [math]::Round($totalCpu, 1)
+          Write-Output "DONE:$names|$totalMb|$roundedCpu"
+      } else {
+          Write-Output "DONE:none|0|0"
+      }
+    `.trim();
+    const psProc = spawn('powershell.exe', ['-NoProfile', '-Command', ps]);
+    
+    let totalFreed = 0;
+    let totalCpu = 0;
+    let finalKilled = "none";
+    
+    psProc.stdout.on('data', (data) => {
+      const lines = data.toString().trim().split('\n');
+      for (const line of lines) {
+        const t = line.trim();
+        if (t.startsWith('KILL:')) {
+          const parts = t.substring(5).split('|');
+          event.sender.send('boost-progress', { 
+            name: parts[0], 
+            mb: parseFloat(parts[1] || 0),
+            cpu: parseFloat(parts[2] || 0)
+          });
+        } else if (t.startsWith('DONE:')) {
+          const parts = t.substring(5).split('|');
+          finalKilled = parts[0];
+          totalFreed = parseFloat(parts[1] || 0);
+          totalCpu = parseFloat(parts[2] || 0);
+        }
+      }
+    });
+
+    psProc.on('close', () => {
+      resolve({ success: true, killed: finalKilled, freedMB: totalFreed, freedCPU: totalCpu });
+    });
+  });
 });
+
+
 
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width } = primaryDisplay.bounds;
   const windowWidth = 600; 
-  const windowHeight = 350; 
+  const windowHeight = 450; 
   const x = Math.floor((width - windowWidth) / 2);
   const y = 0;
 
@@ -393,7 +886,6 @@ function createWindow() {
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    focusable: false, // Don't steal focus from taskbar/apps
     hasShadow: false,
     resizable: false,
     webPreferences: {
@@ -426,6 +918,13 @@ function createWindow() {
 
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
+  // Forward window blur to renderer so the notch can collapse when user clicks elsewhere
+  mainWindow.on('blur', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-blur');
+    }
+  });
+
   ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) win.setIgnoreMouseEvents(ignore, options);
@@ -437,10 +936,24 @@ function createWindow() {
   mainWindow.webContents.on('crashed', (e) => {
     logg('Renderer Crashed!');
   });
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    logg(`RENDERER CONSOLE: [level ${level}] ${message} (at ${sourceId}:${line})`);
+  });
   
   const isDev = !app.isPackaged;
   if (isDev) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    // Toggle DevTools on F12 or Ctrl+Shift+I instead of auto-opening on startup
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
+        if (mainWindow.webContents.isDevToolsOpened()) {
+          mainWindow.webContents.closeDevTools();
+        } else {
+          mainWindow.webContents.openDevTools({ mode: 'detach' });
+        }
+        event.preventDefault();
+      }
+    });
+
     const loadVite = () => {
       mainWindow.loadURL('http://localhost:5173').catch(() => {
         setTimeout(loadVite, 1000);
@@ -455,12 +968,18 @@ function createWindow() {
 // (Single-instance lock is now at the top of the file)
 
 app.whenReady().then(() => {
+  vbsPath = path.join(app.getPath('userData'), 'sendkeys.vbs');
+  try {
+    fs.writeFileSync(vbsPath, 'Set w = CreateObject("WScript.Shell")\nw.SendKeys Chr(WScript.Arguments(0))');
+  } catch(e) {
+    logg('Failed to write VBScript: ' + e.message);
+  }
+
   createWindow();
   authenticateSpotify();
   startClipboardPolling();
   startHardwarePolling();
-  startNetworkPolling();
-  startPrivacyDotMonitor();
+  startCombinedBackgroundMonitor();
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
