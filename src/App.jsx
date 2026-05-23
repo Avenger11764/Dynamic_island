@@ -65,7 +65,7 @@ const ShelfBar = React.memo(({
   onOpenMediaApp, onOpenWeather, onQuit, onShowSettings, formatSpeed, getCurrentLyric,
   pomodoro, isPomoRunning, pomoMode, isSwRunning, stopwatch, onBoost, isBoosting,
   onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
-  batteryEvent, boostAlert, boostProgress
+  batteryEvent, boostAlert, boostProgress, greeting
 }) => {
   // Parse accent color for inline styles (works with ANY hex color)
   const isRgb = config.accentColor === 'rgb';
@@ -204,10 +204,18 @@ const ShelfBar = React.memo(({
         <>
           {/* Clock + Date */}
           <div className="flex flex-col items-center relative z-10 w-full mt-2 mb-2">
-            <span className={`text-4xl font-black tracking-tight leading-none ${isRgb ? 'rgb-text' : 'text-white'}`} style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
-              {time.replace(/\s*[aApP]\.?[mM]\.?/, '')}
-            </span>
-            <span className="text-xs text-white/40 font-bold tracking-widest uppercase mt-2">{formatDate()}</span>
+            {greeting ? (
+              <span className="text-[11px] font-extrabold text-cyan-400 text-center animate-pulse px-1.5 leading-tight select-none mt-1">
+                {greeting}
+              </span>
+            ) : (
+              <>
+                <span className={`text-4xl font-black tracking-tight leading-none ${isRgb ? 'rgb-text' : 'text-white'}`} style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
+                  {time.replace(/\s*[aApP]\.?[mM]\.?/, '')}
+                </span>
+                <span className="text-xs text-white/40 font-bold tracking-widest uppercase mt-2">{formatDate()}</span>
+              </>
+            )}
           </div>
 
           <div className="w-24 h-px bg-white/10 my-2" />
@@ -339,15 +347,23 @@ const ShelfBar = React.memo(({
         <>
       {/* Left Section: Clock + Date */}
       <div className="flex items-center gap-5 min-w-[280px] relative z-10">
-        <div className="flex flex-col">
-          <motion.span 
-            className={`text-3xl font-black tracking-tight leading-none ${isRgb ? 'rgb-text' : 'text-white'}`}
-            style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}
-          >
-            {time}
-          </motion.span>
-          <span className="text-[11px] text-white/40 font-medium tracking-wider uppercase mt-0.5">{formatDate()}</span>
-        </div>
+        {greeting ? (
+          <div className="flex flex-col justify-center min-h-[40px]">
+            <span className="text-[13px] font-extrabold text-cyan-400 animate-pulse tracking-wide select-none">
+              {greeting}
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-col">
+            <motion.span 
+              className={`text-3xl font-black tracking-tight leading-none ${isRgb ? 'rgb-text' : 'text-white'}`}
+              style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}
+            >
+              {time}
+            </motion.span>
+            <span className="text-[11px] text-white/40 font-medium tracking-wider uppercase mt-0.5">{formatDate()}</span>
+          </div>
+        )}
 
         {/* Divider */}
         <div className="w-px h-10 bg-white/10" />
@@ -1401,6 +1417,7 @@ export default function App() {
                 batteryEvent={batteryEvent}
                 boostAlert={boostAlert}
                 boostProgress={boostProgress}
+                greeting={greeting}
               />
             )}
           </AnimatePresence>
