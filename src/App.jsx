@@ -592,12 +592,19 @@ export default function App() {
   const [greeting, setGreeting] = useState(null);
 
   useEffect(() => {
-    const hour = new Date().getHours();
-    let text = "Good Evening";
-    if (hour < 12) text = "Good Morning";
-    else if (hour < 17) text = "Good Afternoon";
-    setGreeting(text);
-    setTimeout(() => setGreeting(null), 4000);
+    const lastOpenedVersion = localStorage.getItem('smart-notch-version');
+    if (lastOpenedVersion !== '1.0.4') {
+      setGreeting("Updated to v1.0.4: Bar Mode is here! 🎉");
+      localStorage.setItem('smart-notch-version', '1.0.4');
+      setTimeout(() => setGreeting(null), 6000);
+    } else {
+      const hour = new Date().getHours();
+      let text = "Good Evening";
+      if (hour < 12) text = "Good Morning";
+      else if (hour < 17) text = "Good Afternoon";
+      setGreeting(text);
+      setTimeout(() => setGreeting(null), 4000);
+    }
   }, []);
 
   const [viewMode, setViewMode] = useState('media');
