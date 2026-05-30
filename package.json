@@ -1,7 +1,7 @@
 {
   "name": "smart-notch",
   "private": true,
-  "version": "6.0.0",
+  "version": "6.0.1",
   "main": "main.js",
   "author": "Avinash",
   "description": "Smart Notch – a Dynamic Island experience for Windows.",
