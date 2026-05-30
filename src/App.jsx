@@ -1,6 +1,9 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, SkipForward, SkipBack, CloudSun, Music, Link as LinkIcon, ExternalLink, X, Timer as TimerIcon, Activity, ChevronRight, RotateCcw, Battery, BatteryCharging, Calendar, Sparkles, Power, LayoutGrid, Calculator, Folder, Settings as SettingsIcon, Signal, Volume2, Sun, Download, Home, Coffee, Briefcase, File, Trash2, Plus, Minus, Monitor, MonitorOff, Cpu, HardDrive, Wifi, Clock, GripVertical, GripHorizontal, Rocket, ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Phone } from 'lucide-react';
+import WeatherIcon from './WeatherIcon';
+import AudioWaveform from './AudioWaveform';
 
 const ipcRenderer = window.electronAPI || null;
 
@@ -65,7 +68,8 @@ const ShelfBar = React.memo(({
   onOpenMediaApp, onOpenWeather, onQuit, onShowSettings, formatSpeed, getCurrentLyric,
   pomodoro, isPomoRunning, pomoMode, isSwRunning, stopwatch, onBoost, isBoosting,
   onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
-  batteryEvent, boostAlert, boostProgress, greeting
+  batteryEvent, boostAlert, boostProgress, greeting, activeCall, sysNotification, setSysNotification,
+  updateAvailable, whatsNewAvailable
 }) => {
   // Parse accent color for inline styles (works with ANY hex color)
   const isRgb = config.accentColor === 'rgb';
@@ -227,7 +231,7 @@ const ShelfBar = React.memo(({
                 className="flex items-center gap-3 cursor-pointer hover:bg-white/5 rounded-xl px-4 py-3 transition-colors w-full justify-center relative z-10"
                 onClick={onOpenWeather}
               >
-                <CloudSun size={28} className="text-yellow-300 flex-shrink-0" />
+                <WeatherIcon desc={weather.desc} size={28} className="flex-shrink-0" />
                 <div className="flex flex-col items-start overflow-hidden">
                   <span className="text-xl font-bold text-white leading-none">{weather.temp}</span>
                   <span className="text-[11px] text-white/50 capitalize truncate w-full mt-1" title={weather.desc}>{weather.desc}</span>
@@ -374,7 +378,7 @@ const ShelfBar = React.memo(({
             className="flex items-center gap-2.5 cursor-pointer hover:bg-white/5 rounded-xl px-3 py-2 transition-colors"
             onClick={onOpenWeather}
           >
-            <CloudSun size={20} className="text-yellow-300" />
+            <WeatherIcon desc={weather.desc} size={20} />
             <div className="flex flex-col">
               <span className="text-sm font-bold text-white leading-none">{weather.temp}</span>
               <span className="text-[10px] text-white/40 leading-none mt-0.5">{weather.desc}</span>
@@ -515,10 +519,15 @@ const ShelfBar = React.memo(({
         </button>
         <button 
           title="Settings" 
-          className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center transition-colors text-white/50 hover:text-white"
+          className="relative w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center transition-colors text-white/50 hover:text-white"
           onClick={onShowSettings}
         >
           <SettingsIcon size={14} />
+          {updateAvailable ? (
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444] animate-pulse" />
+          ) : whatsNewAvailable ? (
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
+          ) : null}
         </button>
         <button 
           title="Quit"
@@ -533,7 +542,7 @@ const ShelfBar = React.memo(({
 
       {/* Notification overlay */}
       <AnimatePresence>
-        {(batteryEvent || boostAlert || isBoosting) && (
+        {(batteryEvent || boostAlert || isBoosting || sysNotification) && (
           <motion.div 
             initial={{ opacity: 0, y: isSide ? -20 : -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -589,6 +598,25 @@ const ShelfBar = React.memo(({
                  </div>
               </div>
             )}
+
+            {sysNotification && (
+              <div className={`flex ${isSide ? 'flex-col text-center' : 'row'} items-center gap-4 w-full justify-center text-left`} style={{ pointerEvents: 'auto' }}>
+                 <div className="w-10 h-10 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center flex-shrink-0 font-bold text-xs uppercase tracking-wider">
+                   {sysNotification.appName ? sysNotification.appName.slice(0,2) : 'NT'}
+                 </div>
+                 <div className="flex flex-col text-left overflow-hidden flex-grow max-w-[280px]">
+                   <div className="flex items-center gap-1.5 justify-between">
+                     <span className="font-bold text-[10px] text-green-400 uppercase tracking-widest truncate max-w-[160px]">{sysNotification.appName || 'Notification'}</span>
+                     <span className="text-[9px] text-white/40 flex-shrink-0">• Just Now</span>
+                   </div>
+                   <span className="font-bold text-xs text-white/90 truncate mt-0.5">{sysNotification.title || 'Alert'}</span>
+                   <span className="text-[10px] text-white/60 line-clamp-1 leading-relaxed mt-0.5">{sysNotification.message}</span>
+                 </div>
+                 <button className="w-6 h-6 rounded-full hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors" onClick={() => setSysNotification(null)}>
+                   <X size={12} />
+                 </button>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -609,9 +637,9 @@ export default function App() {
 
   useEffect(() => {
     const lastOpenedVersion = localStorage.getItem('smart-notch-version');
-    if (lastOpenedVersion !== '1.0.4') {
-      setGreeting("Updated to v1.0.4: Bar Mode is here! 🎉");
-      localStorage.setItem('smart-notch-version', '1.0.4');
+    if (lastOpenedVersion !== '1.0.5') {
+      setGreeting("Updated to v1.0.5: Audio visualizer & productivity checklist! 🎉");
+      localStorage.setItem('smart-notch-version', '1.0.5');
       setTimeout(() => setGreeting(null), 6000);
     } else {
       const hour = new Date().getHours();
@@ -640,7 +668,8 @@ export default function App() {
     autoHide: true,
     clockFormat: '12h',
     mode: 'notch',
-    screenPosition: 'top'
+    screenPosition: 'top',
+    lockDrag: false
   };
   const [config, setConfig] = useState(() => {
     try {
@@ -822,7 +851,136 @@ export default function App() {
   const [boostProgress, setBoostProgress] = useState(null);
   const isMouseOverShelfRef = useRef(false);
 
-  const isNotification = Boolean(clipboardUrl || batteryEvent || meetingAlert || boostAlert || isBoosting);
+  const [sysNotification, setSysNotification] = useState(null);
+  const sysNotificationTimeoutRef = useRef(null);
+
+  const [pomoTasks, setPomoTasks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('smart-notch-pomo-tasks');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
+  useEffect(() => {
+    localStorage.setItem('smart-notch-pomo-tasks', JSON.stringify(pomoTasks));
+  }, [pomoTasks]);
+  const [taskInput, setTaskInput] = useState('');
+  
+  const handleAddTask = () => {
+    if (!taskInput.trim()) return;
+    const newTask = {
+      id: Date.now(),
+      text: taskInput.trim(),
+      completed: false
+    };
+    setPomoTasks([...pomoTasks, newTask]);
+    setTaskInput('');
+  };
+  
+  const handleToggleTask = (id) => {
+    setPomoTasks(pomoTasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+  };
+  
+  const handleDeleteTask = (id) => {
+    setPomoTasks(pomoTasks.filter(t => t.id !== id));
+  };
+
+  const handleInputBlur = () => {
+    setTimeout(() => {
+      const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+      if (!isInputFocused) {
+        if (configRef.current.mode === 'notch') {
+          handleDismissNotch();
+        } else if (configRef.current.mode === 'bar') {
+          handleShelfMouseLeave();
+        }
+      }
+    }, 150);
+  };
+
+  const playPomoChime = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const now = audioCtx.currentTime;
+      
+      const playTone = (time, freq) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, time);
+        gain.gain.setValueAtTime(0.25, time);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + 1.2);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(time);
+        osc.stop(time + 1.2);
+      };
+      
+      playTone(now, 587.33); // D5
+      playTone(now + 0.15, 880); // A5
+    } catch (err) {
+      console.warn("Failed to play audio chime:", err);
+    }
+  };
+
+  const CURRENT_VERSION = '6.0.0';
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  const [whatsNewAvailable, setWhatsNewAvailable] = useState(false);
+
+  useEffect(() => {
+    const compareVersions = (v1, v2) => {
+      const parts1 = v1.split('.').map(Number);
+      const parts2 = v2.split('.').map(Number);
+      for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+        const p1 = parts1[i] || 0;
+        const p2 = parts2[i] || 0;
+        if (p1 > p2) return 1;
+        if (p1 < p2) return -1;
+      }
+      return 0;
+    };
+
+    const checkUpdates = async () => {
+      try {
+        const res = await fetch('https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/package.json');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.version) {
+            setLatestVersion(data.version);
+            // Enable update available state if repository is newer, OR if simulated in localhost dev mode
+            if (compareVersions(data.version, CURRENT_VERSION) > 0 || window.location.search.includes('simulate-update')) {
+              setUpdateAvailable(true);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to check updates:", err);
+      }
+    };
+    checkUpdates();
+    const interval = setInterval(checkUpdates, 12 * 60 * 60 * 1000);
+
+    // What's New logic: show only once if local version is newer than the last seen version.
+    const lastSeen = localStorage.getItem('lastSeenVersion');
+    if (!lastSeen) {
+      localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
+      if (window.location.search.includes('simulate-whats-new')) {
+        setWhatsNewAvailable(true);
+      }
+    } else {
+      if (compareVersions(CURRENT_VERSION, lastSeen) > 0 || window.location.search.includes('simulate-whats-new')) {
+        setWhatsNewAvailable(true);
+      }
+    }
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const [activeCall, setActiveCall] = useState({ isActive: false, appName: '', title: '', handle: 0, isForeground: true });
+  const isCallNotification = activeCall?.isActive && !activeCall?.isForeground;
+
+  const isNotification = Boolean(clipboardUrl || batteryEvent || meetingAlert || boostAlert || isBoosting || sysNotification);
   const isNotificationRef = useRef(false);
   isNotificationRef.current = isNotification;
 
@@ -908,6 +1066,7 @@ export default function App() {
       interval = setInterval(() => setPomodoro(p => p - 1), 1000);
     } else if (pomodoro === 0 && isPomoRunning) {
       setIsPomoRunning(false);
+      playPomoChime();
       if (ipcRenderer) {
         ipcRenderer.send('show-notification', {
           title: pomoMode === 'work' ? 'Focus Session Complete' : 'Break Time is Over',
@@ -993,12 +1152,30 @@ export default function App() {
       ipcRenderer.on('network-stats', (stats) => {
         setNetwork(stats);
       });
+      ipcRenderer.on('active-call-status', (status) => {
+        setActiveCall(status);
+      });
+      ipcRenderer.on('system-notification', (payload) => {
+        if (sysNotificationTimeoutRef.current) {
+          clearTimeout(sysNotificationTimeoutRef.current);
+        }
+        setSysNotification(payload);
+        ipcRenderer.send('set-ignore-mouse-events', false);
+        sysNotificationTimeoutRef.current = setTimeout(() => {
+          setSysNotification(null);
+        }, 6000);
+      });
       return () => {
         ipcRenderer.removeAllListeners('spotify-state');
         ipcRenderer.removeAllListeners('clipboard-url');
         ipcRenderer.removeAllListeners('hardware-stats');
         ipcRenderer.removeAllListeners('privacy-dots');
         ipcRenderer.removeAllListeners('network-stats');
+        ipcRenderer.removeAllListeners('active-call-status');
+        ipcRenderer.removeAllListeners('system-notification');
+        if (sysNotificationTimeoutRef.current) {
+          clearTimeout(sysNotificationTimeoutRef.current);
+        }
       };
     }
   }, []);
@@ -1048,6 +1225,9 @@ export default function App() {
   const shelfTimeoutRef = useRef(null);
 
   const handleCustomDragStart = (e) => {
+    if (config.lockDrag) {
+      return;
+    }
     if (e.target.closest('button') || e.target.closest('.no-drag') || e.target.closest('[role="button"]') || e.target.closest('.cursor-pointer')) {
       return;
     }
@@ -1201,7 +1381,9 @@ export default function App() {
 
   const handleShelfMouseLeave = () => {
     isMouseOverShelfRef.current = false;
-    if (isNotificationRef.current) return; // Prevent closing if notification is active
+    if (isNotificationRef.current) return;
+    const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+    if (isInputFocused) return;
     
     if (shelfTimeoutRef.current) clearTimeout(shelfTimeoutRef.current);
     
@@ -1254,6 +1436,8 @@ export default function App() {
   };
 
   const handleMouseLeave = () => {
+    const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+    if (isInputFocused) return;
     setIsExpanded(false);
     if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
   };
@@ -1418,6 +1602,11 @@ export default function App() {
                 boostAlert={boostAlert}
                 boostProgress={boostProgress}
                 greeting={greeting}
+                activeCall={activeCall}
+                sysNotification={sysNotification}
+                setSysNotification={setSysNotification}
+                updateAvailable={updateAvailable}
+                whatsNewAvailable={whatsNewAvailable}
               />
             )}
           </AnimatePresence>
@@ -1443,7 +1632,7 @@ export default function App() {
                     pointerEvents: 'auto'
                   }}
                 >
-                  <div className={`${isSide ? 'w-[356px] h-full overflow-y-auto px-5 py-6 flex flex-col gap-8' : 'max-w-[900px] mx-auto px-6 py-5 grid grid-cols-3 gap-6'} relative`}>
+                  <div className={`${isSide ? 'w-[356px] h-full overflow-y-auto px-5 py-6 flex flex-col gap-8' : 'max-w-[1200px] mx-auto px-6 py-5 grid grid-cols-4 gap-6'} relative`}>
                     <button 
                       className={`absolute ${isSide ? 'top-4 right-4' : 'top-2 right-2'} w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/50 hover:text-white transition-colors z-50`}
                       onClick={() => {
@@ -1457,6 +1646,56 @@ export default function App() {
                     >
                       <X size={14} />
                     </button>
+
+                    {/* Update Available notification */}
+                    {updateAvailable && (
+                      <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex flex-col gap-1.5 text-left mb-4 cursor-pointer hover:bg-red-500/15 transition-colors select-none" style={{ gridColumn: isSide ? 'auto' : 'span 4' }} onClick={() => setShowReleaseNotes(!showReleaseNotes)}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444] animate-pulse" />
+                            <span className="text-xs font-bold text-red-300">Update Available! (v{latestVersion})</span>
+                          </div>
+                          <span className="text-[10px] text-white/50 underline">{showReleaseNotes ? 'Hide details' : 'View changelog'}</span>
+                        </div>
+                        {showReleaseNotes && (
+                          <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 select-none leading-relaxed">
+                            <div>• <b>Equalizer:</b> Apple-style bouncing bars with standby state.</div>
+                            <div>• <b>Notifications:</b> Intercepts toasts & expands in Notch.</div>
+                            <div>• <b>Pomodoro:</b> Session timers, synthetic chime & tasks checklist.</div>
+                            <div>• <b>Drag Lock:</b> Toggle settings to freeze repositioning.</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* What's New notification */}
+                    {whatsNewAvailable && (
+                      <div className="w-full bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3 flex flex-col gap-1.5 text-left mb-4 select-none" style={{ gridColumn: isSide ? 'auto' : 'span 4' }}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
+                            <span className="text-xs font-bold text-cyan-300">What's New in v{CURRENT_VERSION}!</span>
+                          </div>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
+                              setWhatsNewAvailable(false);
+                            }}
+                            className="text-[10px] text-white/50 hover:text-white underline cursor-pointer"
+                          >
+                            Got it
+                          </button>
+                        </div>
+                        <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 leading-relaxed">
+                          <div>• <b>Equalizer:</b> Apple-style bouncing bars with standby state.</div>
+                          <div>• <b>Notifications:</b> Intercepts toasts & expands in Notch.</div>
+                          <div>• <b>Pomodoro:</b> Session timers, synthetic chime & tasks checklist.</div>
+                          <div>• <b>Drag Lock:</b> Toggle settings to freeze repositioning.</div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Column 1: Mode + Behavior */}
                   <div className="flex flex-col gap-4">
                     <span className="text-[10px] font-bold text-white/40 tracking-[0.2em] uppercase">Behavior</span>
@@ -1466,6 +1705,12 @@ export default function App() {
                         <button className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${config.mode === 'notch' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, mode: 'notch'})}>Notch</button>
                         <button className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${config.mode === 'bar' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, mode: 'bar'})}>Bar</button>
                       </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white/70">Lock Position</span>
+                      <button className={`w-10 h-6 rounded-full p-1 transition-colors ${config.lockDrag ? 'bg-green-500' : 'bg-white/20'}`} onClick={() => setConfig({...config, lockDrag: !config.lockDrag})}>
+                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${config.lockDrag ? 'translate-x-4' : 'translate-x-0'}`} />
+                      </button>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-white/70">Show Weather</span>
@@ -1530,6 +1775,79 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Column 4: Pomodoro & Task Checklist (For Bar Mode settings) */}
+                  <div className="flex flex-col gap-4 text-left overflow-hidden h-[300px]">
+                    <span className="text-[10px] font-bold text-white/40 tracking-[0.2em] uppercase">Productivity</span>
+                    
+                    {/* Timer control row */}
+                    <div className="flex items-center justify-between bg-white/5 p-2 rounded-xl border border-white/5">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-white/50">{pomoMode === 'work' ? 'Work Session' : 'Break Session'}</span>
+                        <span className="text-base font-mono font-black text-white mt-0.5">
+                          {String(Math.floor(pomodoro / 60)).padStart(2, '0')}:{String(pomodoro % 60).padStart(2, '0')}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button className="w-6 h-6 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors text-white/70" onClick={resetPomo}>
+                          <RotateCcw size={10} />
+                        </button>
+                        <button className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors text-white shadow ${pomoMode === 'work' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`} onClick={togglePomo}>
+                          {isPomoRunning ? <Pause size={12} /> : <Play size={12} className="translate-x-[0.5px]" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Task Checklist */}
+                    <div className="flex flex-col gap-2 overflow-hidden flex-grow">
+                      <span className="text-[9px] font-mono tracking-widest text-white/40 uppercase font-bold pl-1">Tasks</span>
+                      
+                      <div className="flex-grow overflow-y-auto custom-scrollbar flex flex-col gap-1.5 max-h-[140px] pr-1">
+                        <AnimatePresence initial={false}>
+                          {pomoTasks.map(task => (
+                            <motion.div 
+                              key={task.id} 
+                              className="flex items-center justify-between bg-white/5 p-1.5 rounded-lg border border-white/5 hover:bg-white/10 transition-colors"
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.95 }}
+                            >
+                              <div className="flex items-center gap-2 overflow-hidden flex-grow cursor-pointer" onClick={() => handleToggleTask(task.id)}>
+                                <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${task.completed ? 'bg-green-500 border-green-500 text-white' : 'border-white/30 bg-transparent'}`}>
+                                  {task.completed && <span className="text-[8px] font-black">✓</span>}
+                                </div>
+                                <span className={`text-[10px] truncate leading-none ${task.completed ? 'line-through text-white/30' : 'text-white/80'}`}>{task.text}</span>
+                              </div>
+                              <button className="text-white/30 hover:text-red-400 p-0.5 transition-colors flex-shrink-0" onClick={() => handleDeleteTask(task.id)}>
+                                <Trash2 size={10} />
+                              </button>
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                        {pomoTasks.length === 0 && (
+                          <div className="flex flex-col items-center justify-center h-full text-white/20 py-4">
+                            <span className="text-[10px] font-bold">No tasks</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Add Task input */}
+                      <div className="flex items-center gap-1.5 mt-auto pt-1 bg-inherit">
+                        <input 
+                          type="text" 
+                          value={taskInput}
+                          onChange={e => setTaskInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleAddTask(); }}
+                          onBlur={handleInputBlur}
+                          placeholder="Add task..."
+                          className="flex-grow bg-white/5 border border-white/5 rounded-lg px-2 py-1 text-[10px] text-white placeholder-white/20 focus:outline-none focus:border-white/20 transition-colors"
+                        />
+                        <button className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors" onClick={handleAddTask}>
+                          <Plus size={10} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 </motion.div>
               );
@@ -1576,7 +1894,7 @@ export default function App() {
             ? 64
             : (isNotification 
                ? 80 
-               : (isExpanded ? (isSideNotch && viewMode !== 'settings' ? 400 : (viewMode === 'settings' ? 320 : (viewMode === 'network' ? 260 : (viewMode === 'stats' ? 240 : (viewMode === 'pomodoro' ? 220 : (['volume', 'brightness'].includes(viewMode) ? 140 : 220)))))) : (isSideNotch ? (greeting ? 260 : (privacy.cam && privacy.mic ? 220 : (privacy.cam || privacy.mic ? 200 : 180))) : (isDeepIdle ? 26 : 36)))),
+               : (isExpanded ? (isSideNotch && viewMode !== 'settings' ? 400 : (viewMode === 'settings' ? 320 : (viewMode === 'network' ? 260 : (viewMode === 'stats' ? 240 : (viewMode === 'pomodoro' ? 360 : (['volume', 'brightness'].includes(viewMode) ? 140 : 220)))))) : (isSideNotch ? (greeting ? 260 : (privacy.cam && privacy.mic ? 220 : (privacy.cam || privacy.mic ? 200 : 180))) : (isDeepIdle ? 26 : 36)))),
           opacity: 1,
           borderBottomLeftRadius: config.screenPosition === 'left' ? 0 : (isDragging ? 16 : ((isExpanded || isNotification) ? getRadius('expanded') : getRadius('collapsed'))),
           borderBottomRightRadius: config.screenPosition === 'right' ? 0 : (isDragging ? 16 : ((isExpanded || isNotification) ? getRadius('expanded') : getRadius('collapsed'))),
@@ -1873,21 +2191,34 @@ export default function App() {
                  )}
               </AnimatePresence>
               
-              <div className={`flex items-center ${isSideNotch ? 'flex-col gap-3 w-full mb-1' : 'justify-end gap-1.5 w-[20px]'}`}>
-                 {spotifyState?.is_playing ? (
-                    <div className={`flex items-end justify-center ${isSideNotch ? 'gap-[2px] h-[14px]' : 'gap-[2px] h-[10px] mt-[-3px]'}`}>
-                       <motion.div animate={{ height: [4, 10, 4] }} transition={{ repeat: Infinity, duration: 0.5, ease: "easeInOut" }} className={`w-[2px] rounded-t-sm ${isSpotify ? 'bg-green-500' : 'bg-blue-400'}`} />
-                       <motion.div animate={{ height: [8, 4, 12, 8] }} transition={{ repeat: Infinity, duration: 0.6, ease: "easeInOut" }} className={`w-[2px] rounded-t-sm ${isSpotify ? 'bg-green-500' : 'bg-blue-400'}`} />
-                       <motion.div animate={{ height: [5, 12, 5] }} transition={{ repeat: Infinity, duration: 0.4, ease: "easeInOut" }} className={`w-[2px] rounded-t-sm ${isSpotify ? 'bg-green-500' : 'bg-blue-400'}`} />
+              <div className={`flex items-center ${isSideNotch ? 'flex-col gap-3 w-full mb-1' : 'justify-end gap-1.5'}`}>
+                 {spotifyState?.item ? (
+                    <div className={isSideNotch ? 'h-[14px] mt-[-2px] overflow-hidden' : 'h-[10px] mt-[-3px] overflow-hidden'}>
+                       <AudioWaveform 
+                         isPlaying={spotifyState?.is_playing} 
+                         color={isSpotify ? '#22c55e' : '#60a5fa'} 
+                         width={isSideNotch ? 12 : 24} 
+                         height={isSideNotch ? 14 : 10} 
+                       />
                     </div>
                  ) : (
                     <div className={isSideNotch ? 'h-[14px]' : 'w-[10px]'} />
                  )}
-                 {(privacy.mic || privacy.cam) && (
-                   <div className={`flex ${isSideNotch ? 'flex-col gap-1.5' : 'gap-1 mt-[-3px]'}`}>
-                     {privacy.mic && <div className={`w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
-                     {privacy.cam && <div className={`w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
-                   </div>
+                 {(privacy.mic || privacy.cam || activeCall?.isActive) && (
+                    <div className={`flex items-center ${isSideNotch ? 'flex-col gap-1.5' : 'gap-1.5 mt-[-3px]'}`}>
+                      {activeCall?.isActive && (
+                        <motion.div
+                          animate={{ scale: [1, 1.25, 1], opacity: [0.75, 1, 0.75] }}
+                          transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                          className="text-green-400 drop-shadow-[0_0_5px_#22c55e]"
+                          title={activeCall.title || `${activeCall.appName} Call`}
+                        >
+                          <Phone size={9} fill="currentColor" />
+                        </motion.div>
+                      )}
+                      {privacy.mic && <div className={`w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
+                      {privacy.cam && <div className={`w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,1)] ring-1 ${idleTextColor === 'black' ? 'ring-black/50' : 'ring-white/40'}`} />}
+                    </div>
                  )}
               </div>
             </motion.div>
@@ -1992,6 +2323,25 @@ export default function App() {
                       <span className="text-sm text-cyan-300">Freed {boostAlert.freedMB} MB RAM & {boostAlert.freedCPU}% CPU</span>
                    </div>
                 </motion.div>
+              ) : sysNotification ? (
+                <motion.div key="sys-notification" className="w-full h-full p-3 flex flex-col justify-center gap-1.5 z-10" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
+                   <div className="flex items-center gap-2.5">
+                     <div className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center flex-shrink-0 font-bold text-xs uppercase tracking-wider">
+                       {sysNotification.appName ? sysNotification.appName.slice(0,2) : 'NT'}
+                     </div>
+                     <div className="flex flex-col overflow-hidden text-left flex-grow">
+                       <div className="flex items-center gap-1.5 justify-between">
+                         <span className="font-bold text-[10px] text-green-400 uppercase tracking-widest truncate max-w-[180px]">{sysNotification.appName || 'Notification'}</span>
+                         <span className="text-[9px] text-white/40 flex-shrink-0">• Just Now</span>
+                       </div>
+                       <span className="font-bold text-xs text-white/90 truncate mt-0.5">{sysNotification.title || 'Alert'}</span>
+                     </div>
+                     <button className="w-6 h-6 rounded-full hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors" onClick={() => setSysNotification(null)}>
+                       <X size={12} />
+                     </button>
+                   </div>
+                   <span className="text-[10px] text-white/60 line-clamp-2 pl-[38px] leading-relaxed text-left">{sysNotification.message}</span>
+                </motion.div>
               ) : (
                 <>
                   <div className="w-full p-2 flex flex-col justify-start z-20" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -2006,7 +2356,7 @@ export default function App() {
                               title="Weather"
                               onClick={(e) => { e.stopPropagation(); if (ipcRenderer) ipcRenderer.send('open-weather'); }}
                             >
-                              <CloudSun size={14} className="text-yellow-300" />
+                              <WeatherIcon desc={weather.desc} size={14} />
                               <span className="text-xs font-semibold">{weather.temp}</span>
                             </div>
                           ) : <div />}
@@ -2029,8 +2379,13 @@ export default function App() {
 
                         {/* Middle row: Mode switcher buttons */}
                         <div className="flex items-center justify-center gap-1.5 w-full bg-white/5 py-1 px-2 rounded-xl border border-white/5" style={{ pointerEvents: 'auto', WebkitAppRegion: 'no-drag' }}>
-                          <button title="Settings" className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'settings' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} onClick={(e) => { e.stopPropagation(); setViewMode('settings'); }}>
+                          <button title="Settings" className={`relative w-7 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'settings' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} onClick={(e) => { e.stopPropagation(); setViewMode('settings'); }}>
                             <SettingsIcon size={13} />
+                            {updateAvailable ? (
+                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444] animate-pulse" />
+                            ) : whatsNewAvailable ? (
+                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
+                            ) : null}
                           </button>
                           {config.showPomodoro !== false && (
                             <button title="Pomodoro Timer" className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'pomodoro' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} onClick={(e) => { e.stopPropagation(); setViewMode('pomodoro'); }}>
@@ -2076,15 +2431,20 @@ export default function App() {
                               title="Weather"
                               onClick={(e) => { e.stopPropagation(); if (ipcRenderer) ipcRenderer.send('open-weather'); }}
                             >
-                              <CloudSun size={16} className="text-yellow-300" />
+                              <WeatherIcon desc={weather.desc} size={16} />
                               <span className="text-sm font-medium">{weather.temp}</span>
                             </div>
                           )}
                         </div>
 
                         <div className="flex items-center gap-2" style={{ pointerEvents: 'auto', WebkitAppRegion: 'no-drag' }}>
-                          <button title="Settings" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'settings' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={(e) => { e.stopPropagation(); setViewMode('settings'); }}>
+                          <button title="Settings" className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'settings' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={(e) => { e.stopPropagation(); setViewMode('settings'); }}>
                             <SettingsIcon size={14} />
+                            {updateAvailable ? (
+                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444] animate-pulse" />
+                            ) : whatsNewAvailable ? (
+                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
+                            ) : null}
                           </button>
                           {config.showPomodoro !== false && (
                             <button title="Pomodoro Timer" className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'pomodoro' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={(e) => { e.stopPropagation(); setViewMode('pomodoro'); }}>
@@ -2170,7 +2530,7 @@ export default function App() {
                     )}
                   </AnimatePresence>
 
-                  <div className={`flex items-center mt-auto rounded-2xl relative ${viewMode === 'settings' ? 'overflow-hidden' : 'overflow-visible'} transition-all duration-300 ${getPanelBorderStyle()} ${isSideNotch && viewMode !== 'settings' ? 'flex-col justify-start' : 'justify-between'} ${viewMode === 'settings' ? 'p-4 h-full items-start flex-col overflow-y-auto custom-scrollbar pr-1' : (viewMode === 'network' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[125px]' : 'p-3 h-[160px]') : (viewMode === 'stats' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[180px]' : 'p-4 h-[120px]') : (viewMode === 'pomodoro' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[160px]' : 'p-4 h-[100px]') : (viewMode === 'media' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[210px]' : 'p-3 h-[76px]') : (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[145px]' : 'p-3 h-[76px]')))))}`} style={{ pointerEvents: 'auto', ...getPanelBorderStyleInline() }}>
+                  <div className={`flex items-center mt-auto rounded-2xl relative ${viewMode === 'settings' ? 'overflow-hidden' : 'overflow-visible'} transition-all duration-300 ${getPanelBorderStyle()} ${isSideNotch && viewMode !== 'settings' ? 'flex-col justify-start' : 'justify-between'} ${viewMode === 'settings' ? 'p-4 h-full items-start flex-col overflow-y-auto custom-scrollbar pr-1' : (viewMode === 'network' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[125px]' : 'p-3 h-[160px]') : (viewMode === 'stats' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[180px]' : 'p-4 h-[120px]') : (viewMode === 'pomodoro' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[290px]' : 'p-4 h-[290px]') : (viewMode === 'media' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[210px]' : 'p-3 h-[76px]') : (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[145px]' : 'p-3 h-[76px]')))))}`} style={{ pointerEvents: 'auto', ...getPanelBorderStyleInline() }}>
                     <AnimatePresence mode="wait">
                       {viewMode === 'media' && (
                         <motion.div key="media" className={`w-full flex ${isSideNotch && viewMode !== 'settings' ? 'flex-col gap-2.5 justify-center text-center items-center' : 'items-center justify-between'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -2228,7 +2588,7 @@ export default function App() {
                                     {spotifyState?.item?.name || 'Not Playing'}
                                   </span>
                                   <span className="text-[10px] text-white/50 truncate">
-                                    {spotifyState?.item?.artists?.[0]?.name || 'Spotify offline'}
+                                    {spotifyState?.item?.artists?.map(a => a.name).join(', ') || 'Spotify offline'}
                                   </span>
                                 </div>
                               </div>
@@ -2340,34 +2700,123 @@ export default function App() {
                       )}
 
                       {viewMode === 'pomodoro' && (
-                        <motion.div key="pomodoro" className="w-full flex flex-col justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                          <div className={`flex items-center justify-between mb-3 ${isSideNotch && viewMode !== 'settings' ? 'px-0' : 'px-2'}`}>
-                             <div className="flex bg-white/10 rounded-full p-1">
-                               <button className={`px-2 py-1 text-[10px] md:px-3 md:py-1 md:text-xs font-bold rounded-full transition-colors ${pomoMode === 'work' ? 'bg-red-500 text-white' : 'text-white/50'}`} onClick={() => switchPomoMode('work')}>Work</button>
-                               <button className={`px-2 py-1 text-[10px] md:px-3 md:py-1 md:text-xs font-bold rounded-full transition-colors ${pomoMode === 'break' ? 'bg-green-500 text-white' : 'text-white/50'}`} onClick={() => switchPomoMode('break')}>Break</button>
-                             </div>
-                             <span className="text-[9px] md:text-[10px] text-white/50 uppercase tracking-widest ml-1">{pomoMode}</span>
-                          </div>
-                          <div className={`flex ${isSideNotch && viewMode !== 'settings' ? 'flex-col gap-3' : 'items-center justify-between'} ${isSideNotch && viewMode !== 'settings' ? 'px-0' : 'px-2'}`}>
-                             <div className="flex items-center gap-1 justify-center w-full">
-                                <button className="w-7 h-7 rounded-full hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors disabled:opacity-10 disabled:hover:bg-transparent" onClick={() => adjustPomoTime(-60)} disabled={isPomoRunning}>
-                                  <Minus size={16} />
+                        <motion.div key="pomodoro" className="w-full flex flex-col justify-start h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <div className="w-full flex gap-4 h-full items-start justify-between">
+                            {/* Left Side: Pomodoro Timer & Customization */}
+                            <div className="flex flex-col flex-[1.1] gap-2.5 text-left">
+                              <div className="flex items-center justify-between">
+                                <div className="flex bg-white/10 rounded-full p-0.5">
+                                  <button className={`px-2 py-0.5 text-[10px] font-bold rounded-full transition-colors ${pomoMode === 'work' ? 'bg-red-500 text-white' : 'text-white/50'}`} onClick={() => switchPomoMode('work')}>Work</button>
+                                  <button className={`px-2 py-0.5 text-[10px] font-bold rounded-full transition-colors ${pomoMode === 'break' ? 'bg-green-500 text-white' : 'text-white/50'}`} onClick={() => switchPomoMode('break')}>Break</button>
+                                </div>
+                                <span className="text-[9px] text-white/40 uppercase tracking-wider font-mono">Sessions</span>
+                              </div>
+
+                              <div className="flex flex-col gap-1.5 bg-white/5 p-2 rounded-xl border border-white/5">
+                                <div className="flex items-center justify-between text-[10px] font-bold text-white/50">
+                                  <span>Work Duration</span>
+                                  <span>{Math.round(pomoWorkTime / 60)}m</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-1 w-full mt-0.5">
+                                  <button className="w-5 h-5 rounded bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-colors disabled:opacity-20" onClick={() => { setPomoWorkTime(t => Math.max(300, t - 300)); if (pomoMode === 'work' && !isPomoRunning) setPomodoro(t => Math.max(300, t - 300)); }} disabled={isPomoRunning}>
+                                    <Minus size={10} />
+                                  </button>
+                                  <div className="h-1 bg-white/10 rounded-full flex-grow mx-1.5 overflow-hidden">
+                                    <div className="h-full bg-red-400" style={{ width: `${Math.min(100, (pomoWorkTime / 3600) * 100)}%` }} />
+                                  </div>
+                                  <button className="w-5 h-5 rounded bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-colors disabled:opacity-20" onClick={() => { setPomoWorkTime(t => Math.min(7200, t + 300)); if (pomoMode === 'work' && !isPomoRunning) setPomodoro(t => Math.min(7200, t + 300)); }} disabled={isPomoRunning}>
+                                    <Plus size={10} />
+                                  </button>
+                                </div>
+
+                                <div className="flex items-center justify-between text-[10px] font-bold text-white/50 mt-1">
+                                  <span>Break Duration</span>
+                                  <span>{Math.round(pomoBreakTime / 60)}m</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-1 w-full mt-0.5">
+                                  <button className="w-5 h-5 rounded bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-colors disabled:opacity-20" onClick={() => { setPomoBreakTime(t => Math.max(60, t - 300)); if (pomoMode === 'break' && !isPomoRunning) setPomodoro(t => Math.max(60, t - 300)); }} disabled={isPomoRunning}>
+                                    <Minus size={10} />
+                                  </button>
+                                  <div className="h-1 bg-white/10 rounded-full flex-grow mx-1.5 overflow-hidden">
+                                    <div className="h-full bg-green-400" style={{ width: `${Math.min(100, (pomoBreakTime / 1800) * 100)}%` }} />
+                                  </div>
+                                  <button className="w-5 h-5 rounded bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-colors disabled:opacity-20" onClick={() => { setPomoBreakTime(t => Math.min(3600, t + 300)); if (pomoMode === 'break' && !isPomoRunning) setPomodoro(t => Math.min(3600, t + 300)); }} disabled={isPomoRunning}>
+                                    <Plus size={10} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between w-full mt-1 bg-white/5 p-1.5 rounded-xl border border-white/5">
+                                <div className="flex flex-col text-left pl-1">
+                                  <span className="text-[11px] font-bold text-white/50 leading-tight">Session Time</span>
+                                  <span className="text-[20px] font-mono font-black tracking-wide text-white leading-none mt-1">
+                                    {String(Math.floor(pomodoro / 60)).padStart(2, '0')}:{String(pomodoro % 60).padStart(2, '0')}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors text-white/70" onClick={resetPomo} title="Reset Timer">
+                                    <RotateCcw size={12} />
+                                  </button>
+                                  <button className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors text-white shadow ${pomoMode === 'work' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`} onClick={togglePomo}>
+                                    {isPomoRunning ? <Pause size={14} /> : <Play size={14} className="translate-x-[0.5px]" />}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Divider Line */}
+                            <div className="w-px self-stretch bg-white/10 flex-shrink-0" />
+
+                            {/* Right Side: Mini Task Checklist */}
+                            <div className="flex flex-col flex-[0.9] h-full gap-2 text-left overflow-hidden">
+                              <span className="text-[9px] font-mono tracking-widest text-white/40 uppercase font-bold pl-1">Checklist</span>
+                              
+                              {/* Task List Container */}
+                              <div className="flex-grow overflow-y-auto custom-scrollbar flex flex-col gap-1.5 max-h-[190px] pr-1 select-none">
+                                <AnimatePresence initial={false}>
+                                  {pomoTasks.map(task => (
+                                    <motion.div 
+                                      key={task.id} 
+                                      className="flex items-center justify-between bg-white/5 p-1.5 rounded-lg border border-white/5 hover:bg-white/10 transition-colors"
+                                      initial={{ opacity: 0, y: 5 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, scale: 0.95 }}
+                                    >
+                                      <div className="flex items-center gap-2 overflow-hidden flex-grow cursor-pointer" onClick={() => handleToggleTask(task.id)}>
+                                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${task.completed ? 'bg-green-500 border-green-500 text-white' : 'border-white/30 bg-transparent'}`}>
+                                          {task.completed && <span className="text-[8px] font-black">✓</span>}
+                                        </div>
+                                        <span className={`text-[10px] truncate leading-none ${task.completed ? 'line-through text-white/30' : 'text-white/80'}`}>{task.text}</span>
+                                      </div>
+                                      <button className="text-white/30 hover:text-red-400 p-0.5 transition-colors flex-shrink-0" onClick={() => handleDeleteTask(task.id)}>
+                                        <Trash2 size={10} />
+                                      </button>
+                                    </motion.div>
+                                  ))}
+                                </AnimatePresence>
+                                {pomoTasks.length === 0 && (
+                                  <div className="flex flex-col items-center justify-center h-full text-white/20 py-8">
+                                    <span className="text-[10px] font-bold">No tasks yet</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Input box */}
+                              <div className="flex items-center gap-1.5 mt-auto pt-1 bg-inherit">
+                                <input 
+                                  type="text" 
+                                  value={taskInput}
+                                  onChange={e => setTaskInput(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') handleAddTask(); }}
+                                  onBlur={handleInputBlur}
+                                  placeholder="New task..."
+                                  className="flex-grow bg-white/5 border border-white/5 rounded-lg px-2.5 py-1 text-[10px] text-white placeholder-white/20 focus:outline-none focus:border-white/20 transition-colors"
+                                />
+                                <button className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors" onClick={handleAddTask}>
+                                  <Plus size={12} />
                                 </button>
-                                <span className={`${isSideNotch && viewMode !== 'settings' ? 'text-2xl w-16' : 'text-3xl w-20'} font-mono font-black tracking-wider text-white text-center`}>
-                                   {String(Math.floor(pomodoro / 60)).padStart(2, '0')}:{String(pomodoro % 60).padStart(2, '0')}
-                                </span>
-                                <button className="w-7 h-7 rounded-full hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors disabled:opacity-10 disabled:hover:bg-transparent" onClick={() => adjustPomoTime(60)} disabled={isPomoRunning}>
-                                  <Plus size={16} />
-                                </button>
-                             </div>
-                             <div className="flex items-center justify-center gap-2 w-full">
-                                <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={resetPomo}>
-                                   <RotateCcw size={16} />
-                                </button>
-                                <button className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors shadow-sm ${pomoMode === 'work' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`} onClick={togglePomo}>
-                                   {isPomoRunning ? <Pause size={18} /> : <Play size={18} className="translate-x-[1px]" />}
-                                </button>
-                             </div>
+                              </div>
+                            </div>
                           </div>
                         </motion.div>
                       )}
@@ -2384,6 +2833,55 @@ export default function App() {
 
                       {viewMode === 'settings' && (
                         <motion.div key="settings" className="w-full flex flex-col gap-4 pb-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                           {/* Update Available notification */}
+                           {updateAvailable && (
+                             <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex flex-col gap-1.5 text-left mb-1 cursor-pointer hover:bg-red-500/15 transition-colors select-none" onClick={() => setShowReleaseNotes(!showReleaseNotes)}>
+                               <div className="flex items-center justify-between">
+                                 <div className="flex items-center gap-1.5">
+                                   <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444] animate-pulse" />
+                                   <span className="text-xs font-bold text-red-300">Update Available! (v{latestVersion})</span>
+                                 </div>
+                                 <span className="text-[10px] text-white/50 underline">{showReleaseNotes ? 'Hide details' : 'View changelog'}</span>
+                               </div>
+                               {showReleaseNotes && (
+                                 <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 select-none leading-relaxed">
+                                   <div>• <b>Equalizer:</b> Apple-style bouncing bars with standby state.</div>
+                                   <div>• <b>Notifications:</b> Intercepts toasts & expands in Notch.</div>
+                                   <div>• <b>Pomodoro:</b> Session timers, synthetic chime & tasks checklist.</div>
+                                   <div>• <b>Drag Lock:</b> Toggle settings to freeze repositioning.</div>
+                                 </div>
+                               )}
+                             </div>
+                           )}
+
+                           {/* What's New notification */}
+                           {whatsNewAvailable && (
+                             <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3 flex flex-col gap-1.5 text-left mb-1 select-none">
+                               <div className="flex items-center justify-between">
+                                 <div className="flex items-center gap-1.5">
+                                   <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
+                                   <span className="text-xs font-bold text-cyan-300">What's New in v{CURRENT_VERSION}!</span>
+                                 </div>
+                                 <button 
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
+                                     setWhatsNewAvailable(false);
+                                   }}
+                                   className="text-[10px] text-white/50 hover:text-white underline cursor-pointer"
+                                 >
+                                   Got it
+                                 </button>
+                               </div>
+                               <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 leading-relaxed">
+                                 <div>• <b>Equalizer:</b> Apple-style bouncing bars with standby state.</div>
+                                 <div>• <b>Notifications:</b> Intercepts toasts & expands in Notch.</div>
+                                 <div>• <b>Pomodoro:</b> Session timers, synthetic chime & tasks checklist.</div>
+                                 <div>• <b>Drag Lock:</b> Toggle settings to freeze repositioning.</div>
+                               </div>
+                             </div>
+                           )}
+
                            <div className="flex items-center justify-between">
                               <span className="text-[10px] font-bold text-white/50 tracking-[0.2em] uppercase sticky top-0 bg-inherit z-10">Island Customization</span>
                            </div>
@@ -2395,6 +2893,14 @@ export default function App() {
                                <button className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${config.mode === 'notch' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, mode: 'notch'})}>Notch</button>
                                <button className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${config.mode === 'bar' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, mode: 'bar'})}>Bar</button>
                              </div>
+                           </div>
+
+                           {/* Lock Position */}
+                           <div className="flex items-center justify-between">
+                             <span className="text-xs font-semibold text-white/70">Lock Position</span>
+                             <button className={`w-10 h-6 rounded-full p-1 transition-colors ${config.lockDrag ? 'bg-green-500' : 'bg-white/20'}`} onClick={() => setConfig({...config, lockDrag: !config.lockDrag})}>
+                               <div className={`w-4 h-4 rounded-full bg-white transition-transform ${config.lockDrag ? 'translate-x-4' : 'translate-x-0'}`} />
+                             </button>
                            </div>
 
                            {/* BG Animation */}

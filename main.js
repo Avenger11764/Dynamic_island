@@ -196,6 +196,127 @@ function startCombinedBackgroundMonitor() {
   const psScript = `
     $ErrorActionPreference = 'SilentlyContinue'
     
+    # Load native Windows winsqlite3.dll via dynamically compiled C# type
+    $csharpCode = @"
+    using System;
+    using System.Runtime.InteropServices;
+    using System.Text;
+    
+    public class WinSQLite {
+        [DllImport("winsqlite3.dll", EntryPoint = "sqlite3_open", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int sqlite3_open(string filename, out IntPtr db);
+    
+        [DllImport("winsqlite3.dll", EntryPoint = "sqlite3_close", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int sqlite3_close(IntPtr db);
+    
+        [DllImport("winsqlite3.dll", EntryPoint = "sqlite3_prepare_v2", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int sqlite3_prepare_v2(IntPtr db, string zSql, int nByte, out IntPtr ppStmt, out IntPtr pzTail);
+    
+        [DllImport("winsqlite3.dll", EntryPoint = "sqlite3_step", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int sqlite3_step(IntPtr pStmt);
+    
+        [DllImport("winsqlite3.dll", EntryPoint = "sqlite3_finalize", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int sqlite3_finalize(IntPtr pStmt);
+    
+        [DllImport("winsqlite3.dll", EntryPoint = "sqlite3_column_text", CallingConvention = CallingConvention.Cdecl)]
+        private static extern IntPtr sqlite3_column_text_internal(IntPtr pStmt, int iCol);
+    
+        public static string sqlite3_column_text(IntPtr pStmt, int iCol) {
+            IntPtr ptr = sqlite3_column_text_internal(pStmt, iCol);
+            if (ptr == IntPtr.Zero) return "";
+            int len = 0;
+            while (Marshal.ReadByte(ptr, len) != 0) {
+                len++;
+            }
+            byte[] buffer = new byte[len];
+            Marshal.Copy(ptr, buffer, 0, len);
+            return Encoding.UTF8.GetString(buffer);
+        }
+    }
+"@
+    Add-Type -TypeDefinition $csharpCode -ErrorAction SilentlyContinue
+
+    $dbPath = "$env:LOCALAPPDATA\Microsoft\Windows\Notifications\wpndatabase.db"
+    $tempDb = "$env:TEMP\wpndatabase_temp.db"
+    $lastOrder = 0
+
+    # Initialize lastOrder to current max order to avoid showing historical notification spam on startup
+    if (Test-Path $dbPath) {
+        Copy-Item $dbPath $tempDb -Force
+        $db = [IntPtr]::Zero
+        $res = [WinSQLite]::sqlite3_open($tempDb, [ref]$db)
+        if ($res -eq 0) {
+            $stmt = [IntPtr]::Zero
+            $pzTail = [IntPtr]::Zero
+            $sql = "SELECT MAX([Order]) FROM Notification"
+            $res = [WinSQLite]::sqlite3_prepare_v2($db, $sql, -1, [ref]$stmt, [ref]$pzTail)
+            if ($res -eq 0) {
+                if ([WinSQLite]::sqlite3_step($stmt) -eq 100) {
+                    $val = [WinSQLite]::sqlite3_column_text($stmt, 0)
+                    if ($val -ne "") {
+                        $lastOrder = [int]$val
+                    }
+                }
+                [WinSQLite]::sqlite3_finalize($stmt)
+            }
+            [WinSQLite]::sqlite3_close($db)
+        }
+    }
+
+    function GetNewNotifications {
+        $dbPath = "$env:LOCALAPPDATA\Microsoft\Windows\Notifications\wpndatabase.db"
+        $tempDb = "$env:TEMP\wpndatabase_temp.db"
+        if (-not (Test-Path $dbPath)) { return }
+        
+        Copy-Item $dbPath $tempDb -Force
+        $db = [IntPtr]::Zero
+        $res = [WinSQLite]::sqlite3_open($tempDb, [ref]$db)
+        if ($res -eq 0) {
+            $stmt = [IntPtr]::Zero
+            $pzTail = [IntPtr]::Zero
+            # Query new toast notifications
+            $sql = "SELECT N.[Order], H.PrimaryId, N.Payload FROM Notification N JOIN NotificationHandler H ON N.HandlerId = H.RecordId WHERE N.Type = 'toast' AND N.[Order] > $lastOrder ORDER BY N.[Order] ASC"
+            $res = [WinSQLite]::sqlite3_prepare_v2($db, $sql, -1, [ref]$stmt, [ref]$pzTail)
+            if ($res -eq 0) {
+                while ([WinSQLite]::sqlite3_step($stmt) -eq 100) {
+                    $orderStr = [WinSQLite]::sqlite3_column_text($stmt, 0)
+                    $order = [int]$orderStr
+                    $appId = [WinSQLite]::sqlite3_column_text($stmt, 1)
+                    $payload = [WinSQLite]::sqlite3_column_text($stmt, 2)
+                    
+                    if ($order -gt $global:lastOrder) {
+                        $global:lastOrder = $order
+                    }
+                    
+                    # Parse XML to extract title and body texts
+                    $title = ""
+                    $msg = ""
+                    try {
+                        [xml]$xml = $payload
+                        $texts = $xml.SelectNodes("//text")
+                        if ($null -ne $texts) {
+                            if ($texts.Count -ge 1) { $title = $texts[0].InnerText }
+                            if ($texts.Count -ge 2) { $msg = $texts[1].InnerText }
+                        }
+                    } catch {}
+                    
+                    # Clean AppId to a friendly display name
+                    $cleanApp = $appId -replace '_[a-zA-Z0-9]+(![a-zA-Z0-9]+)?$', ''
+                    $cleanApp = $cleanApp -replace '\.', ' '
+                    $cleanApp = $cleanApp.Trim()
+                    
+                    # Escape pipes and newlines
+                    $cleanTitle = $title -replace '\|', ' ' -replace '\r?\n', ' '
+                    $cleanMsg = $msg -replace '\|', ' ' -replace '\r?\n', ' '
+                    
+                    Write-Output "NOTIFICATION|$order|$cleanApp|$cleanTitle|$cleanMsg"
+                }
+                [WinSQLite]::sqlite3_finalize($stmt)
+            }
+            [WinSQLite]::sqlite3_close($db)
+        }
+    }
+    
     function CheckPrivacy ($type) {
       $path = "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\$type"
       $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($path)
@@ -229,6 +350,106 @@ function startCombinedBackgroundMonitor() {
       $key.Close()
       return $false
     }
+
+    function GetActiveCall {
+      $appName = $null
+      $winTitle = ""
+      $winHandle = 0
+      
+      $micPath = "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone"
+      $webPath = "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\webcam"
+      
+      $activeApps = @()
+      
+      foreach ($p in @($micPath, $webPath)) {
+        $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($p)
+        if ($null -ne $key) {
+          foreach ($s in $key.GetSubKeyNames()) {
+            if ($s -ne "NonPackaged") {
+              $sub = $key.OpenSubKey($s)
+              if ($null -ne $sub) {
+                $stop = $sub.GetValue("LastUsedTimeStop")
+                if ($null -ne $stop -and $stop -eq 0) {
+                  $activeApps += $s
+                }
+                $sub.Close()
+              }
+            }
+          }
+          $np = $key.OpenSubKey("NonPackaged")
+          if ($null -ne $np) {
+            foreach ($s in $np.GetSubKeyNames()) {
+              $sub = $np.OpenSubKey($s)
+              if ($null -ne $sub) {
+                $stop = $sub.GetValue("LastUsedTimeStop")
+                if ($null -ne $stop -and $stop -eq 0) {
+                  $activeApps += $s
+                }
+                $sub.Close()
+              }
+            }
+            $np.Close()
+          }
+          $key.Close()
+        }
+      }
+      
+      $activeApps = $activeApps | Select-Object -Unique
+      
+      if ($activeApps.Count -gt 0) {
+        foreach ($app in $activeApps) {
+          $shortName = ""
+          if ($app -like "*chrome*") { $shortName = "chrome" }
+          elseif ($app -like "*msedge*") { $shortName = "msedge" }
+          elseif ($app -like "*brave*") { $shortName = "brave" }
+          elseif ($app -like "*firefox*") { $shortName = "firefox" }
+          elseif ($app -like "*Zoom*") { $shortName = "Zoom" }
+          elseif ($app -like "*WhatsApp*") { $shortName = "WhatsApp" }
+          elseif ($app -like "*Telegram*") { $shortName = "Telegram" }
+          elseif ($app -like "*Discord*") { $shortName = "Discord" }
+          elseif ($app -like "*Teams*" -or $app -like "*MSTeams*") { $shortName = "Teams" }
+          elseif ($app -like "*skype*") { $shortName = "skype" }
+          
+          if ($shortName -ne "") {
+            $procs = Get-Process -Name $shortName -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle }
+            $callKeywords = @("Meet", "Zoom", "Teams", "Discord", "Call", "WhatsApp", "Telegram", "Video", "Audio", "Webex")
+            $foundProc = $null
+            foreach ($proc in $procs) {
+              foreach ($kw in $callKeywords) {
+                if ($proc.MainWindowTitle -like "*$kw*") {
+                  $foundProc = $proc
+                  break
+                }
+              }
+              if ($null -ne $foundProc) { break }
+            }
+            
+            if ($null -eq $foundProc -and $procs.Count -gt 0) {
+              $foundProc = $procs[0]
+            }
+            
+            if ($null -ne $foundProc) {
+              $appName = $shortName
+              $winTitle = $foundProc.MainWindowTitle
+              $winHandle = $foundProc.MainWindowHandle
+              break
+            }
+          }
+        }
+      }
+      
+      if ($null -ne $appName) {
+        $sig = '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();'
+        Add-Type -MemberDefinition $sig -Name WinAPICall -Namespace Win32 -ErrorAction SilentlyContinue
+        $fg = [Win32.WinAPICall]::GetForegroundWindow()
+        $isForeground = ($fg -eq $winHandle)
+        
+        $cleanTitle = $winTitle -replace "\\|", " "
+        return "$appName|$cleanTitle|$winHandle|$isForeground"
+      }
+      
+      return "None"
+    }
     
     $prevRx = [double]0
     $prevTx = [double]0
@@ -257,7 +478,10 @@ function startCombinedBackgroundMonitor() {
       if ($diffRx -lt 0) { $diffRx = 0 }
       if ($diffTx -lt 0) { $diffTx = 0 }
       
-      Write-Output "$cam,$mic,$diffRx,$diffTx"
+      $callInfo = GetActiveCall
+      Write-Output "$cam,$mic,$diffRx,$diffTx|$callInfo"
+      
+      GetNewNotifications
       
       $prevRx = $currRx
       $prevTx = $currTx
@@ -275,15 +499,50 @@ function startCombinedBackgroundMonitor() {
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      const parts = trimmed.split(',');
-      if (parts.length === 4) {
-        const cam = parts[0] === 'True';
-        const mic = parts[1] === 'True';
-        const rx = parseInt(parts[2]);
-        const tx = parseInt(parts[3]);
+      
+      const pipes = trimmed.split('|');
+      
+      // If this line is a notification, forward to renderer and skip active call checks
+      if (pipes[0] === 'NOTIFICATION') {
+        if (pipes.length >= 5) {
+          const appName = pipes[2];
+          const title = pipes[3];
+          const message = pipes[4];
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('system-notification', { appName, title, message });
+          }
+        }
+        continue;
+      }
+      
+      if (pipes.length >= 1) {
+        const statsParts = pipes[0].split(',');
+        if (statsParts.length === 4) {
+          const cam = statsParts[0] === 'True';
+          const mic = statsParts[1] === 'True';
+          const rx = parseInt(statsParts[2]);
+          const tx = parseInt(statsParts[3]);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('privacy-dots', { cam, mic });
+            mainWindow.webContents.send('network-stats', { rx, tx });
+          }
+        }
+      }
+      
+      if (pipes.length === 5) {
+        const activeCall = {
+          isActive: true,
+          appName: pipes[1],
+          title: pipes[2],
+          handle: parseInt(pipes[3]),
+          isForeground: pipes[4] === 'True'
+        };
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('privacy-dots', { cam, mic });
-          mainWindow.webContents.send('network-stats', { rx, tx });
+          mainWindow.webContents.send('active-call-status', activeCall);
+        }
+      } else {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('active-call-status', { isActive: false });
         }
       }
     }
@@ -397,6 +656,17 @@ ipcMain.on('open-media-app', (e, appId) => {
   `;
   exec(`powershell -NoProfile -Command "${ps}"`);
 });
+ipcMain.on('focus-call-window', (event, handle) => {
+  if (!handle) return;
+  const psFocus = `
+    $sig = '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);'
+    Add-Type -MemberDefinition $sig -Name WinAPIFocus -Namespace Win32 -ErrorAction SilentlyContinue
+    [Win32.WinAPIFocus]::ShowWindow(${handle}, 9)
+    [Win32.WinAPIFocus]::SetForegroundWindow(${handle})
+  `;
+  exec(`powershell -NoProfile -Command "${psFocus.trim()}"`);
+});
+
 ipcMain.on('quit-app', () => app.quit());
 
 ipcMain.on('show-context-menu', (event) => {
@@ -955,7 +1225,7 @@ function createWindow() {
     });
 
     const loadVite = () => {
-      mainWindow.loadURL('http://localhost:5173').catch(() => {
+      mainWindow.loadURL('http://localhost:5173?simulate-update=true&simulate-whats-new=true').catch(() => {
         setTimeout(loadVite, 1000);
       });
     };
