@@ -637,9 +637,9 @@ export default function App() {
 
   useEffect(() => {
     const lastOpenedVersion = localStorage.getItem('smart-notch-version');
-    if (lastOpenedVersion !== '1.0.5') {
-      setGreeting("Updated to v1.0.5: Audio visualizer & productivity checklist! 🎉");
-      localStorage.setItem('smart-notch-version', '1.0.5');
+    if (lastOpenedVersion !== '6.0.0') {
+      setGreeting("Updated to v6.0.0: Update checkers & What's New logs! 🎉");
+      localStorage.setItem('smart-notch-version', '6.0.0');
       setTimeout(() => setGreeting(null), 6000);
     } else {
       const hour = new Date().getHours();
@@ -963,9 +963,10 @@ export default function App() {
 
     // What's New logic: show only once if local version is newer than the last seen version.
     const lastSeen = localStorage.getItem('lastSeenVersion');
+    const isExistingUser = localStorage.getItem('smart-notch-config') !== null || localStorage.getItem('smart-notch-version') !== null;
     if (!lastSeen) {
       localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
-      if (window.location.search.includes('simulate-whats-new')) {
+      if (isExistingUser || window.location.search.includes('simulate-whats-new')) {
         setWhatsNewAvailable(true);
       }
     } else {
