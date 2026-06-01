@@ -7,6 +7,33 @@ import AudioWaveform from './AudioWaveform';
 
 const ipcRenderer = window.electronAPI || null;
 
+const formatTime = (ms) => {
+  if (!ms || isNaN(ms)) return '0:00';
+  const totalSecs = Math.floor(ms / 1000);
+  const mins = Math.floor(totalSecs / 60);
+  const secs = totalSecs % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+};
+
+const renderSourceAppIcon = (appId) => {
+  const name = String(appId).toLowerCase();
+  if (name.includes('spotify')) {
+    return (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-[#1DB954] fill-current">
+        <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.565.387-.86.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.668.47-.745 3.856-.88 7.15-.502 9.82 1.13.295.18.387.563.207.86zm1.224-2.72c-.227.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.077-1.182-.413.125-.847-.107-.972-.52-.125-.413.108-.847.52-.972 3.67-1.114 8.243-.574 11.343 1.332.368.228.488.708.26 1.074zm.11-2.828C14.317 8.71 8.354 8.512 4.9 9.56c-.53.16-1.09-.14-1.25-.67-.16-.53.14-1.09.67-1.25 3.96-1.202 10.53-.98 14.656 1.474.48.284.636.9.35 1.38-.284.48-.9.637-1.38.35z"/>
+      </svg>
+    );
+  }
+  if (name.includes('youtube') || name.includes('chrome') || name.includes('edge') || name.includes('msedge') || name.includes('brave') || name.includes('firefox')) {
+    return (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-red-500 fill-current">
+        <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.108C19.513 3.545 12 3.545 12 3.545s-7.512 0-9.387.51A3.004 3.004 0 0 0 .503 6.163C0 8.046 0 12 0 12s0 3.954.503 5.837a3.003 3.003 0 0 0 2.11 2.107c1.875.51 9.387.51 9.387.51s7.513 0 9.388-.51a3.003 3.003 0 0 0 2.11-2.107C24 15.954 24 12 24 12s0-3.954-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+      </svg>
+    );
+  }
+  return <Music size={12} className="text-white/70" />;
+};
+
 // --- Memoized Background Components to prevent stuttering during stat updates ---
 const MatrixBackground = React.memo(() => {
   const columns = useMemo(() => Array.from({ length: 20 }).map(() => ({
@@ -69,7 +96,7 @@ const ShelfBar = React.memo(({
   pomodoro, isPomoRunning, pomoMode, isSwRunning, stopwatch, onBoost, isBoosting,
   onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
   batteryEvent, boostAlert, boostProgress, greeting, activeCall, sysNotification, setSysNotification,
-  updateAvailable, whatsNewAvailable
+  updateAvailable, whatsNewAvailable, onSeek
 }) => {
   // Parse accent color for inline styles (works with ANY hex color)
   const isRgb = config.accentColor === 'rgb';
@@ -251,13 +278,32 @@ const ShelfBar = React.memo(({
                   ) : (
                     <div className="w-full h-full bg-purple-600/50 flex items-center justify-center"><Music size={32} className="text-white/80" /></div>
                   )}
-                  {/* Playback overlay on hover could go here, but controls are below */}
+                  {spotifyState?.sourceAppId && (
+                    <div className="absolute bottom-0 right-0 bg-black/75 rounded-tl-md p-1 flex items-center justify-center border-t border-l border-white/10 z-10">
+                      {renderSourceAppIcon(spotifyState.sourceAppId)}
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-col items-center w-full text-center">
                   <span className="text-sm font-bold text-white truncate w-full">{spotifyState.item.name}</span>
                   <span className="text-[11px] text-white/50 truncate w-full mt-0.5">{spotifyState.item.artists?.map(a => a.name).join(', ')}</span>
                 </div>
-                <div className="flex items-center gap-4 mt-2">
+                <div className="w-full flex flex-col gap-1 px-3">
+                  <div 
+                    className="w-full bg-white/10 rounded-full h-1.5 relative overflow-hidden cursor-pointer group/bar"
+                    onClick={onSeek}
+                  >
+                    <div 
+                      className="bg-white rounded-full h-full transition-all duration-300 group-hover/bar:bg-green-400"
+                      style={{ width: `${Math.min(100, (localProgress / (spotifyState.duration_ms || 180000)) * 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[9px] text-white/40 font-mono w-full px-0.5">
+                    <span>{formatTime(localProgress)}</span>
+                    <span>{spotifyState.duration_ms ? formatTime(spotifyState.duration_ms) : '--:--'}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 mt-1">
                   <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={onPrev}>
                     <SkipBack size={16} />
                   </button>
@@ -391,19 +437,41 @@ const ShelfBar = React.memo(({
       <div className="flex items-center gap-4 flex-1 justify-center max-w-[500px] relative z-10">
         {spotifyState?.item ? (
           <>
-            <div className="w-11 h-11 rounded-xl overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg flex-shrink-0">
+            <div className="w-11 h-11 rounded-xl overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg flex-shrink-0 relative">
               {spotifyState.item.album?.images?.[0] ? (
                 <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover" />
               ) : (
                 <Music size={20} className="text-white/90" />
               )}
+              {spotifyState?.sourceAppId && (
+                <div className="absolute bottom-0 right-0 bg-black/75 rounded-tl-md p-0.5 flex items-center justify-center border-t border-l border-white/10 z-10">
+                  {renderSourceAppIcon(spotifyState.sourceAppId)}
+                </div>
+              )}
             </div>
-            <div 
-              className="flex flex-col min-w-0 max-w-[180px] cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => onOpenMediaApp(spotifyState?.sourceAppId)}
-            >
-              <span className="font-bold text-sm leading-tight truncate">{spotifyState.item.name || 'Not Playing'}</span>
-              <span className="text-[11px] text-white/50 truncate">{spotifyState.item.artists?.[0]?.name || ''}</span>
+            <div className="flex flex-col min-w-0 max-w-[200px] flex-grow gap-1 justify-center">
+              <div 
+                className="flex flex-col min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => onOpenMediaApp(spotifyState?.sourceAppId)}
+              >
+                <span className="font-bold text-sm leading-none truncate">{spotifyState.item.name || 'Not Playing'}</span>
+                <span className="text-[10px] text-white/50 truncate mt-0.5">{spotifyState.item.artists?.map(a => a.name).join(', ') || ''}</span>
+              </div>
+              <div className="w-full flex flex-col gap-0.5 mt-0.5 px-0.5">
+                <div 
+                  className="w-full bg-white/10 rounded-full h-1 relative overflow-hidden cursor-pointer group/bar"
+                  onClick={onSeek}
+                >
+                  <div 
+                    className="bg-white rounded-full h-full transition-all duration-300 group-hover/bar:bg-green-400"
+                    style={{ width: `${Math.min(100, (localProgress / (spotifyState.duration_ms || 180000)) * 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[8px] text-white/40 font-mono w-full">
+                  <span>{formatTime(localProgress)}</span>
+                  <span>{spotifyState.duration_ms ? formatTime(spotifyState.duration_ms) : '--:--'}</span>
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-1">
               <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={onPrev}>
@@ -922,7 +990,7 @@ export default function App() {
     }
   };
 
-  const CURRENT_VERSION = '6.0.1';
+  const CURRENT_VERSION = '6.0.2';
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
@@ -1215,6 +1283,23 @@ export default function App() {
   const isSpotify = Boolean(spotifyState?.isSpotify);
 
 
+
+  const handleProgressBarClick = (e) => {
+    if (!spotifyState?.item) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const width = rect.width;
+    const percentage = Math.max(0, Math.min(1, clickX / width));
+    const duration = spotifyState.duration_ms || 180000;
+    const targetProgressMs = Math.round(percentage * duration);
+    
+    // Update optimistically
+    setLocalProgress(targetProgressMs);
+    
+    if (ipcRenderer) {
+      ipcRenderer.send('spotify-seek', targetProgressMs);
+    }
+  };
 
   // ── Shelf mode (Always On Screen: OFF) ──
   const [shelfVisible, setShelfVisible] = useState(false);
@@ -1608,6 +1693,11 @@ export default function App() {
                 setSysNotification={setSysNotification}
                 updateAvailable={updateAvailable}
                 whatsNewAvailable={whatsNewAvailable}
+                onSeek={handleProgressBarClick}
+                onPointerDown={handleCustomDragStart}
+                onPointerMove={handleCustomDragMove}
+                onPointerUp={handleCustomDragEnd}
+                onPointerCancel={handleCustomDragCancel}
               />
             )}
           </AnimatePresence>
@@ -1660,10 +1750,10 @@ export default function App() {
                         </div>
                         {showReleaseNotes && (
                           <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 select-none leading-relaxed">
-                            <div>• <b>Equalizer:</b> Apple-style bouncing bars with standby state.</div>
-                            <div>• <b>Notifications:</b> Intercepts toasts & expands in Notch.</div>
-                            <div>• <b>Pomodoro:</b> Session timers, synthetic chime & tasks checklist.</div>
-                            <div>• <b>Drag Lock:</b> Toggle settings to freeze repositioning.</div>
+                            <div>• <b>Bar Mode:</b> Full layout support with interactive media & status integration.</div>
+                            <div>• <b>Media Seek:</b> Click timeline to seek active media sessions directly on Windows.</div>
+                            <div>• <b>App Badges:</b> Display playing source application icons (Spotify, Chrome, Edge).</div>
+                            <div>• <b>Call Fixes:</b> Balanced alignment for caller UI details in collapsed Notch.</div>
                           </div>
                         )}
                       </div>
@@ -1689,10 +1779,10 @@ export default function App() {
                           </button>
                         </div>
                         <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 leading-relaxed">
-                          <div>• <b>Equalizer:</b> Apple-style bouncing bars with standby state.</div>
-                          <div>• <b>Notifications:</b> Intercepts toasts & expands in Notch.</div>
-                          <div>• <b>Pomodoro:</b> Session timers, synthetic chime & tasks checklist.</div>
-                          <div>• <b>Drag Lock:</b> Toggle settings to freeze repositioning.</div>
+                          <div>• <b>Bar Mode:</b> Full layout support with interactive media & status integration.</div>
+                          <div>• <b>Media Seek:</b> Click timeline to seek active media sessions directly on Windows.</div>
+                          <div>• <b>App Badges:</b> Display playing source application icons (Spotify, Chrome, Edge).</div>
+                          <div>• <b>Call Fixes:</b> Balanced alignment for caller UI details in collapsed Notch.</div>
                         </div>
                       </div>
                     )}
@@ -2138,7 +2228,7 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.1 } }}
             >
-              <div className={`flex ${isSideNotch ? 'flex-col gap-3 mt-1' : 'items-center gap-2'}`}>
+              <div className={`flex ${isSideNotch ? 'flex-col gap-3 mt-1 items-center justify-start h-[50px]' : 'items-center gap-2 w-[60px] justify-start'}`}>
                  <div className="relative w-[14px] h-[14px] flex items-center justify-center mt-[-2px]">
                     <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
                        <circle cx="18" cy="18" r="16" fill="none" className={idleTextColor === 'black' ? 'stroke-black/10' : 'stroke-white/10'} strokeWidth="4" />
@@ -2151,48 +2241,50 @@ export default function App() {
                     <div className={`w-1.5 h-1.5 rounded-full ${hardware.cpu > 50 ? 'bg-blue-500 shadow-[0_0_5px_#3b82f6]' : (idleTextColor === 'black' ? 'bg-black/10' : 'bg-white/10')}`} />
                  </div>
               </div>
-               <AnimatePresence mode="wait">
-                 {greeting ? (
-                    <motion.span key="greeting" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(true)}`} style={{ writingMode: isSideNotch ? 'vertical-rl' : 'horizontal-tb', textOrientation: isSideNotch ? 'upright' : 'mixed', ...(idleTextColor === 'black' ? {} : getTextShadowStyle(true)) }}>
-                      {greeting}
-                    </motion.span>
-                 ) : isPomoRunning ? (
-                    <motion.span key="pomotimer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-mono font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${config.glowIntensity !== 'none' ? 'text-orange-300' : 'text-orange-400'}`} style={{ ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}), ...(config.glowIntensity !== 'none' ? { textShadow: '0 0 8px rgba(253,186,116,0.8)' } : {}) }}>
-                       {isSideNotch ? (
-                         <>
-                           <span className="text-[12px] font-black">{String(Math.floor(pomodoro / 60)).padStart(2, '0')}</span>
-                           <span className="text-[12px] font-black text-orange-400/80">{String(pomodoro % 60).padStart(2, '0')}</span>
-                         </>
-                       ) : (
-                         `${String(Math.floor(pomodoro / 60)).padStart(2, '0')}:${String(pomodoro % 60).padStart(2, '0')}`
-                       )}
+              <div className={`flex items-center justify-center ${isSideNotch ? 'flex-shrink-0 py-2' : 'flex-shrink-0'}`}>
+                <AnimatePresence mode="wait">
+                  {greeting ? (
+                     <motion.span key="greeting" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(true)}`} style={{ writingMode: isSideNotch ? 'vertical-rl' : 'horizontal-tb', textOrientation: isSideNotch ? 'upright' : 'mixed', ...(idleTextColor === 'black' ? {} : getTextShadowStyle(true)) }}>
+                       {greeting}
                      </motion.span>
-                 ) : isSwRunning ? (
-                    <motion.span key="swtimer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-mono font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${config.glowIntensity !== 'none' ? 'text-yellow-300' : 'text-yellow-400'}`} style={{ ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}), ...(config.glowIntensity !== 'none' ? { textShadow: '0 0 8px rgba(253,224,71,0.8)' } : {}) }}>
-                       {isSideNotch ? (
-                         <>
-                           <span className="text-[12px] font-black">{String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}</span>
-                           <span className="text-[12px] font-black text-yellow-400/80">{String(stopwatch % 60).padStart(2, '0')}</span>
-                         </>
-                       ) : (
-                         `${String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:${String(stopwatch % 60).padStart(2, '0')}`
-                       )}
-                     </motion.span>
-                 ) : (
-                    <motion.span key="time" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-bold text-xs ${isSideNotch ? 'tracking-normal text-center' : 'tracking-widest'} ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(false)}`} style={{ ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}), ...(idleTextColor === 'black' ? {} : getTextShadowStyle(false)) }}>
-                       {isSideNotch ? (
-                         <>
-                           <span className="text-[12px] font-extrabold">{time.split(':')[0] || '12'}</span>
-                           <span className={`text-[12px] font-extrabold ${idleTextColor === 'black' ? 'text-black/80' : 'text-white/80'}`}>{time.split(':')[1] ? time.split(':')[1].replace(/[^0-9]/g, '') : '00'}</span>
-                         </>
-                       ) : (
-                         time
-                       )}
-                     </motion.span>
-                 )}
-              </AnimatePresence>
+                  ) : isPomoRunning ? (
+                     <motion.span key="pomotimer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-mono font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${config.glowIntensity !== 'none' ? 'text-orange-300' : 'text-orange-400'}`} style={{ ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}), ...(config.glowIntensity !== 'none' ? { textShadow: '0 0 8px rgba(253,186,116,0.8)' } : {}) }}>
+                        {isSideNotch ? (
+                          <>
+                            <span className="text-[12px] font-black">{String(Math.floor(pomodoro / 60)).padStart(2, '0')}</span>
+                            <span className="text-[12px] font-black text-orange-400/80">{String(pomodoro % 60).padStart(2, '0')}</span>
+                          </>
+                        ) : (
+                          `${String(Math.floor(pomodoro / 60)).padStart(2, '0')}:${String(pomodoro % 60).padStart(2, '0')}`
+                        )}
+                      </motion.span>
+                  ) : isSwRunning ? (
+                     <motion.span key="swtimer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-mono font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${config.glowIntensity !== 'none' ? 'text-yellow-300' : 'text-yellow-400'}`} style={{ ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}), ...(config.glowIntensity !== 'none' ? { textShadow: '0 0 8px rgba(253,224,71,0.8)' } : {}) }}>
+                        {isSideNotch ? (
+                          <>
+                            <span className="text-[12px] font-black">{String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}</span>
+                            <span className="text-[12px] font-black text-yellow-400/80">{String(stopwatch % 60).padStart(2, '0')}</span>
+                          </>
+                        ) : (
+                          `${String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:${String(stopwatch % 60).padStart(2, '0')}`
+                        )}
+                      </motion.span>
+                  ) : (
+                     <motion.span key="time" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-bold text-xs ${isSideNotch ? 'tracking-normal text-center' : 'tracking-widest'} ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(false)}`} style={{ ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}), ...(idleTextColor === 'black' ? {} : getTextShadowStyle(false)) }}>
+                        {isSideNotch ? (
+                          <>
+                            <span className="text-[12px] font-extrabold">{time.split(':')[0] || '12'}</span>
+                            <span className={`text-[12px] font-extrabold ${idleTextColor === 'black' ? 'text-black/80' : 'text-white/80'}`}>{time.split(':')[1] ? time.split(':')[1].replace(/[^0-9]/g, '') : '00'}</span>
+                          </>
+                        ) : (
+                          time
+                        )}
+                      </motion.span>
+                  )}
+                </AnimatePresence>
+              </div>
               
-              <div className={`flex items-center ${isSideNotch ? 'flex-col gap-3 w-full mb-1' : 'justify-end gap-1.5'}`}>
+              <div className={`flex items-center ${isSideNotch ? 'flex-col gap-3 w-full mb-1 justify-end h-[50px]' : 'justify-end gap-1.5 w-[60px]'}`}>
                  {spotifyState?.item ? (
                     <div className={isSideNotch ? 'h-[14px] mt-[-2px] overflow-hidden' : 'h-[10px] mt-[-3px] overflow-hidden'}>
                        <AudioWaveform 
@@ -2531,10 +2623,10 @@ export default function App() {
                     )}
                   </AnimatePresence>
 
-                  <div className={`flex items-center mt-auto rounded-2xl relative ${viewMode === 'settings' ? 'overflow-hidden' : 'overflow-visible'} transition-all duration-300 ${getPanelBorderStyle()} ${isSideNotch && viewMode !== 'settings' ? 'flex-col justify-start' : 'justify-between'} ${viewMode === 'settings' ? 'p-4 h-full items-start flex-col overflow-y-auto custom-scrollbar pr-1' : (viewMode === 'network' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[125px]' : 'p-3 h-[160px]') : (viewMode === 'stats' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[180px]' : 'p-4 h-[120px]') : (viewMode === 'pomodoro' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[290px]' : 'p-4 h-[290px]') : (viewMode === 'media' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[210px]' : 'p-3 h-[76px]') : (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[145px]' : 'p-3 h-[76px]')))))}`} style={{ pointerEvents: 'auto', ...getPanelBorderStyleInline() }}>
+                  <div className={`flex items-center mt-auto rounded-2xl relative ${viewMode === 'settings' ? 'overflow-hidden' : 'overflow-visible'} transition-all duration-300 ${getPanelBorderStyle()} ${isSideNotch && viewMode !== 'settings' ? 'flex-col justify-start' : 'justify-between'} ${viewMode === 'settings' ? 'p-4 h-full items-start flex-col overflow-y-auto custom-scrollbar pr-1' : (viewMode === 'network' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[125px]' : 'p-3 h-[160px]') : (viewMode === 'stats' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[180px]' : 'p-4 h-[120px]') : (viewMode === 'pomodoro' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[290px]' : 'p-4 h-[290px]') : (viewMode === 'media' ? (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[210px]' : 'p-3 pb-2.5 h-[105px]') : (isSideNotch && viewMode !== 'settings' ? 'p-3 h-[145px]' : 'p-3 h-[76px]')))))}`} style={{ pointerEvents: 'auto', ...getPanelBorderStyleInline() }}>
                     <AnimatePresence mode="wait">
                       {viewMode === 'media' && (
-                        <motion.div key="media" className={`w-full flex ${isSideNotch && viewMode !== 'settings' ? 'flex-col gap-2.5 justify-center text-center items-center' : 'items-center justify-between'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                        <motion.div key="media" className={`w-full flex ${isSideNotch && viewMode !== 'settings' ? 'flex-col gap-2 justify-center text-center items-center h-full' : 'flex-col w-full h-full justify-between gap-1'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                           {isSideNotch && viewMode !== 'settings' ? (
                             <div className="flex flex-col items-center gap-2.5 w-full">
                               <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center relative group cursor-pointer" onClick={() => { if (ipcRenderer) ipcRenderer.send('open-media-app', spotifyState?.sourceAppId); }}>
@@ -2542,6 +2634,11 @@ export default function App() {
                                   <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                                 ) : (
                                   <Music size={32} className="text-white/80 animate-pulse" />
+                                )}
+                                {spotifyState?.sourceAppId && (
+                                  <div className="absolute bottom-0 right-0 bg-black/75 rounded-tl-md p-0.5 flex items-center justify-center border-t border-l border-white/10 z-10">
+                                    {renderSourceAppIcon(spotifyState.sourceAppId)}
+                                  </div>
                                 )}
                               </div>
                               <div 
@@ -2555,6 +2652,25 @@ export default function App() {
                                   {spotifyState?.item?.artists?.map(a => a.name).join(', ') || 'Spotify offline'}
                                 </span>
                               </div>
+                              
+                              {spotifyState?.item && (
+                                <div className="w-full flex flex-col gap-1 px-3">
+                                  <div 
+                                    className="w-full bg-white/10 rounded-full h-1.5 relative overflow-hidden cursor-pointer group/bar"
+                                    onClick={handleProgressBarClick}
+                                  >
+                                    <div 
+                                      className="bg-white rounded-full h-full transition-all duration-300 group-hover/bar:bg-green-400"
+                                      style={{ width: `${Math.min(100, (localProgress / (spotifyState.duration_ms || 180000)) * 100)}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex justify-between text-[8px] text-white/40 font-mono w-full">
+                                    <span>{formatTime(localProgress)}</span>
+                                    <span>{spotifyState.duration_ms ? formatTime(spotifyState.duration_ms) : '--:--'}</span>
+                                  </div>
+                                </div>
+                              )}
+
                               <div className="flex items-center gap-3 mt-1 justify-center">
                                 <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={() => ipcRenderer?.send('spotify-prev')}>
                                   <SkipBack size={14} />
@@ -2563,7 +2679,7 @@ export default function App() {
                                     const nextState = !spotifyState?.is_playing;
                                     setSpotifyState(prev => prev ? {...prev, is_playing: nextState} : prev);
                                     if (ipcRenderer) ipcRenderer.send(nextState ? 'spotify-play' : 'spotify-pause');
-                                }}>
+                                  }}>
                                   {spotifyState?.is_playing ? <Pause size={15} /> : <Play size={15} className="translate-x-[1px]" />}
                                 </button>
                                 <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white" onClick={() => ipcRenderer?.send('spotify-skip')}>
@@ -2573,41 +2689,65 @@ export default function App() {
                             </div>
                           ) : (
                             <>
-                              <div className={`flex items-center gap-2 w-full`}>
-                                <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
-                                  {spotifyState?.item?.album?.images?.[0] ? (
-                                    <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <Music size={24} className="text-white/90" />
-                                  )}
+                              <div className="flex items-center justify-between w-full">
+                                <div className={`flex items-center gap-2.5 w-full`}>
+                                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg relative flex-shrink-0">
+                                    {spotifyState?.item?.album?.images?.[0] ? (
+                                      <img src={spotifyState.item.album.images[0].url} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <Music size={24} className="text-white/90" />
+                                    )}
+                                    {spotifyState?.sourceAppId && (
+                                      <div className="absolute bottom-0 right-0 bg-black/75 rounded-tl-md p-0.5 flex items-center justify-center border-t border-l border-white/10 z-10">
+                                        {renderSourceAppIcon(spotifyState.sourceAppId)}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div 
+                                    className="flex flex-col cursor-pointer hover:opacity-80 transition-opacity max-w-[130px]"
+                                    onClick={() => { if (ipcRenderer) ipcRenderer.send('open-media-app', spotifyState?.sourceAppId); }}
+                                  >
+                                    <span className="font-bold text-sm leading-tight truncate hover:underline">
+                                      {spotifyState?.item?.name || 'Not Playing'}
+                                    </span>
+                                    <span className="text-[10px] text-white/50 truncate">
+                                      {spotifyState?.item?.artists?.map(a => a.name).join(', ') || 'Spotify offline'}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div 
-                                  className="flex flex-col cursor-pointer hover:opacity-80 transition-opacity max-w-[140px]"
-                                  onClick={() => { if (ipcRenderer) ipcRenderer.send('open-media-app', spotifyState?.sourceAppId); }}
-                                >
-                                  <span className="font-bold text-sm leading-tight truncate hover:underline">
-                                    {spotifyState?.item?.name || 'Not Playing'}
-                                  </span>
-                                  <span className="text-[10px] text-white/50 truncate">
-                                    {spotifyState?.item?.artists?.map(a => a.name).join(', ') || 'Spotify offline'}
-                                  </span>
+                                <div className="flex items-center gap-2">
+                                  <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-prev')}>
+                                    <SkipBack size={14} />
+                                  </button>
+                                  <button className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors shadow-sm" onClick={() => {
+                                      const nextState = !spotifyState?.is_playing;
+                                      setSpotifyState(prev => prev ? {...prev, is_playing: nextState} : prev);
+                                      if (ipcRenderer) ipcRenderer.send(nextState ? 'spotify-play' : 'spotify-pause');
+                                    }}>
+                                    {spotifyState?.is_playing ? <Pause size={16} /> : <Play size={16} className="translate-x-[1px]" />}
+                                  </button>
+                                  <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-skip')}>
+                                    <SkipForward size={14} />
+                                  </button>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-prev')}>
-                                  <SkipBack size={14} />
-                                </button>
-                                <button className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors shadow-sm" onClick={() => {
-                                    const nextState = !spotifyState?.is_playing;
-                                    setSpotifyState(prev => prev ? {...prev, is_playing: nextState} : prev);
-                                    if (ipcRenderer) ipcRenderer.send(nextState ? 'spotify-play' : 'spotify-pause');
-                                }}>
-                                  {spotifyState?.is_playing ? <Pause size={16} /> : <Play size={16} className="translate-x-[1px]" />}
-                                </button>
-                                <button className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/70 hover:text-white" onClick={() => ipcRenderer?.send('spotify-skip')}>
-                                  <SkipForward size={14} />
-                                </button>
-                              </div>
+                              {spotifyState?.item && (
+                                <div className="w-full flex flex-col gap-1 mt-1 px-0.5">
+                                  <div 
+                                    className="w-full bg-white/10 rounded-full h-1.5 relative overflow-hidden cursor-pointer group/bar"
+                                    onClick={handleProgressBarClick}
+                                  >
+                                    <div 
+                                      className="bg-white rounded-full h-full transition-all duration-300 group-hover/bar:bg-green-400"
+                                      style={{ width: `${Math.min(100, (localProgress / (spotifyState.duration_ms || 180000)) * 100)}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex justify-between text-[9px] text-white/40 font-mono w-full">
+                                    <span>{formatTime(localProgress)}</span>
+                                    <span>{spotifyState.duration_ms ? formatTime(spotifyState.duration_ms) : '--:--'}</span>
+                                  </div>
+                                </div>
+                              )}
                             </>
                           )}
                         </motion.div>
@@ -2846,10 +2986,10 @@ export default function App() {
                                </div>
                                {showReleaseNotes && (
                                  <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 select-none leading-relaxed">
-                                   <div>• <b>Equalizer:</b> Apple-style bouncing bars with standby state.</div>
-                                   <div>• <b>Notifications:</b> Intercepts toasts & expands in Notch.</div>
-                                   <div>• <b>Pomodoro:</b> Session timers, synthetic chime & tasks checklist.</div>
-                                   <div>• <b>Drag Lock:</b> Toggle settings to freeze repositioning.</div>
+                                   <div>• <b>Bar Mode:</b> Full layout support with interactive media & status integration.</div>
+                                   <div>• <b>Media Seek:</b> Click timeline to seek active media sessions directly on Windows.</div>
+                                   <div>• <b>App Badges:</b> Display playing source application icons (Spotify, Chrome, Edge).</div>
+                                   <div>• <b>Call Fixes:</b> Balanced alignment for caller UI details in collapsed Notch.</div>
                                  </div>
                                )}
                              </div>
@@ -2875,10 +3015,10 @@ export default function App() {
                                  </button>
                                </div>
                                <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 leading-relaxed">
-                                 <div>• <b>Equalizer:</b> Apple-style bouncing bars with standby state.</div>
-                                 <div>• <b>Notifications:</b> Intercepts toasts & expands in Notch.</div>
-                                 <div>• <b>Pomodoro:</b> Session timers, synthetic chime & tasks checklist.</div>
-                                 <div>• <b>Drag Lock:</b> Toggle settings to freeze repositioning.</div>
+                                 <div>• <b>Bar Mode:</b> Full layout support with interactive media & status integration.</div>
+                                 <div>• <b>Media Seek:</b> Click timeline to seek active media sessions directly on Windows.</div>
+                                 <div>• <b>App Badges:</b> Display playing source application icons (Spotify, Chrome, Edge).</div>
+                                 <div>• <b>Call Fixes:</b> Balanced alignment for caller UI details in collapsed Notch.</div>
                                </div>
                              </div>
                            )}

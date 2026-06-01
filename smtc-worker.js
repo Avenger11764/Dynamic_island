@@ -46,6 +46,7 @@ setInterval(() => {
         artist: bestSession.media.artist || 'Unknown',
         is_playing: is_playing,
         progress_ms: progress_ms,
+        duration_ms: bestSession.timeline ? (bestSession.timeline.duration || 0) * 1000 : 0,
         appId: bestSession.sourceAppId,
         is_spotify: !!(bestSession.sourceAppId && bestSession.sourceAppId.toLowerCase().includes('spotify'))
       };

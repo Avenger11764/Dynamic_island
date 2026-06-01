@@ -112,6 +112,7 @@ function startSpotifyPolling() {
             item: item,
             is_playing: msg.is_playing,
             progress_ms: msg.progress_ms,
+            duration_ms: msg.duration_ms || 0,
             lyrics: currentLyrics,
             sourceAppId: msg.appId,
             isSpotify: msg.is_spotify
@@ -188,9 +189,10 @@ function startHardwarePolling() {
   }, 2000);
 }
 
-const { spawn, exec } = require('child_process');
+const { spawn, exec, execFile } = require('child_process');
 
 let vbsPath = '';
+let seekPs1Path = '';
 
 function startCombinedBackgroundMonitor() {
   const psScript = `
@@ -564,13 +566,13 @@ function startCombinedBackgroundMonitor() {
 function pressMediaKey(key) {
   try {
     if (vbsPath) {
-      exec(`wscript.exe "${vbsPath}" ${key}`);
+      execFile('wscript.exe', [vbsPath, key]);
     } else {
-      exec(`powershell -c "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys([char]${key})"`);
+      execFile('powershell.exe', ['-NoProfile', '-Command', `$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys([char]${key})`]);
     }
   } catch(e) {
     try {
-      exec(`powershell -c "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys([char]${key})"`);
+      execFile('powershell.exe', ['-NoProfile', '-Command', `$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys([char]${key})`]);
     } catch(err){}
   }
 }
@@ -579,6 +581,13 @@ ipcMain.on('spotify-play', () => pressMediaKey(179));
 ipcMain.on('spotify-pause', () => pressMediaKey(179));
 ipcMain.on('spotify-skip', () => pressMediaKey(176));
 ipcMain.on('spotify-prev', () => pressMediaKey(177));
+
+ipcMain.on('spotify-seek', (event, progressMs) => {
+  if (seekPs1Path) {
+    const ticks = Math.round(progressMs * 10000);
+    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', seekPs1Path, ticks]);
+  }
+});
 
 ipcMain.on('adjust-volume', (e, delta) => {
   const key = delta > 0 ? 175 : 174;
@@ -1243,6 +1252,36 @@ app.whenReady().then(() => {
     fs.writeFileSync(vbsPath, 'Set w = CreateObject("WScript.Shell")\nw.SendKeys Chr(WScript.Arguments(0))');
   } catch(e) {
     logg('Failed to write VBScript: ' + e.message);
+  }
+
+  seekPs1Path = path.join(app.getPath('userData'), 'seek.ps1');
+  try {
+    const seekScript = `
+      [void][System.Reflection.Assembly]::LoadWithPartialName("System.Runtime.WindowsRuntime")
+      [void][Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control.Playlists, ContentType=WindowsRuntime]
+
+      $asyncOp = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()
+
+      $asTaskMethod = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters()[0].ParameterType.Name -like '*IAsyncOperation*' } | Select-Object -First 1
+      $genericAsTask = $asTaskMethod.MakeGenericMethod([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+      $task = $genericAsTask.Invoke($null, @($asyncOp))
+      $task.Wait()
+      $manager = $task.Result
+
+      if ($manager) {
+          $session = $manager.GetCurrentSession()
+          if ($session) {
+              $ticks = [int64]$args[0]
+              $seekOp = $session.TryChangePlaybackPositionAsync($ticks)
+              $seekAsTask = $asTaskMethod.MakeGenericMethod([bool])
+              $seekTask = $seekAsTask.Invoke($null, @($seekOp))
+              $seekTask.Wait()
+          }
+      }
+    `.trim();
+    fs.writeFileSync(seekPs1Path, seekScript);
+  } catch(e) {
+    logg('Failed to write seek.ps1: ' + e.message);
   }
 
   createWindow();
