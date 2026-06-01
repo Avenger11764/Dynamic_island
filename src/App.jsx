@@ -1012,7 +1012,7 @@ export default function App() {
 
     const checkUpdates = async () => {
       try {
-        const res = await fetch('https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/package.json');
+        const res = await fetch('https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/package.json?t=' + Date.now());
         if (res.ok) {
           const data = await res.json();
           if (data && data.version) {
