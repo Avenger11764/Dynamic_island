@@ -705,9 +705,9 @@ export default function App() {
 
   useEffect(() => {
     const lastOpenedVersion = localStorage.getItem('smart-notch-version');
-    if (lastOpenedVersion !== '6.0.2') {
-      setGreeting("Updated to v6.0.2: Bar Mode & Media Seek! 🎉");
-      localStorage.setItem('smart-notch-version', '6.0.2');
+    if (lastOpenedVersion !== '6.0.3') {
+      setGreeting("Updated to v6.0.3: Dynamic release notes & seek improvements! 🎉");
+      localStorage.setItem('smart-notch-version', '6.0.3');
       setTimeout(() => setGreeting(null), 6000);
     } else {
       const hour = new Date().getHours();
@@ -990,11 +990,12 @@ export default function App() {
     }
   };
 
-  const CURRENT_VERSION = '6.0.2';
+  const CURRENT_VERSION = '6.0.3';
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [whatsNewAvailable, setWhatsNewAvailable] = useState(false);
+  const [changelog, setChangelog] = useState([]);
 
   useEffect(() => {
     const compareVersions = (v1, v2) => {
@@ -1016,6 +1017,9 @@ export default function App() {
           const data = await res.json();
           if (data && data.version) {
             setLatestVersion(data.version);
+            if (data.changelog) {
+              setChangelog(data.changelog);
+            }
             // Enable update available state if repository is newer, OR if simulated in localhost dev mode
             if (compareVersions(data.version, CURRENT_VERSION) > 0 || window.location.search.includes('simulate-update')) {
               setUpdateAvailable(true);
@@ -1750,10 +1754,26 @@ export default function App() {
                         </div>
                         {showReleaseNotes && (
                           <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 select-none leading-relaxed">
-                            <div>• <b>Bar Mode:</b> Full layout support with interactive media & status integration.</div>
-                            <div>• <b>Media Seek:</b> Click timeline to seek active media sessions directly on Windows.</div>
-                            <div>• <b>App Badges:</b> Display playing source application icons (Spotify, Chrome, Edge).</div>
-                            <div>• <b>Call Fixes:</b> Balanced alignment for caller UI details in collapsed Notch.</div>
+                            {changelog && changelog.length > 0 ? (
+                              changelog.map((point, index) => {
+                                const colonIndex = point.indexOf(':');
+                                if (colonIndex !== -1) {
+                                  const title = point.substring(0, colonIndex);
+                                  const desc = point.substring(colonIndex + 1);
+                                  return (
+                                    <div key={index}>• <b>{title}:</b>{desc}</div>
+                                  );
+                                }
+                                return <div key={index}>• {point}</div>;
+                              })
+                            ) : (
+                              <>
+                                <div>• <b>Bar Mode:</b> Full layout support with interactive media & status integration.</div>
+                                <div>• <b>Media Seek:</b> Click timeline to seek active media sessions directly on Windows.</div>
+                                <div>• <b>App Badges:</b> Display playing source application icons (Spotify, Chrome, Edge).</div>
+                                <div>• <b>Call Fixes:</b> Balanced alignment for caller UI details in collapsed Notch.</div>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
@@ -2986,10 +3006,26 @@ export default function App() {
                                </div>
                                {showReleaseNotes && (
                                  <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 select-none leading-relaxed">
-                                   <div>• <b>Bar Mode:</b> Full layout support with interactive media & status integration.</div>
-                                   <div>• <b>Media Seek:</b> Click timeline to seek active media sessions directly on Windows.</div>
-                                   <div>• <b>App Badges:</b> Display playing source application icons (Spotify, Chrome, Edge).</div>
-                                   <div>• <b>Call Fixes:</b> Balanced alignment for caller UI details in collapsed Notch.</div>
+                                   {changelog && changelog.length > 0 ? (
+                                     changelog.map((point, index) => {
+                                       const colonIndex = point.indexOf(':');
+                                       if (colonIndex !== -1) {
+                                         const title = point.substring(0, colonIndex);
+                                         const desc = point.substring(colonIndex + 1);
+                                         return (
+                                           <div key={index}>• <b>{title}:</b>{desc}</div>
+                                         );
+                                       }
+                                       return <div key={index}>• {point}</div>;
+                                     })
+                                   ) : (
+                                     <>
+                                       <div>• <b>Bar Mode:</b> Full layout support with interactive media & status integration.</div>
+                                       <div>• <b>Media Seek:</b> Click timeline to seek active media sessions directly on Windows.</div>
+                                       <div>• <b>App Badges:</b> Display playing source application icons (Spotify, Chrome, Edge).</div>
+                                       <div>• <b>Call Fixes:</b> Balanced alignment for caller UI details in collapsed Notch.</div>
+                                     </>
+                                   )}
                                  </div>
                                )}
                              </div>

@@ -8,7 +8,7 @@
   <Identity Name="Devavinash.DynamicIslandWindows"
     ProcessorArchitecture="${arch}"
     Publisher='CN=AE5CAEC9-8659-4C4C-818A-0BB872795E9F'
-    Version="6.0.2.0" />
+    Version="6.0.3.0" />
 
   <Properties>
     <DisplayName>Smart Notch</DisplayName>
