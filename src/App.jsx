@@ -705,9 +705,9 @@ export default function App() {
 
   useEffect(() => {
     const lastOpenedVersion = localStorage.getItem('smart-notch-version');
-    if (lastOpenedVersion !== '6.0.1') {
-      setGreeting("Updated to v6.0.1: Update checkers & What's New logs! 🎉");
-      localStorage.setItem('smart-notch-version', '6.0.1');
+    if (lastOpenedVersion !== '6.0.2') {
+      setGreeting("Updated to v6.0.2: Bar Mode & Media Seek! 🎉");
+      localStorage.setItem('smart-notch-version', '6.0.2');
       setTimeout(() => setGreeting(null), 6000);
     } else {
       const hour = new Date().getHours();
