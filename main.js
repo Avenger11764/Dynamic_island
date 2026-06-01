@@ -1234,7 +1234,7 @@ function createWindow() {
     });
 
     const loadVite = () => {
-      mainWindow.loadURL('http://localhost:5173?simulate-update=true&simulate-whats-new=true').catch(() => {
+      mainWindow.loadURL('http://localhost:5173').catch(() => {
         setTimeout(loadVite, 1000);
       });
     };
