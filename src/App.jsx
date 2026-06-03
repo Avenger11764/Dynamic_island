@@ -149,6 +149,36 @@ const ShelfBar = React.memo(({
         boxShadow: isRgb ? undefined : glowStyle
       }}
     >
+      {config.customBgUrl && (
+        <div 
+          className="absolute inset-0 pointer-events-none z-0 overflow-hidden" 
+          style={{ 
+            opacity: 0.5,
+            mixBlendMode: 'screen',
+            borderRadius: 'inherit'
+          }}
+        >
+          {config.customBgUrl.includes('.mp4') ? (
+            <video 
+              src={config.customBgUrl}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div 
+              className="w-full h-full"
+              style={{ 
+                backgroundImage: `url(${config.customBgUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }} 
+            />
+          )}
+        </div>
+      )}
       {/* Background Animations — full width */}
       {config.bgAnimation !== 'off' && (
         <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden" style={{ mixBlendMode: 'screen' }}>
@@ -705,9 +735,9 @@ export default function App() {
 
   useEffect(() => {
     const lastOpenedVersion = localStorage.getItem('smart-notch-version');
-    if (lastOpenedVersion !== '6.0.3') {
-      setGreeting("Updated to v6.0.3: Dynamic release notes & seek improvements! 🎉");
-      localStorage.setItem('smart-notch-version', '6.0.3');
+    if (lastOpenedVersion !== '6.0.4') {
+      setGreeting("Updated to v6.0.4: Custom background links & video support! 🎉");
+      localStorage.setItem('smart-notch-version', '6.0.4');
       setTimeout(() => setGreeting(null), 6000);
     } else {
       const hour = new Date().getHours();
@@ -737,7 +767,8 @@ export default function App() {
     clockFormat: '12h',
     mode: 'notch',
     screenPosition: 'top',
-    lockDrag: false
+    lockDrag: false,
+    customBgUrl: ''
   };
   const [config, setConfig] = useState(() => {
     try {
@@ -753,9 +784,39 @@ export default function App() {
       return parsed;
     } catch(e) { return defaultConfig; }
   });
+  const [isResolvingBgUrl, setIsResolvingBgUrl] = useState(false);
+
   useEffect(() => {
     localStorage.setItem('smart-notch-config', JSON.stringify(config));
   }, [config]);
+
+  useEffect(() => {
+    if (!config.customBgUrl) return;
+    const cleanUrl = config.customBgUrl.trim();
+    if (
+      cleanUrl.includes('pin.it') || 
+      cleanUrl.includes('pinterest.com') ||
+      (cleanUrl.includes('giphy.com') && !cleanUrl.includes('media.giphy.com')) ||
+      cleanUrl.includes('gph.is')
+    ) {
+      if (ipcRenderer && !isResolvingBgUrl) {
+        const resolveUrl = async () => {
+          setIsResolvingBgUrl(true);
+          try {
+            const resolved = await ipcRenderer.invoke('resolve-pinterest-url', cleanUrl);
+            if (resolved) {
+              setConfig(prev => ({ ...prev, customBgUrl: resolved }));
+            }
+          } catch (err) {
+            console.error('Failed to resolve URL:', err);
+          } finally {
+            setIsResolvingBgUrl(false);
+          }
+        };
+        resolveUrl();
+      }
+    }
+  }, [config.customBgUrl]);
 
   const isRgb = config.accentColor === 'rgb';
   const accentHex = (!isRgb && config.accentColor?.startsWith('#')) ? config.accentColor : '#06b6d4';
@@ -990,7 +1051,7 @@ export default function App() {
     }
   };
 
-  const CURRENT_VERSION = '6.0.3';
+  const CURRENT_VERSION = '6.0.4';
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
@@ -1318,7 +1379,14 @@ export default function App() {
     if (config.lockDrag) {
       return;
     }
-    if (e.target.closest('button') || e.target.closest('.no-drag') || e.target.closest('[role="button"]') || e.target.closest('.cursor-pointer')) {
+    if (
+      e.target.closest('button') || 
+      e.target.closest('input') || 
+      e.target.closest('textarea') || 
+      e.target.closest('.no-drag') || 
+      e.target.closest('[role="button"]') || 
+      e.target.closest('.cursor-pointer')
+    ) {
       return;
     }
     e.preventDefault();
@@ -1799,10 +1867,10 @@ export default function App() {
                           </button>
                         </div>
                         <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 leading-relaxed">
-                          <div>• <b>Bar Mode:</b> Full layout support with interactive media & status integration.</div>
-                          <div>• <b>Media Seek:</b> Click timeline to seek active media sessions directly on Windows.</div>
-                          <div>• <b>App Badges:</b> Display playing source application icons (Spotify, Chrome, Edge).</div>
-                          <div>• <b>Call Fixes:</b> Balanced alignment for caller UI details in collapsed Notch.</div>
+                          <div>• <b>Custom Backgrounds:</b> Paste high-quality GIF/image links from Pinterest or Giphy.</div>
+                          <div>• <b>Link Resolution:</b> Short URLs (pin.it, gph.is) resolve automatically to direct media paths.</div>
+                          <div>• <b>Video Support:</b> Native HTML5 video player renders video Pins (.mp4) inside the notch.</div>
+                          <div>• <b>Input Lock Fix:</b> Fixed notch shifting coordinates when text inputs are focused.</div>
                         </div>
                       </div>
                     )}
@@ -1981,6 +2049,32 @@ export default function App() {
     >
       {(() => {
         const isSideNotch = config.screenPosition === 'left' || config.screenPosition === 'right';
+        const getNotchWidth = () => {
+          if (isDragging) return 140;
+          if (isNotification) return 360;
+          if (isExpanded) {
+            return isSideNotch ? (viewMode === 'settings' ? 400 : 260) : 450;
+          }
+          if (isSideNotch) {
+            return isDeepIdle ? 26 : 36;
+          }
+          if (greeting) return 240;
+          
+          let baseWidth = 160;
+          if (isPomoRunning || isSwRunning) {
+            baseWidth = 190;
+          } else if (config.clockFormat === '12h') {
+            baseWidth = 180;
+          }
+          
+          if (privacy.cam && privacy.mic) {
+            return baseWidth + 40;
+          }
+          if (privacy.cam || privacy.mic) {
+            return baseWidth + 20;
+          }
+          return baseWidth;
+        };
         return (
           <motion.div
         onClick={(e) => e.stopPropagation()}
@@ -1994,13 +2088,7 @@ export default function App() {
           borderTopRightRadius: (config.screenPosition === 'right' || config.screenPosition?.startsWith('top')) ? 0 : 100
         }}
         animate={{
-          width: isDragging
-            ? 140
-            : (isNotification
-               ? 360
-               : (isExpanded 
-                  ? (isSideNotch ? (viewMode === 'settings' ? 400 : 260) : 400) 
-                  : (isSideNotch ? (isDeepIdle ? 26 : 36) : (greeting ? 240 : (privacy.cam && privacy.mic ? 200 : (privacy.cam || privacy.mic ? 180 : 160)))))),
+          width: getNotchWidth(),
           height: isDragging
             ? 64
             : (isNotification 
@@ -2112,6 +2200,36 @@ export default function App() {
         )}
 
         <div className="w-full h-full flex flex-col overflow-hidden relative z-10" style={{ borderRadius: 'inherit', opacity: isDragging ? 0 : 1, transition: isDragging ? 'none' : 'opacity 0.25s ease' }}>
+          {config.customBgUrl && (
+            <div 
+              className="absolute inset-0 pointer-events-none z-0 overflow-hidden" 
+              style={{ 
+                opacity: 0.5,
+                mixBlendMode: 'screen',
+                borderRadius: 'inherit'
+              }}
+            >
+              {config.customBgUrl.includes('.mp4') ? (
+                <video 
+                  src={config.customBgUrl}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div 
+                  className="w-full h-full"
+                  style={{ 
+                    backgroundImage: `url(${config.customBgUrl})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
+                  }} 
+                />
+              )}
+            </div>
+          )}
         <AnimatePresence>
           {isExpanded && (
             <motion.div 
@@ -2261,7 +2379,7 @@ export default function App() {
                     <div className={`w-1.5 h-1.5 rounded-full ${hardware.cpu > 50 ? 'bg-blue-500 shadow-[0_0_5px_#3b82f6]' : (idleTextColor === 'black' ? 'bg-black/10' : 'bg-white/10')}`} />
                  </div>
               </div>
-              <div className={`flex items-center justify-center ${isSideNotch ? 'flex-shrink-0 py-2' : 'flex-shrink-0'}`}>
+              <div className={`flex items-center justify-center ${isSideNotch ? 'flex-shrink-0 py-2' : 'mx-2 flex-shrink-0'}`}>
                 <AnimatePresence mode="wait">
                   {greeting ? (
                      <motion.span key="greeting" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -2 }} exit={{ opacity: 0, y: -5 }} className={`font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(true)}`} style={{ writingMode: isSideNotch ? 'vertical-rl' : 'horizontal-tb', textOrientation: isSideNotch ? 'upright' : 'mixed', ...(idleTextColor === 'black' ? {} : getTextShadowStyle(true)) }}>
@@ -3051,10 +3169,10 @@ export default function App() {
                                  </button>
                                </div>
                                <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 leading-relaxed">
-                                 <div>• <b>Bar Mode:</b> Full layout support with interactive media & status integration.</div>
-                                 <div>• <b>Media Seek:</b> Click timeline to seek active media sessions directly on Windows.</div>
-                                 <div>• <b>App Badges:</b> Display playing source application icons (Spotify, Chrome, Edge).</div>
-                                 <div>• <b>Call Fixes:</b> Balanced alignment for caller UI details in collapsed Notch.</div>
+                                 <div>• <b>Custom Backgrounds:</b> Paste high-quality GIF/image links from Pinterest or Giphy.</div>
+                                 <div>• <b>Link Resolution:</b> Short URLs (pin.it, gph.is) resolve automatically to direct media paths.</div>
+                                 <div>• <b>Video Support:</b> Native HTML5 video player renders video Pins (.mp4) inside the notch.</div>
+                                 <div>• <b>Input Lock Fix:</b> Fixed notch shifting coordinates when text inputs are focused.</div>
                                </div>
                              </div>
                            )}
@@ -3093,6 +3211,46 @@ export default function App() {
                                <button className={`flex-1 min-w-[30%] py-1.5 text-[10px] font-bold rounded-md transition-colors ${config.bgAnimation === 'rain' ? 'bg-white text-black' : 'text-white/50 hover:text-white hover:bg-white/5'}`} onClick={() => setConfig({...config, bgAnimation: 'rain'})}>Raindrops</button>
                              </div>
                            </div>
+
+                            {/* Custom GIF Background */}
+                            <div className="flex flex-col gap-2">
+                               <span className="text-xs font-semibold text-white/70">Custom GIF Background URL</span>
+                               <div className="flex gap-2 w-full font-sans">
+                                 <input 
+                                   type="text" 
+                                   placeholder={isResolvingBgUrl ? "Resolving link..." : "Paste GIF/image URL here"} 
+                                   value={config.customBgUrl || ''} 
+                                   onChange={(e) => setConfig({...config, customBgUrl: e.target.value})} 
+                                   disabled={isResolvingBgUrl}
+                                   className="flex-grow bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-white/20 disabled:opacity-50"
+                                   style={{ pointerEvents: 'auto' }}
+                                 />
+                                 {config.customBgUrl && (
+                                   <button 
+                                     className="bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors"
+                                     onClick={() => setConfig({...config, customBgUrl: ''})}
+                                     disabled={isResolvingBgUrl}
+                                     style={{ pointerEvents: 'auto' }}
+                                   >
+                                     Reset
+                                   </button>
+                                 )}
+                               </div>
+                               {isResolvingBgUrl && (
+                                 <span className="text-[10px] text-cyan-400 mt-1 select-none leading-normal animate-pulse flex items-center gap-1 font-sans">
+                                   <span>🔄</span> Resolving Pinterest link, please wait...
+                                 </span>
+                               )}
+                               {!isResolvingBgUrl && config.customBgUrl && (
+                                 config.customBgUrl.includes('pin.it') || 
+                                 config.customBgUrl.includes('pinterest.com') || 
+                                 (config.customBgUrl.includes('giphy.com') && !config.customBgUrl.includes('media.giphy.com'))
+                               ) && (
+                                 <span className="text-[10px] text-yellow-400 mt-1 select-none leading-normal font-sans">
+                                   ⚠️ That is a webpage link, not a direct image file. To get the correct direct link, right-click the moving GIF and select <b>"Copy Image Address"</b> or <b>"Copy Image Link"</b>.
+                                 </span>
+                               )}
+                             </div>
 
                            {/* Accent Color */}
                            <div className="flex flex-col gap-2">

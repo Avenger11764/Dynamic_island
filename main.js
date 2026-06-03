@@ -1055,6 +1055,70 @@ ipcMain.handle('get-tasks', async () => {
   });
 });
 
+ipcMain.handle('resolve-pinterest-url', async (event, url) => {
+  try {
+    const cleanUrl = url.trim();
+    
+    // Giphy direct ID resolution (standard web view link)
+    if (cleanUrl.includes('giphy.com/gifs/') || cleanUrl.includes('giphy.com/clips/') || cleanUrl.includes('giphy.com/embed/')) {
+      const giphyMatch = cleanUrl.match(/giphy\.com\/(?:gifs|clips|embed)\/(?:[a-zA-Z0-9-]+-)?([a-zA-Z0-9]+)/i);
+      if (giphyMatch && giphyMatch[1]) {
+        return `https://media.giphy.com/media/${giphyMatch[1]}/giphy.gif`;
+      }
+    }
+    
+    const response = await fetch(cleanUrl, { 
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      }
+    });
+    const finalUrl = response.url;
+    const html = await response.text();
+    
+    // If it's a Giphy link after following redirects
+    if (finalUrl.includes('giphy.com')) {
+      const giphyMatch = finalUrl.match(/giphy\.com\/(?:gifs|clips|embed)\/(?:[a-zA-Z0-9-]+-)?([a-zA-Z0-9]+)/i);
+      if (giphyMatch && giphyMatch[1]) {
+        return `https://media.giphy.com/media/${giphyMatch[1]}/giphy.gif`;
+      }
+    }
+    
+    // 1. Try JSON/Script video search first (extracting direct .mp4 if available)
+    const mp4Matches = html.match(/"(https:\/\/v1\.pinimg\.com\/videos\/mc\/[^"]+\.mp4)"/i) || 
+                       html.match(/"(https:\/\/v1\.pinimg\.com\/[^"]+\.mp4)"/i);
+    if (mp4Matches && mp4Matches[1]) {
+      return mp4Matches[1].replace(/\\u002F/g, '/');
+    }
+    
+    // 2. Try preloaded image tags for GIF
+    const gifMatch = html.match(/<link[^>]+as="image"[^>]+href="([^"]+\.gif)"/i);
+    if (gifMatch && gifMatch[1]) {
+      return gifMatch[1];
+    }
+    
+    // 3. Try og:image / twitter:image meta tags (order-independent)
+    const metaTags = html.match(/<meta[^>]+>/gi) || [];
+    for (const tag of metaTags) {
+      if (tag.includes('property="og:image"') || tag.includes('name="og:image"') || tag.includes('name="twitter:image:src"')) {
+        const contentMatch = tag.match(/content="([^"]+)"/i);
+        if (contentMatch && contentMatch[1]) {
+          let imageUrl = contentMatch[1];
+          if (html.toLowerCase().includes('.gif')) {
+            imageUrl = imageUrl.replace('/736x/', '/originals/').replace(/\.(jpg|jpeg|png|webp)$/i, '.gif');
+          } else {
+            imageUrl = imageUrl.replace(/\/(736x|474x|236x)\//, '/originals/');
+          }
+          return imageUrl;
+        }
+      }
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+});
+
 ipcMain.on('kill-task', (e, id) => {
   exec(`taskkill /F /PID ${id}`);
 });
@@ -1286,7 +1350,7 @@ app.whenReady().then(() => {
 
   createWindow();
   authenticateSpotify();
-  startClipboardPolling();
+  // startClipboardPolling();
   startHardwarePolling();
   startCombinedBackgroundMonitor();
 
