@@ -621,7 +621,9 @@ const ShelfBar = React.memo(({
           onClick={onShowSettings}
         >
           <SettingsIcon size={14} />
-          {updateAvailable || whatsNewAvailable ? (
+          {updateAvailable ? (
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444] animate-pulse" />
+          ) : whatsNewAvailable ? (
             <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
           ) : null}
         </button>
@@ -1823,11 +1825,11 @@ export default function App() {
 
                     {/* Update Available notification */}
                     {updateAvailable && (
-                      <div className="w-full bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3 flex flex-col gap-1.5 text-left mb-4 cursor-pointer hover:bg-cyan-500/15 transition-colors select-none" style={{ gridColumn: isSide ? 'auto' : 'span 4' }} onClick={() => setShowReleaseNotes(!showReleaseNotes)}>
+                      <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex flex-col gap-1.5 text-left mb-4 cursor-pointer hover:bg-red-500/15 transition-colors select-none" style={{ gridColumn: isSide ? 'auto' : 'span 4' }} onClick={() => setShowReleaseNotes(!showReleaseNotes)}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
-                            <span className="text-xs font-bold text-cyan-300">Update Available! (v{latestVersion})</span>
+                            <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444] animate-pulse" />
+                            <span className="text-xs font-bold text-red-300">Update Available! (v{latestVersion})</span>
                           </div>
                           <span className="text-[10px] text-white/50 underline">{showReleaseNotes ? 'Hide details' : 'View changelog'}</span>
                         </div>
@@ -2623,7 +2625,9 @@ export default function App() {
                         <div className="flex items-center justify-center gap-1.5 w-full bg-white/5 py-1 px-2 rounded-xl border border-white/5" style={{ pointerEvents: 'auto', WebkitAppRegion: 'no-drag' }}>
                           <button title="Settings" className={`relative w-7 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'settings' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} onClick={(e) => { e.stopPropagation(); setViewMode('settings'); }}>
                             <SettingsIcon size={13} />
-                            {updateAvailable || whatsNewAvailable ? (
+                            {updateAvailable ? (
+                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444] animate-pulse" />
+                            ) : whatsNewAvailable ? (
                               <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
                             ) : null}
                           </button>
@@ -2680,7 +2684,9 @@ export default function App() {
                         <div className="flex items-center gap-2" style={{ pointerEvents: 'auto', WebkitAppRegion: 'no-drag' }}>
                           <button title="Settings" className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors ${viewMode === 'settings' ? 'bg-white text-black' : 'bg-white/10 text-white'}`} onClick={(e) => { e.stopPropagation(); setViewMode('settings'); }}>
                             <SettingsIcon size={14} />
-                            {updateAvailable || whatsNewAvailable ? (
+                            {updateAvailable ? (
+                              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444] animate-pulse" />
+                            ) : whatsNewAvailable ? (
                               <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
                             ) : null}
                           </button>
@@ -3121,11 +3127,11 @@ export default function App() {
                         <motion.div key="settings" className="w-full flex flex-col gap-4 pb-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                            {/* Update Available notification */}
                            {updateAvailable && (
-                             <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3 flex flex-col gap-1.5 text-left mb-1 cursor-pointer hover:bg-cyan-500/15 transition-colors select-none" onClick={() => setShowReleaseNotes(!showReleaseNotes)}>
+                             <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex flex-col gap-1.5 text-left mb-1 cursor-pointer hover:bg-red-500/15 transition-colors select-none" onClick={() => setShowReleaseNotes(!showReleaseNotes)}>
                                <div className="flex items-center justify-between">
                                  <div className="flex items-center gap-1.5">
-                                   <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
-                                   <span className="text-xs font-bold text-cyan-300">Update Available! (v{latestVersion})</span>
+                                   <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444] animate-pulse" />
+                                   <span className="text-xs font-bold text-red-300">Update Available! (v{latestVersion})</span>
                                  </div>
                                  <span className="text-[10px] text-white/50 underline">{showReleaseNotes ? 'Hide details' : 'View changelog'}</span>
                                </div>
