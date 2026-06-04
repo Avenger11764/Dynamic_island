@@ -1,7 +1,7 @@
 {
   "name": "smart-notch",
   "private": true,
-  "version": "6.0.4",
+  "version": "6.0.5",
   "changelog": [
     "Custom Backgrounds: Paste high-quality GIF/image links from Pinterest or Giphy.",
     "Auto Link Resolution: Automatically resolves short URLs (pin.it, gph.is) to direct CDN paths.",

@@ -735,9 +735,9 @@ export default function App() {
 
   useEffect(() => {
     const lastOpenedVersion = localStorage.getItem('smart-notch-version');
-    if (lastOpenedVersion !== '6.0.4') {
+    if (lastOpenedVersion !== '6.0.5') {
       setGreeting("Updated to v6.0.4: Custom background links & video support! 🎉");
-      localStorage.setItem('smart-notch-version', '6.0.4');
+      localStorage.setItem('smart-notch-version', '6.0.5');
       setTimeout(() => setGreeting(null), 6000);
     } else {
       const hour = new Date().getHours();
@@ -1051,7 +1051,8 @@ export default function App() {
     }
   };
 
-  const CURRENT_VERSION = '6.0.4';
+  const CURRENT_VERSION = '6.0.5';
+  const isWindowsStore = ipcRenderer?.isWindowsStore || false;
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
@@ -1059,6 +1060,12 @@ export default function App() {
   const [changelog, setChangelog] = useState([]);
 
   useEffect(() => {
+    if (isWindowsStore) {
+      setUpdateAvailable(false);
+      setWhatsNewAvailable(false);
+      return;
+    }
+
     const compareVersions = (v1, v2) => {
       const parts1 = v1.split('.').map(Number);
       const parts2 = v2.split('.').map(Number);
@@ -1084,6 +1091,8 @@ export default function App() {
             // Enable update available state if repository is newer, OR if simulated in localhost dev mode
             if (compareVersions(data.version, CURRENT_VERSION) > 0 || window.location.search.includes('simulate-update')) {
               setUpdateAvailable(true);
+            } else {
+              setUpdateAvailable(false);
             }
           }
         }
@@ -1101,10 +1110,14 @@ export default function App() {
       localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
       if (isExistingUser || window.location.search.includes('simulate-whats-new')) {
         setWhatsNewAvailable(true);
+      } else {
+        setWhatsNewAvailable(false);
       }
     } else {
       if (compareVersions(CURRENT_VERSION, lastSeen) > 0 || window.location.search.includes('simulate-whats-new')) {
         setWhatsNewAvailable(true);
+      } else {
+        setWhatsNewAvailable(false);
       }
     }
 
