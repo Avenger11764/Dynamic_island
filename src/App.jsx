@@ -735,9 +735,9 @@ export default function App() {
 
   useEffect(() => {
     const lastOpenedVersion = localStorage.getItem('smart-notch-version');
-    if (lastOpenedVersion !== '6.0.6') {
-      setGreeting("Updated to v6.0.6: Performance & memory optimizations! ⚡");
-      localStorage.setItem('smart-notch-version', '6.0.6');
+    if (lastOpenedVersion !== '6.0.7') {
+      setGreeting("Updated to v6.0.7: Performance & memory optimizations! ⚡");
+      localStorage.setItem('smart-notch-version', '6.0.7');
       setTimeout(() => setGreeting(null), 6000);
     } else {
       const hour = new Date().getHours();
@@ -1051,7 +1051,7 @@ export default function App() {
     }
   };
 
-  const CURRENT_VERSION = '6.0.6';
+  const CURRENT_VERSION = '6.0.7';
   const isWindowsStore = ipcRenderer?.isWindowsStore || false;
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
@@ -1073,10 +1073,6 @@ export default function App() {
     };
 
     const checkUpdates = async () => {
-      if (isWindowsStore) {
-        setUpdateAvailable(false);
-        return;
-      }
       try {
         const res = await fetch('https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/package.json?t=' + Date.now());
         if (res.ok) {

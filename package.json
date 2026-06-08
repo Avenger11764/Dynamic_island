@@ -1,7 +1,7 @@
 {
   "name": "smart-notch",
   "private": true,
-  "version": "6.0.6",
+  "version": "6.0.7",
   "changelog": [
     "Memory Optimization: Added periodic Garbage Collection routines to background system monitoring to completely eliminate RAM accumulation.",
     "IPC Efficiency: Optimized SMTC media controller to only transmit track thumbnails over IPC when the track or artwork changes.",
