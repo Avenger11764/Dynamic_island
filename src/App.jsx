@@ -1060,12 +1060,6 @@ export default function App() {
   const [changelog, setChangelog] = useState([]);
 
   useEffect(() => {
-    if (isWindowsStore) {
-      setUpdateAvailable(false);
-      setWhatsNewAvailable(false);
-      return;
-    }
-
     const compareVersions = (v1, v2) => {
       const parts1 = v1.split('.').map(Number);
       const parts2 = v2.split('.').map(Number);
@@ -1079,6 +1073,10 @@ export default function App() {
     };
 
     const checkUpdates = async () => {
+      if (isWindowsStore) {
+        setUpdateAvailable(false);
+        return;
+      }
       try {
         const res = await fetch('https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/package.json?t=' + Date.now());
         if (res.ok) {
