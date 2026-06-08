@@ -735,9 +735,9 @@ export default function App() {
 
   useEffect(() => {
     const lastOpenedVersion = localStorage.getItem('smart-notch-version');
-    if (lastOpenedVersion !== '6.0.5') {
-      setGreeting("Updated to v6.0.4: Custom background links & video support! 🎉");
-      localStorage.setItem('smart-notch-version', '6.0.5');
+    if (lastOpenedVersion !== '6.0.6') {
+      setGreeting("Updated to v6.0.6: Performance & memory optimizations! ⚡");
+      localStorage.setItem('smart-notch-version', '6.0.6');
       setTimeout(() => setGreeting(null), 6000);
     } else {
       const hour = new Date().getHours();
@@ -1051,7 +1051,7 @@ export default function App() {
     }
   };
 
-  const CURRENT_VERSION = '6.0.5';
+  const CURRENT_VERSION = '6.0.6';
   const isWindowsStore = ipcRenderer?.isWindowsStore || false;
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
@@ -1880,10 +1880,10 @@ export default function App() {
                           </button>
                         </div>
                         <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 leading-relaxed">
-                          <div>• <b>Custom Backgrounds:</b> Paste high-quality GIF/image links from Pinterest or Giphy.</div>
-                          <div>• <b>Link Resolution:</b> Short URLs (pin.it, gph.is) resolve automatically to direct media paths.</div>
-                          <div>• <b>Video Support:</b> Native HTML5 video player renders video Pins (.mp4) inside the notch.</div>
-                          <div>• <b>Input Lock Fix:</b> Fixed notch shifting coordinates when text inputs are focused.</div>
+                          <div>• <b>Memory Fixes:</b> Added background GC polling to resolve system memory leaks.</div>
+                          <div>• <b>IPC Efficiency:</b> Media worker now caches track thumbnails, reducing data overhead.</div>
+                          <div>• <b>Stable Processes:</b> Substantially lowered CPU/RAM footprint of powershell & electron sub-processes.</div>
+                          <div>• <b>Resource Cleanup:</b> Eradicated redundant base64 serialization during active playback.</div>
                         </div>
                       </div>
                     )}
@@ -3182,10 +3182,10 @@ export default function App() {
                                  </button>
                                </div>
                                <div className="text-[10px] text-white/70 flex flex-col gap-1 pl-3.5 border-l border-white/10 mt-1 leading-relaxed">
-                                 <div>• <b>Custom Backgrounds:</b> Paste high-quality GIF/image links from Pinterest or Giphy.</div>
-                                 <div>• <b>Link Resolution:</b> Short URLs (pin.it, gph.is) resolve automatically to direct media paths.</div>
-                                 <div>• <b>Video Support:</b> Native HTML5 video player renders video Pins (.mp4) inside the notch.</div>
-                                 <div>• <b>Input Lock Fix:</b> Fixed notch shifting coordinates when text inputs are focused.</div>
+                                 <div>• <b>Memory Fixes:</b> Added background GC polling to resolve system memory leaks.</div>
+                                 <div>• <b>IPC Efficiency:</b> Media worker now caches track thumbnails, reducing data overhead.</div>
+                                 <div>• <b>Stable Processes:</b> Substantially lowered CPU/RAM footprint of powershell & electron sub-processes.</div>
+                                 <div>• <b>Resource Cleanup:</b> Eradicated redundant base64 serialization during active playback.</div>
                                </div>
                              </div>
                            )}

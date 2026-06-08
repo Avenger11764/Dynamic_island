@@ -98,14 +98,25 @@ function startSpotifyPolling() {
         stdio: ['ignore', 'ignore', 'ignore', 'ipc']
       });
 
+      let currentTrackThumbnail = '';
       smtcWorker.on('message', (msg) => {
         if (!mainWindow || mainWindow.isDestroyed()) return;
         if (msg) {
+          const trackId = msg.title + '-' + msg.artist;
+          if (trackId !== currentTrackId) {
+            currentTrackId = trackId;
+            currentLyrics = [];
+            currentTrackThumbnail = msg.thumbnail || '';
+            fetchLyrics({ name: msg.title, artists: [{ name: msg.artist }] });
+          } else if (msg.thumbnail !== undefined) {
+            currentTrackThumbnail = msg.thumbnail || '';
+          }
+
           const item = {
-            id: msg.title + '-' + msg.artist,
+            id: trackId,
             name: msg.title,
             artists: [{ name: msg.artist }],
-            album: { images: [{ url: msg.thumbnail ? 'data:image/png;base64,' + msg.thumbnail : '' }] }
+            album: { images: [{ url: currentTrackThumbnail ? 'data:image/png;base64,' + currentTrackThumbnail : '' }] }
           };
 
           const body = {
@@ -118,12 +129,6 @@ function startSpotifyPolling() {
             isSpotify: msg.is_spotify
           };
 
-          if (item.id !== currentTrackId) {
-            currentTrackId = item.id;
-            currentLyrics = [];
-            fetchLyrics(item);
-          }
-          
           mainWindow.webContents.send('spotify-state', body);
         } else {
           mainWindow.webContents.send('spotify-state', null);
@@ -487,6 +492,9 @@ function startCombinedBackgroundMonitor() {
       
       $prevRx = $currRx
       $prevTx = $currTx
+      
+      [System.GC]::Collect()
+      [System.GC]::WaitForPendingFinalizers()
     }
   `;
 

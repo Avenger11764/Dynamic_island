@@ -9,6 +9,7 @@ try {
 let lastPosition = 0;
 let lastUpdateDate = 0;
 let lastTrackId = '';
+let lastThumbnailBuffer = null;
 
 setInterval(() => {
   try {
@@ -23,10 +24,13 @@ setInterval(() => {
       let currentPos = bestSession.timeline && bestSession.timeline.position ? bestSession.timeline.position * 1000 : 0;
       let progress_ms = currentPos;
       
+      let thumbnailToSend = undefined;
       if (currentTrackId !== lastTrackId) {
          lastTrackId = currentTrackId;
          lastPosition = currentPos;
          lastUpdateDate = Date.now();
+         lastThumbnailBuffer = bestSession.media.thumbnail;
+         thumbnailToSend = lastThumbnailBuffer ? lastThumbnailBuffer.toString('base64') : '';
       } else {
          if (is_playing) {
             if (currentPos === lastPosition && lastUpdateDate !== 0) {
@@ -39,6 +43,18 @@ setInterval(() => {
             lastPosition = currentPos;
             lastUpdateDate = Date.now();
          }
+
+         // Same track: check if thumbnail loaded or changed
+         const currentThumb = bestSession.media.thumbnail;
+         if (currentThumb) {
+            const isBuf = Buffer.isBuffer(currentThumb);
+            const isLastBuf = Buffer.isBuffer(lastThumbnailBuffer);
+            const hasChanged = !isLastBuf || (isBuf && (typeof currentThumb.equals === 'function' ? !currentThumb.equals(lastThumbnailBuffer) : currentThumb.toString('base64') !== lastThumbnailBuffer.toString('base64')));
+            if (hasChanged) {
+               lastThumbnailBuffer = currentThumb;
+               thumbnailToSend = currentThumb.toString('base64');
+            }
+         }
       }
 
       const item = {
@@ -50,8 +66,8 @@ setInterval(() => {
         appId: bestSession.sourceAppId,
         is_spotify: !!(bestSession.sourceAppId && bestSession.sourceAppId.toLowerCase().includes('spotify'))
       };
-      if (bestSession.media.thumbnail) {
-        item.thumbnail = bestSession.media.thumbnail.toString('base64');
+      if (thumbnailToSend !== undefined) {
+        item.thumbnail = thumbnailToSend;
       }
       process.send(item);
     } else {

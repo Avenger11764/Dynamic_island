@@ -1,12 +1,12 @@
 {
   "name": "smart-notch",
   "private": true,
-  "version": "6.0.5",
+  "version": "6.0.6",
   "changelog": [
-    "Custom Backgrounds: Paste high-quality GIF/image links from Pinterest or Giphy.",
-    "Auto Link Resolution: Automatically resolves short URLs (pin.it, gph.is) to direct CDN paths.",
-    "Video Backgrounds: Native support for video Pins (.mp4) inside the notch.",
-    "Input Fixes: Solved position shifting bug when focusing/clicking custom background text field."
+    "Memory Optimization: Added periodic Garbage Collection routines to background system monitoring to completely eliminate RAM accumulation.",
+    "IPC Efficiency: Optimized SMTC media controller to only transmit track thumbnails over IPC when the track or artwork changes.",
+    "Process Stability: Significantly reduced long-term CPU/RAM usage of child processes.",
+    "Resource Cleanup: Resolved redundant base64 image serialization loops during track playback."
   ],
   "main": "main.js",
   "author": "Avinash",
