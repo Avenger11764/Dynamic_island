@@ -150,12 +150,13 @@ const MoltenMetal = ({
     const container = containerRef.current;
     if (!container) return;
 
+    const isSmallScreen = typeof window !== 'undefined' && window.innerWidth < 768;
     const renderer = new Renderer({
       webgl: 2,
       alpha: true,
       premultipliedAlpha: true,
       antialias: false,
-      dpr: Math.min(window.devicePixelRatio || 1, 2)
+      dpr: Math.min(window.devicePixelRatio || 1, isSmallScreen ? 1.25 : 2)
     });
 
     const gl = renderer.gl;
@@ -225,12 +226,23 @@ const MoltenMetal = ({
         targetMouse[1] = 1.0 - (e.clientY - rect.top) / rect.height;
       }
     };
+    const handleTouchMove = e => {
+      if (!e.touches || e.touches.length === 0) return;
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        targetMouse[0] = (touch.clientX - rect.left) / rect.width;
+        targetMouse[1] = 1.0 - (touch.clientY - rect.top) / rect.height;
+      }
+    };
     const handleMouseLeave = () => {
       targetMouse[0] = 0.5;
       targetMouse[1] = 0.5;
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseleave', handleMouseLeave);
+    window.addEventListener('touchstart', handleTouchMove, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
 
     let raf = 0;
     let isVisible = true;
@@ -281,6 +293,8 @@ const MoltenMetal = ({
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseleave', handleMouseLeave);
+      window.removeEventListener('touchstart', handleTouchMove);
+      window.removeEventListener('touchmove', handleTouchMove);
       ctxMap.delete(container);
       if (canvas.parentNode === container) container.removeChild(canvas);
       gl.getExtension('WEBGL_lose_context')?.loseContext();

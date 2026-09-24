@@ -5,27 +5,39 @@
   align-items: center;
   width: 100%;
   max-width: 100%;
+  overflow: hidden;
+  touch-action: pan-y;
 }
 
 .bounceCardsContainer .card {
   position: absolute;
-  width: 320px;
-  max-width: 85vw;
+  width: clamp(210px, 66vw, 320px);
   aspect-ratio: 16 / 10;
-  border: 3px solid rgba(255, 255, 255, 0.25);
-  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 30px rgba(56, 189, 248, 0.15);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.65), 0 0 20px rgba(56, 189, 248, 0.15);
   background: #090e1a;
   cursor: pointer;
-  transition: box-shadow 0.3s ease;
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
-.bounceCardsContainer .card:hover {
+@media (min-width: 768px) {
+  .bounceCardsContainer .card {
+    border-width: 3px;
+    border-radius: 20px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 30px rgba(56, 189, 248, 0.15);
+  }
+}
+
+.bounceCardsContainer .card:hover,
+.bounceCardsContainer .card:active {
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(56, 189, 248, 0.35);
   border-color: rgba(255, 255, 255, 0.5);
-  z-index: 20;
+  z-index: 25;
 }
 
 .bounceCardsContainer .card .image {
@@ -34,4 +46,5 @@
   object-fit: cover;
   object-position: center top;
   display: block;
+  pointer-events: none;
 }
