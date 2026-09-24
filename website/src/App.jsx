@@ -1,6 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, ChevronRight, ChevronLeft, BatteryCharging, Layers, Sun, Palette, Power } from 'lucide-react';
+import MoltenMetal from './MoltenMetal';
+import SpecularButton from './SpecularButton';
+import BounceCards from './BounceCards';
 
 function App() {
   const carouselRef = useRef(null);
@@ -96,8 +99,34 @@ function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#030712] font-sans selection:bg-blue-500/30 text-white">
-      {/* Navigation */}
+    <div className="min-h-screen bg-[#030712] font-sans selection:bg-blue-500/30 text-white relative">
+      {/* Full-Website Interactive Molten Metal Background */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <MoltenMetal
+          color1="#8c8c8c"
+          color2="#FF9FFC"
+          color3="#FFFFFF"
+          speed={0.35}
+          scale={4}
+          detail={3}
+          glow={1.6}
+          coreSize={0.1}
+          swirl={1}
+          fold={-0.2}
+          blackPoint={0.05}
+          brightness={1.3}
+          colorMode="molten"
+          grain={true}
+          grainIntensity={0.05}
+          mouseInteraction={true}
+          mouseStrength={0.3}
+          opacity={0.8}
+        />
+        <div className="absolute inset-0 bg-[#030712]/35 pointer-events-none" />
+      </div>
+
+      <div className="relative z-10">
+        {/* Navigation */}
       <nav className="fixed top-0 w-full z-50 glass border-b border-white/10 rounded-none bg-[#030712]/50 backdrop-blur-2xl">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -121,7 +150,6 @@ function App() {
 
       {/* Hero Section */}
       <section className="pt-40 pb-20 px-6 relative overflow-hidden">
-        {/* Ambient background glows */}
         {/* Ambient background glows */}
         <motion.div 
           animate={{ 
@@ -220,18 +248,36 @@ function App() {
           >
             <div className="flex gap-6 px-6 w-max">
             {[...features, ...features].map((feature, i) => (
-              <div 
+              <SpecularButton 
                 key={i}
-                className="glass-card p-8 rounded-3xl transition-colors border border-white/10 bg-white/[0.03] w-[300px] md:w-[360px] shrink-0"
+                as="div"
+                size="card"
+                radius={24}
+                tint="#0b1329"
+                tintOpacity={0.65}
+                blur={12}
+                textColor="#f5f5f5"
+                lineColor="#ffffff"
+                baseColor="#334155"
+                intensity={1.2}
+                shineSize={14}
+                shineFade={40}
+                thickness={1.5}
+                speed={0.35}
+                followMouse={true}
+                proximity={250}
+                className="w-[310px] md:w-[360px] min-h-[310px] p-7 md:p-8 shrink-0 rounded-3xl transition-all duration-300 hover:scale-[1.02] border border-white/10 group cursor-default flex flex-col justify-between"
               >
-                <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-6 border border-white/10 hover:scale-110 hover:bg-white/10 transition-all duration-300">
-                  {feature.icon}
+                <div>
+                  <div className="w-13 h-13 rounded-2xl bg-white/5 flex items-center justify-center mb-5 border border-white/10 group-hover:scale-110 hover:scale-110 hover:bg-white/10 transition-all duration-300 shrink-0">
+                    {feature.icon}
+                  </div>
+                  <h3 className="text-xl font-semibold text-white mb-2.5 tracking-tight">{feature.title}</h3>
                 </div>
-                <h3 className="text-xl font-semibold text-white mb-3">{feature.title}</h3>
-                <p className="text-gray-400 leading-relaxed text-sm">
+                <p className="text-gray-400 text-sm leading-relaxed mt-2">
                   {feature.description}
                 </p>
-              </div>
+              </SpecularButton>
             ))}
           </div>
         </div>
@@ -249,80 +295,58 @@ function App() {
             className="text-center mb-16"
           >
             <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">Seamless Modes</h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">Featuring gravity-based physics: watch the liquid light drop from the top to the bottom as you switch into music mode.</p>
+            <p className="text-gray-400 max-w-2xl mx-auto">Hover over any card in the interactive deck to inspect each Smart Notch mode — from live telemetries to ambient settings.</p>
           </motion.div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Interactive BounceCards Stack */}
+          <div className="flex justify-center items-center py-10 overflow-hidden">
+            <BounceCards
+              className="mx-auto"
+              images={[
+                "/assets/network_stats_v2.png",
+                "/assets/hardware_stats_v2.png",
+                "/assets/compact_mode_v2.png",
+                "/assets/settings_mode_v2.png",
+                "/assets/bar_mode_v2.png"
+              ]}
+              containerWidth={820}
+              containerHeight={380}
+              animationDelay={0.3}
+              animationStagger={0.08}
+              easeType="elastic.out(1, 0.6)"
+              transformStyles={[
+                "rotate(8deg) translate(-270px, 15px)",
+                "rotate(3deg) translate(-135px, -10px)",
+                "rotate(-2deg) translate(0px, 0px)",
+                "rotate(-7deg) translate(135px, -15px)",
+                "rotate(5deg) translate(270px, 15px)"
+              ]}
+              enableHover={true}
+            />
+          </div>
 
-            <motion.div 
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              whileHover={{ scale: 1.01, y: -2 }} 
-              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10 md:col-span-2"
-            >
-              <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
-                <Layers className="w-6 h-6 text-cyan-400"/> Docking Bar / Shelf Mode (New)
-              </h4>
-              <img src="/assets/bar_mode_v2.png" alt="Docking Bar Shelf Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-cyan-500/20 transition-all duration-500" />
-            </motion.div>
-            
-            <motion.div 
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              whileHover={{ scale: 1.02, y: -5 }} 
-              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10"
-            >
-              <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
-                <Activity className="w-6 h-6 text-green-400"/> Network Speed
-              </h4>
-              <img src="/assets/network_stats_v2.png" alt="Network Stats" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-green-500/20 transition-all duration-500" />
-            </motion.div>
-            
-            <motion.div 
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              whileHover={{ scale: 1.02, y: -5 }} 
-              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10"
-            >
-              <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
-                <Settings2 className="w-6 h-6 text-blue-400"/> Hardware Monitor
-              </h4>
-              <img src="/assets/hardware_stats_v2.png" alt="Hardware Stats" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-blue-500/20 transition-all duration-500" />
-            </motion.div>
-
-            <motion.div 
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-              whileHover={{ scale: 1.02, y: -5 }} 
-              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10"
-            >
-              <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
-                <ShieldCheck className="w-6 h-6 text-gray-400"/> Compact Idle
-              </h4>
-              <img src="/assets/compact_mode_v2.png" alt="Compact Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-white/10 transition-all duration-500" />
-            </motion.div>
-
-            <motion.div 
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-              whileHover={{ scale: 1.02, y: -5 }} 
-              className="glass-card p-8 rounded-3xl group bg-white/[0.03] border border-white/10"
-            >
-              <h4 className="text-gray-300 font-medium mb-6 flex items-center gap-2 text-xl">
-                <Palette className="w-6 h-6 text-fuchsia-400"/> Settings & Customization
-              </h4>
-              <img src="/assets/settings_mode_v2.png" alt="Settings Mode" className="w-full rounded-2xl border border-white/5 shadow-lg group-hover:shadow-fuchsia-500/20 transition-all duration-500" />
-            </motion.div>
+          {/* Mode Highlights Underneath */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-8 max-w-5xl mx-auto">
+            <div className="glass-card p-4 rounded-2xl border border-white/10 bg-white/[0.02] text-center hover:bg-white/[0.05] transition-all">
+              <span className="text-sm font-semibold text-white block mb-1">Network Speed</span>
+              <span className="text-xs text-green-400">Live MB/s Monitor</span>
+            </div>
+            <div className="glass-card p-4 rounded-2xl border border-white/10 bg-white/[0.02] text-center hover:bg-white/[0.05] transition-all">
+              <span className="text-sm font-semibold text-white block mb-1">Hardware Monitor</span>
+              <span className="text-xs text-blue-400">Real-Time CPU & RAM</span>
+            </div>
+            <div className="glass-card p-4 rounded-2xl border border-white/10 bg-white/[0.02] text-center hover:bg-white/[0.05] transition-all">
+              <span className="text-sm font-semibold text-white block mb-1">Compact Idle</span>
+              <span className="text-xs text-gray-400">Smart Battery Ring</span>
+            </div>
+            <div className="glass-card p-4 rounded-2xl border border-white/10 bg-white/[0.02] text-center hover:bg-white/[0.05] transition-all">
+              <span className="text-sm font-semibold text-white block mb-1">Customization</span>
+              <span className="text-xs text-fuchsia-400">Colors, Accents & Glow</span>
+            </div>
+            <div className="glass-card p-4 rounded-2xl border border-white/10 bg-white/[0.02] text-center hover:bg-white/[0.05] transition-all">
+              <span className="text-sm font-semibold text-white block mb-1">Docking Bar</span>
+              <span className="text-xs text-cyan-400">Top & Side Shelf Mode</span>
+            </div>
           </div>
         </div>
       </section>
@@ -491,6 +515,7 @@ function App() {
           </div>
         </div>
       </footer>
+      </div>
     </div>
   );
 }
