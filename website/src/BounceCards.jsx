@@ -164,7 +164,7 @@ export default function BounceCards({
     });
   };
 
-  const responsiveHeight = scaleFactor < 0.5 ? 260 : scaleFactor < 0.8 ? 320 : containerHeight;
+  const responsiveHeight = scaleFactor < 0.5 ? 290 : scaleFactor < 0.8 ? 360 : Math.max(containerHeight, 430);
 
   return (
     <div

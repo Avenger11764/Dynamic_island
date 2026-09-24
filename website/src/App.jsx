@@ -285,7 +285,7 @@ function App() {
       </section>
 
       {/* Showcase Gallery */}
-      <section className="py-16 sm:py-24 px-4 sm:px-6">
+      <section className="py-16 sm:py-24 px-4 sm:px-6 overflow-hidden">
         <div className="max-w-7xl mx-auto">
           <motion.div 
             initial={{ opacity: 0, y: 30 }}
@@ -299,7 +299,7 @@ function App() {
           </motion.div>
           
           {/* Interactive BounceCards Stack */}
-          <div className="flex justify-center items-center py-6 sm:py-10 overflow-hidden w-full">
+          <div className="flex justify-center items-center py-8 sm:py-14 w-full overflow-visible">
             <BounceCards
               className="mx-auto"
               images={[
@@ -309,17 +309,17 @@ function App() {
                 "/assets/settings_mode_v2.png",
                 "/assets/bar_mode_v2.png"
               ]}
-              containerWidth={820}
-              containerHeight={380}
+              containerWidth={920}
+              containerHeight={430}
               animationDelay={0.3}
               animationStagger={0.08}
               easeType="elastic.out(1, 0.6)"
               transformStyles={[
-                "rotate(8deg) translate(-270px, 15px)",
-                "rotate(3deg) translate(-135px, -10px)",
+                "rotate(7deg) translate(-250px, 12px)",
+                "rotate(3deg) translate(-125px, -8px)",
                 "rotate(-2deg) translate(0px, 0px)",
-                "rotate(-7deg) translate(135px, -15px)",
-                "rotate(5deg) translate(270px, 15px)"
+                "rotate(-6deg) translate(125px, -10px)",
+                "rotate(5deg) translate(250px, 12px)"
               ]}
               enableHover={true}
             />
