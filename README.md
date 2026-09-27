@@ -1,72 +1,122 @@
-# Smart Notch for Windows
+# Smart Notch for Windows (v7.0.0)
 
-**🌐 Official Website / Download:** [dynamic-island-windows.vercel.app](https://dynamic-island-windows.vercel.app/)
+<p align="center">
+  <img src="./assets/icon.png" width="120" height="120" alt="Smart Notch Logo" />
+</p>
 
-<a href="https://apps.microsoft.com/detail/9N1D46F5X565?mode=direct">
-  <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft" />
-</a>
+<h3 align="center">The Dynamic Island experience, reimagined for Windows.</h3>
 
-A sleek, Smart Notch style application for Windows desktops built with Electron and React.
+<p align="center">
+  <a href="https://apps.microsoft.com/detail/9N1D46F5X565?mode=direct">
+    <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="190" alt="Get it from Microsoft Store" />
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://dynamic-island-windows.vercel.app/">
+    <img src="https://img.shields.io/badge/Official_Website-dynamic--island-38bdf8?style=for-the-badge&logo=vercel" alt="Official Website" />
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/Avenger11764/Dynamic_island/releases">
+    <img src="https://img.shields.io/badge/Release-v7.0.0-10b981?style=for-the-badge&logo=windows" alt="Version 7.0.0" />
+  </a>
+</p>
 
-## Screenshots
-| Dashboard View | Media Player (Lyrics) |
+---
+
+## 🌟 What's New in Version 7.0.0
+
+- **🎨 Bespoke Hardware Badges**: Handcrafted precision vector icons for CPU (Apple Silicon Die), RAM (Gold-contact DRAM module), Audio (Sculpted Driver Cans), and Network (Radar Wi-Fi 7) with ultra-sharp high-DPI scaling.
+- **🎤 Live Synced Karaoke Lyrics**: Real-time word-by-word synchronized lyrics scrolling with active vocal line highlighting and dynamic ambient album cover art halo glow.
+- **⚡ System Telemetry & One-Tap Boost**: Real-time CPU, RAM, and network speed dials with an integrated instant memory optimization button.
+- **🪟 Adaptive Side & Top Docking**: Intelligently adapts when docked on side screen edges, featuring vertically expanding Bluetooth device cards and hardware dials.
+- **✕ Seamless Header Close Button**: Integrated a discreet, smooth close button directly into the island header next to Settings for effortless application exiting.
+- **🎛️ macOS-Style Control Center**: Smooth interactive sliders for system display brightness, volume, and quick utility toggles.
+- **🚀 Ultra-Low Overhead**: Drastically optimized background PowerShell workers, memoized component tree, and near-zero idle RAM usage.
+
+---
+
+## 📸 Screenshots
+
+| Collapsed Notch (Idle) | Dashboard View |
 |:---:|:---:|
-| ![Dashboard Mode](./assets/bar_mode_v2.png) | ![Spotify Player](./assets/media_player_v2.png) |
+| ![Collapsed Mode](./assets/compact_mode_v2.png) | ![Dashboard Mode](./assets/dashboard_mode_v2.png) |
 
-| Hardware Stats Mode | Network Speed Mode |
+| Live Synced Lyrics & Media | Hardware Telemetry & Boost |
 |:---:|:---:|
-| ![Hardware Stats](./assets/hardware_stats_v2.png) | ![Network Speed](./assets/network_stats_v2.png) |
+| ![Media Player Lyrics](./assets/media_player_v2.png) | ![Hardware Stats](./assets/hardware_stats_v2.png) |
 
-| Control Center Mode | Settings & Customization |
+| macOS Control Center | Settings & Customization |
 |:---:|:---:|
 | ![Control Center](./assets/control_center_v2.png) | ![Settings Mode](./assets/settings_mode_v2.png) |
 
-| Compact Mode | Pomodoro Timer Mode |
+| Network Speed Monitor | Edge Shelf / Docking Bar |
 |:---:|:---:|
-| ![Compact Mode](./assets/compact_mode_v2.png) | ![Pomodoro Timer](./assets/pomodoro_mode_v2.png) |
+| ![Network Stats](./assets/network_stats_v2.png) | ![Bar Mode](./assets/bar_mode_v2.png) |
 
-## Features
-- **Media Controls**: Native Spotify integration with a dynamic audio waveform and liquid ambient glow that pulses with the beat.
-- **Intelligent Indicators**: A compact notch state featuring live battery rings, network blips, CPU spikes, and hardware metrics at a glance.
-- **Active Timers**: Live Pomodoro and Stopwatch counters that seamlessly replace the clock in the collapsed state when running.
-- **Hardware & Network**: Live CPU, RAM, and internet speeds tracked in real-time via beautifully designed expanded UI panels.
-- **System Controls**: Change global Volume and Brightness seamlessly using quick mouse-wheel scroll gestures over the island.
-- **Customization**: Cosmic Minimalist Theme with a full-spectrum color picker for notch accents and smart UI contrast based on your background.
-- **Flawless Layering**: Custom engine strictly enforcing highest z-index, keeping the notch flawlessly above all full-screen apps and games.
-- **Smart Greetings**: A personalized, time-aware greeting that smoothly expands to welcome you upon waking or starting your machine.
-- **Liquid Physics**: A premium spring-physics system with instant-response drag-and-drop, smart snapping boundaries, and seamless fluid expansions.
-- **Bar/Shelf Mode**: Switch between Notch mode and a docking Shelf Bar. The bar features a 4-second intro layout on mode switches before minimizing to an edge-activation strip.
-- **Secure & Efficient**: Built safely with fully isolated Electron contexts, utilizing smart background polling to ensure near-zero resource drain.
-- **Auto-Start & Single-Instance**: Smart Notch seamlessly boots with Windows and uses a strict process lock to prevent duplicate apps from running.
+---
 
-## Installation
+## ✨ Features
 
-You can download the compiled installer for Windows from the [Installers](./Installers/App_Installer.zip) folder.
+- **Media Controls & Synced Lyrics**: Native Spotify & Windows SMTC integration with real-time karaoke lyrics, animated audio waveform, and ambient cover glow.
+- **Intelligent Status Capsule**: Compact idle state featuring live battery percentage ring, time, date, network activity, and active device indicators.
+- **Hardware Telemetry**: Real-time CPU usage, RAM load, and internet upload/download speeds tracked in beautifully frosted glassmorphism dials.
+- **One-Tap Memory Boost**: Integrated memory cleaner that clears standby cache with a single tap.
+- **Volume & Brightness Gestures**: Adjust global volume and display brightness simply by scrolling with your mouse wheel over the notch.
+- **Focus & Productivity**: Built-in Pomodoro timer and stopwatch that take over the collapsed pill seamlessly when active.
+- **Customization Engine**: Cosmic Minimalist theme with a full-spectrum RGB/Hex color picker, custom background GIFs, panel materials, and glow intensity controls.
+- **Flawless Layering**: Custom window management engine strictly enforcing highest z-index, keeping the island above full-screen apps and games without stealing keyboard focus.
+- **Liquid Spring Physics**: Fluid drag-and-drop mechanics with magnetic snapping to top, left, or right screen edges.
+- **Privacy First**: Fully offline, zero telemetry, and isolated Electron contexts.
 
-1. Download the `App_Installer.zip` file.
-2. Extract the archive.
-3. Run `Smart Notch Setup 1.0.4.exe` to install, or deploy the Microsoft Store `Smart Notch 1.0.4.appx` package.
+---
 
-## Development
+## 📥 Installation
 
-If you'd like to build the project locally or contribute:
+### Method 1: Microsoft Store (Recommended)
+Install directly from the [Microsoft Store](https://apps.microsoft.com/detail/9N1D46F5X565?mode=direct) for automatic updates and verified security.
 
-1. Clone the repository:
+### Method 2: Direct Setup Installer
+Download the latest Windows installer directly:
+- **Direct NSIS Installer**: [Smart Notch Setup 7.0.0.exe](https://github.com/Avenger11764/Dynamic_island/raw/main/website/public/Smart_Notch_Setup_7.0.0.exe)
+- **Windows Store Package**: `release/Smart Notch 7.0.0.appx`
+
+---
+
+## 🛠️ Local Development
+
+If you'd like to build or run Smart Notch locally:
+
+1. **Clone the repository:**
    ```bash
    git clone https://github.com/Avenger11764/Dynamic_island.git
+   cd Dynamic_island
    ```
-2. Install dependencies:
+
+2. **Install dependencies:**
    ```bash
    npm install
    ```
-3. Run development server:
+
+3. **Start in development mode:**
    ```bash
    npm run dev
    ```
-4. Build for production:
+
+4. **Launch Electron wrapper:**
    ```bash
-   npm run dist
+   npm run electron:start
    ```
 
-## License
-MIT
+5. **Build production packages:**
+   ```bash
+   # Build NSIS Setup Installer
+   npm run dist
+
+   # Build Microsoft Store Package (.appx)
+   npm run store
+   ```
+
+---
+
+## 📄 License
+
+This project is open source and available under the [MIT License](LICENSE).
