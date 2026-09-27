@@ -9,3 +9,24 @@ wc.7z
 
 secrets.js
 store_screenshots/
+
+# Logs and scratch test scripts
+*.log
+*.txt
+test_*.ps1
+test_*.js
+check*.ps1
+fix*.ps1
+fix*.js
+patch*.js
+clean_patch.js
+real_patch.js
+force.js
+camfix.js
+cam_hierarchy_fix.js
+*.bat
+screenshot_test.png
+.agents/
+brag-output/
+src/*.backup.*.jsx
+capture_screen.ps1

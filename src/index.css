@@ -1,6 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Yellowtail&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  .mac-hello-text {
+    font-family: 'Yellowtail', 'Dancing Script', cursive;
+    color: #ffffff;
+    text-shadow: 
+      0 0 8px rgba(255, 255, 255, 0.8),
+      0 0 16px rgba(160, 210, 255, 0.6),
+      0 0 30px rgba(160, 210, 255, 0.4);
+    letter-spacing: 0.02em;
+    font-weight: normal;
+  }
+}
+
+@layer base {
+  html, body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "Inter", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    letter-spacing: -0.01em;
+  }
+}
 
 body {
   margin: 0;
@@ -21,24 +46,25 @@ body {
   align-items: flex-start;
 }
 
-/* Custom Scrollbar */
+/* Custom Scrollbar - Apple style subtle pill */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 3px;
+  width: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
-  margin-top: 12px;
-  margin-bottom: 12px;
+  margin-top: 8px;
+  margin-bottom: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.4);
+  background-color: rgba(255, 255, 255, 0.35);
 }
 
 @keyframes rgb-shadow-high {

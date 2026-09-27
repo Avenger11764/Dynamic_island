@@ -6,6 +6,16 @@ try {
   process.exit(1);
 }
 
+function getThumbnailMime(buf) {
+  if (!buf || !Buffer.isBuffer(buf) || buf.length < 4) return 'image/png';
+  if (buf[0] === 0x42 && buf[1] === 0x4D) return 'image/bmp';
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return 'image/jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return 'image/png';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46) return 'image/webp';
+  return 'image/png';
+}
+
 let lastPosition = 0;
 let lastUpdateDate = 0;
 let lastTrackId = '';
@@ -13,24 +23,73 @@ let lastThumbnailBuffer = null;
 
 setInterval(() => {
   try {
-    const sessions = Array.from(monitor.sessions.values());
-    let bestSession = sessions.find(s => s.sourceAppId && s.sourceAppId.toLowerCase().includes('spotify'));
-    if (!bestSession) bestSession = sessions.find(s => s.playback && s.playback.playbackStatus === 4);
-    if (!bestSession) bestSession = sessions[0];
+    // 1. Fetch fresh sessions directly from Windows OS in real-time
+    let sessions = [];
+    try {
+      sessions = SMTCMonitor.getMediaSessions() || [];
+    } catch(e) {}
+    if (!sessions || sessions.length === 0) {
+      try { sessions = Array.from(monitor.sessions.values()); } catch(e) {}
+    }
+
+    let currentSession = null;
+    try {
+      currentSession = SMTCMonitor.getCurrentMediaSession();
+    } catch(e) {}
+
+    // Sort by lastUpdatedTime descending (newest user activity first)
+    if (sessions && sessions.length > 0) {
+      sessions.sort((a, b) => (b.lastUpdatedTime || 0) - (a.lastUpdatedTime || 0));
+    }
+
+    let bestSession = null;
+
+    // Priority A: If currentSession exists, has media, and is actively playing
+    if (currentSession && currentSession.media && currentSession.playback && currentSession.playback.playbackStatus === 4) {
+      bestSession = currentSession;
+    }
+
+    // Priority B: Any session actively playing, ordered by newest lastUpdatedTime
+    if (!bestSession && sessions.length > 0) {
+      bestSession = sessions.find(s => s.media && s.playback && s.playback.playbackStatus === 4);
+    }
+
+    // Priority C: Current session with media (even if paused / offline file)
+    if (!bestSession && currentSession && currentSession.media) {
+      bestSession = currentSession;
+    }
+
+    // Priority D: Most recently updated session with media
+    if (!bestSession && sessions.length > 0) {
+      bestSession = sessions.find(s => s.media);
+    }
+
+    // Priority E: Fallback to first session
+    if (!bestSession && sessions.length > 0) {
+      bestSession = sessions[0];
+    }
 
     if (bestSession && bestSession.media) {
       const is_playing = bestSession.playback && bestSession.playback.playbackStatus === 4;
-      const currentTrackId = bestSession.media.title + '-' + bestSession.media.artist;
+      const currentTrackId = (bestSession.media.title || '') + '-' + (bestSession.media.artist || '') + '-' + (bestSession.sourceAppId || '');
       let currentPos = bestSession.timeline && bestSession.timeline.position ? bestSession.timeline.position * 1000 : 0;
       let progress_ms = currentPos;
       
       let thumbnailToSend = undefined;
+      let thumbnailMime = undefined;
+
       if (currentTrackId !== lastTrackId) {
          lastTrackId = currentTrackId;
          lastPosition = currentPos;
          lastUpdateDate = Date.now();
          lastThumbnailBuffer = bestSession.media.thumbnail;
-         thumbnailToSend = lastThumbnailBuffer ? lastThumbnailBuffer.toString('base64') : '';
+         if (lastThumbnailBuffer && Buffer.isBuffer(lastThumbnailBuffer) && lastThumbnailBuffer.length > 0) {
+           thumbnailToSend = lastThumbnailBuffer.toString('base64');
+           thumbnailMime = getThumbnailMime(lastThumbnailBuffer);
+         } else {
+           thumbnailToSend = '';
+           thumbnailMime = 'image/png';
+         }
       } else {
          if (is_playing) {
             if (currentPos === lastPosition && lastUpdateDate !== 0) {
@@ -46,20 +105,20 @@ setInterval(() => {
 
          // Same track: check if thumbnail loaded or changed
          const currentThumb = bestSession.media.thumbnail;
-         if (currentThumb) {
-            const isBuf = Buffer.isBuffer(currentThumb);
+         if (currentThumb && Buffer.isBuffer(currentThumb) && currentThumb.length > 0) {
             const isLastBuf = Buffer.isBuffer(lastThumbnailBuffer);
-            const hasChanged = !isLastBuf || (isBuf && (typeof currentThumb.equals === 'function' ? !currentThumb.equals(lastThumbnailBuffer) : currentThumb.toString('base64') !== lastThumbnailBuffer.toString('base64')));
+            const hasChanged = !isLastBuf || (typeof currentThumb.equals === 'function' ? !currentThumb.equals(lastThumbnailBuffer) : currentThumb.length !== lastThumbnailBuffer.length);
             if (hasChanged) {
                lastThumbnailBuffer = currentThumb;
                thumbnailToSend = currentThumb.toString('base64');
+               thumbnailMime = getThumbnailMime(currentThumb);
             }
          }
       }
 
       const item = {
-        title: bestSession.media.title || 'Unknown',
-        artist: bestSession.media.artist || 'Unknown',
+        title: bestSession.media.title || 'Unknown Media',
+        artist: bestSession.media.artist || '',
         is_playing: is_playing,
         progress_ms: progress_ms,
         duration_ms: bestSession.timeline ? (bestSession.timeline.duration || 0) * 1000 : 0,
@@ -68,6 +127,7 @@ setInterval(() => {
       };
       if (thumbnailToSend !== undefined) {
         item.thumbnail = thumbnailToSend;
+        item.thumbnailMime = thumbnailMime;
       }
       process.send(item);
     } else {
@@ -76,4 +136,4 @@ setInterval(() => {
   } catch(e) {
     // Ignore native mapping errors
   }
-}, 1000);
+}, 800);

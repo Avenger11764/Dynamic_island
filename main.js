@@ -1,3 +1,6 @@
+const koffi = require('koffi');
+const ntdll = koffi.load('ntdll.dll');
+const NtQueryWnfStateData = ntdll.stdcall('NtQueryWnfStateData', 'int', ['uint64*', 'void*', 'void*', 'int*', 'void*', 'int*']);
 const { app, BrowserWindow, screen, ipcMain, shell, clipboard, Menu, Notification } = require('electron');
 const path = require('path');
 const http = require('http');
@@ -24,6 +27,13 @@ app.on('second-instance', () => {
 function logg(msg) {
   try { fs.appendFileSync(path.join(app.getPath('userData'), 'app-debug.log'), new Date().toISOString() + ': ' + msg + '\n'); } catch(e){}
 }
+
+process.on('uncaughtException', (err) => {
+  logg('UNCAUGHT EXCEPTION: ' + err.message + '\n' + err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  logg('UNHANDLED REJECTION: ' + (reason?.stack || reason));
+});
 
 let mainWindow;
 
@@ -99,6 +109,7 @@ function startSpotifyPolling() {
       });
 
       let currentTrackThumbnail = '';
+      let currentTrackThumbnailMime = 'image/png';
       smtcWorker.on('message', (msg) => {
         if (!mainWindow || mainWindow.isDestroyed()) return;
         if (msg) {
@@ -107,16 +118,22 @@ function startSpotifyPolling() {
             currentTrackId = trackId;
             currentLyrics = [];
             currentTrackThumbnail = msg.thumbnail || '';
+            currentTrackThumbnailMime = msg.thumbnailMime || 'image/png';
             fetchLyrics({ name: msg.title, artists: [{ name: msg.artist }] });
           } else if (msg.thumbnail !== undefined) {
             currentTrackThumbnail = msg.thumbnail || '';
+            if (msg.thumbnailMime) currentTrackThumbnailMime = msg.thumbnailMime;
           }
+
+          const fallbackArtist = msg.artist || (msg.is_spotify ? 'Spotify' : ((msg.appId && (msg.appId.includes('Zune') || msg.appId.includes('Media.Player'))) ? 'Media Player' : (msg.appId && msg.appId.toLowerCase().includes('brave') ? 'Brave' : (msg.appId && msg.appId.toLowerCase().includes('chrome') ? 'Chrome' : 'Playing'))));
 
           const item = {
             id: trackId,
             name: msg.title,
-            artists: [{ name: msg.artist }],
-            album: { images: [{ url: currentTrackThumbnail ? 'data:image/png;base64,' + currentTrackThumbnail : '' }] }
+            artists: [{ name: fallbackArtist }],
+            album: { images: [{ url: currentTrackThumbnail ? `data:${currentTrackThumbnailMime};base64,` + currentTrackThumbnail : '' }] },
+            duration_ms: msg.duration_ms || 0,
+            progress_ms: msg.progress_ms || 0
           };
 
           const body = {
@@ -147,17 +164,19 @@ function startSpotifyPolling() {
 let lastCopiedText = '';
 function startClipboardPolling() {
   setInterval(() => {
-    const text = clipboard.readText();
-    if (text !== lastCopiedText) {
-      lastCopiedText = text;
-      // Very basic URL regex
-      if (/^https?:\/\//i.test(text)) {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('clipboard-url', text);
+    try {
+      const text = clipboard.readText();
+      if (text && text !== lastCopiedText) {
+        lastCopiedText = text;
+        // Very basic URL regex
+        if (/^https?:\/\//i.test(text)) {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('clipboard-url', text);
+          }
         }
       }
-    }
-  }, 800);
+    } catch(e) {}
+  }, 1000);
 }
 
 const os = require('os');
@@ -194,10 +213,11 @@ function startHardwarePolling() {
   }, 2000);
 }
 
-const { spawn, exec, execFile } = require('child_process');
+const { spawn, exec, execFile, execSync } = require('child_process');
 
 let vbsPath = '';
 let seekPs1Path = '';
+let combinedPs = null;
 
 function startCombinedBackgroundMonitor() {
   const psScript = `
@@ -240,8 +260,175 @@ function startCombinedBackgroundMonitor() {
             return Encoding.UTF8.GetString(buffer);
         }
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DEVPROPKEY {
+        public Guid fmtid;
+        public uint pid;
+    }
+
+    public class CamHardwareCheck {
+        [DllImport("cfgmgr32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CM_Locate_DevNodeW")]
+        public static extern int CM_Locate_DevNode(out uint pdnDevInst, string pDeviceID, int ulFlags);
+
+        [DllImport("cfgmgr32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CM_Get_DevNode_PropertyW")]
+        public static extern int CM_Get_DevNode_Property(
+            uint dnDevInst,
+            ref DEVPROPKEY PropertyKey,
+            out uint PropertyType,
+            byte[] PropertyBuffer,
+            ref uint PropertyBufferSize,
+            int ulFlags
+        );
+
+        public static int GetPowerState(string deviceId) {
+            try {
+                uint devInst;
+                int cr = CM_Locate_DevNode(out devInst, deviceId, 0);
+                if (cr != 0) return -1;
+
+                var key = new DEVPROPKEY {
+                    fmtid = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"),
+                    pid = 32
+                };
+
+                uint propType = 0;
+                uint size = 64;
+                byte[] buf = new byte[64];
+                cr = CM_Get_DevNode_Property(devInst, ref key, out propType, buf, ref size, 0);
+                if (cr != 0 || size < 5) return -2;
+
+                return (int)buf[4];
+            } catch {
+                return -3;
+            }
+        }
+    }
+
+    [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
+    public class MMDeviceEnumeratorComObject { }
+
+    [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IMMDeviceEnumerator {
+        [PreserveSig]
+        int EnumAudioEndpoints(int dataFlow, int dwStateMask, out IntPtr ppDevices);
+        [PreserveSig]
+        int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppEndpoint);
+    }
+
+    [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IMMDevice {
+        [PreserveSig]
+        int Activate(ref Guid iid, int dwClsCtx, IntPtr pActivationParams, [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface);
+    }
+
+    [Guid("BFA971F1-4D5E-40BB-935E-967039BFBEE4"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IAudioSessionManager {
+        [PreserveSig]
+        int GetAudioSessionControl(ref Guid AudioSessionGuid, int StreamFlags, out IAudioSessionControl SessionControl);
+        [PreserveSig]
+        int GetSimpleAudioVolume(ref Guid AudioSessionGuid, int StreamFlags, out IntPtr AudioVolume);
+    }
+
+    [Guid("F4B1A599-7266-4319-A8CA-E70ACB11E8CD"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IAudioSessionControl {
+        [PreserveSig]
+        int GetState(out int pRetVal);
+    }
+
+    [Guid("C02216F6-8C67-4B5B-9D00-D008E73E0064"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IAudioMeterInformation {
+        [PreserveSig]
+        int GetPeakValue(out float pfPeak);
+    }
+
+    public class MicCaptureHelper {
+        private static IMMDeviceEnumerator enumerator;
+        private static IMMDevice dev;
+        private static IAudioSessionControl ctrl;
+        private static IAudioMeterInformation meter;
+
+        static MicCaptureHelper() {
+            try {
+                enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumeratorComObject());
+                InitDevice();
+            } catch {}
+        }
+
+        private static void InitDevice() {
+            try {
+                ctrl = null;
+                meter = null;
+                dev = null;
+                if (enumerator == null) return;
+                int hr = enumerator.GetDefaultAudioEndpoint(1, 0, out dev);
+                if (hr != 0 || dev == null) return;
+
+                var IID_IAudioSessionManager = new Guid("BFA971F1-4D5E-40BB-935E-967039BFBEE4");
+                object mgrObj;
+                hr = dev.Activate(ref IID_IAudioSessionManager, 23, IntPtr.Zero, out mgrObj);
+                if (hr == 0 && mgrObj != null) {
+                    var mgr = (IAudioSessionManager)mgrObj;
+                    var empty = Guid.Empty;
+                    mgr.GetAudioSessionControl(ref empty, 0, out ctrl);
+                }
+
+                var IID_IAudioMeterInformation = new Guid("C02216F6-8C67-4B5B-9D00-D008E73E0064");
+                object meterObj;
+                hr = dev.Activate(ref IID_IAudioMeterInformation, 23, IntPtr.Zero, out meterObj);
+                if (hr == 0 && meterObj != null) {
+                    meter = (IAudioMeterInformation)meterObj;
+                }
+            } catch {}
+        }
+
+        public static bool IsMicInUse() {
+            try {
+                if (ctrl != null) {
+                    int st;
+                    int hr = ctrl.GetState(out st);
+                    if (hr == 0 && st == 1) return true;
+                    if (hr != 0) {
+                        InitDevice();
+                        if (ctrl != null && ctrl.GetState(out st) == 0 && st == 1) return true;
+                    }
+                } else {
+                    InitDevice();
+                    if (ctrl != null) {
+                        int st;
+                        if (ctrl.GetState(out st) == 0 && st == 1) return true;
+                    }
+                }
+
+                if (meter != null) {
+                    float peak;
+                    int hr = meter.GetPeakValue(out peak);
+                    if (hr == 0 && peak > 0.0001f) return true;
+                }
+            } catch {
+                InitDevice();
+            }
+            return false;
+        }
+    }
 "@
     Add-Type -TypeDefinition $csharpCode -ErrorAction SilentlyContinue
+
+    $camDevIds = @()
+    $usbEnum = Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\usbvideo\\Enum' -ErrorAction SilentlyContinue
+    if ($usbEnum) {
+        $cnt = $usbEnum.Count
+        for ($i = 0; $i -lt $cnt; $i++) {
+            $id = $usbEnum."$i"
+            if ($id) { $camDevIds += $id }
+        }
+    }
+    if ($camDevIds.Count -eq 0) {
+        $pnp = Get-PnpDevice -Class Camera -ErrorAction SilentlyContinue
+        if ($pnp) {
+            foreach ($d in $pnp) { $camDevIds += $d.InstanceId }
+        }
+    }
 
     $dbPath = "$env:LOCALAPPDATA\Microsoft\Windows\Notifications\wpndatabase.db"
     $tempDb = "$env:TEMP\wpndatabase_temp.db"
@@ -324,38 +511,65 @@ function startCombinedBackgroundMonitor() {
         }
     }
     
-    function CheckPrivacy ($type) {
-      $path = "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\$type"
-      $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($path)
-      if ($null -eq $key) { return $false }
-      foreach ($subKeyName in $key.GetSubKeyNames()) {
-        $subKey = $key.OpenSubKey($subKeyName)
-        if ($null -ne $subKey) {
-          $stopTime = $subKey.GetValue("LastUsedTimeStop")
-          if ($null -ne $stopTime -and $stopTime -eq 0) {
-            $subKey.Close(); $key.Close()
-            return $true
-          }
-          $subKey.Close()
-        }
-      }
-      $npKey = $key.OpenSubKey("NonPackaged")
-      if ($null -ne $npKey) {
-        foreach ($subKeyName in $npKey.GetSubKeyNames()) {
-          $subKey = $npKey.OpenSubKey($subKeyName)
-          if ($null -ne $subKey) {
-            $stopTime = $subKey.GetValue("LastUsedTimeStop")
-            if ($null -ne $stopTime -and $stopTime -eq 0) {
-              $subKey.Close(); $npKey.Close(); $key.Close()
-              return $true
+    function CheckConsentRegistry ($type) {
+      foreach ($root in @([Microsoft.Win32.Registry]::CurrentUser, [Microsoft.Win32.Registry]::LocalMachine)) {
+        $path = "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\$type"
+        $key = $root.OpenSubKey($path)
+        if ($null -ne $key) {
+          foreach ($subName in $key.GetSubKeyNames()) {
+            if ($subName -eq "NonPackaged") { continue }
+            $sub = $key.OpenSubKey($subName)
+            if ($null -ne $sub) {
+              $stop = $sub.GetValue("LastUsedTimeStop")
+              $start = $sub.GetValue("LastUsedTimeStart")
+              if ($null -ne $start -and $start -gt 0) {
+                if ($null -eq $stop -or $stop -eq 0 -or [int64]$start -gt [int64]$stop) {
+                  $sub.Close(); $key.Close()
+                  return $true
+                }
+              }
+              $sub.Close()
             }
-            $subKey.Close()
           }
+          $np = $key.OpenSubKey("NonPackaged")
+          if ($null -ne $np) {
+            foreach ($subName in $np.GetSubKeyNames()) {
+              $sub = $np.OpenSubKey($subName)
+              if ($null -ne $sub) {
+                $stop = $sub.GetValue("LastUsedTimeStop")
+                $start = $sub.GetValue("LastUsedTimeStart")
+                if ($null -ne $start -and $start -gt 0) {
+                  if ($null -eq $stop -or $stop -eq 0 -or [int64]$start -gt [int64]$stop) {
+                    $sub.Close(); $np.Close(); $key.Close()
+                    return $true
+                  }
+                }
+                $sub.Close()
+              }
+            }
+            $np.Close()
+          }
+          $key.Close()
         }
-        $npKey.Close()
       }
-      $key.Close()
       return $false
+    }
+
+    function CheckCameraInUse {
+      foreach ($camId in $camDevIds) {
+        try {
+          $pwr = [CamHardwareCheck]::GetPowerState($camId)
+          if ($pwr -eq 1) { return $true }
+        } catch {}
+      }
+      return CheckConsentRegistry "webcam"
+    }
+
+    function CheckMicrophoneInUse {
+      try {
+        if ([MicCaptureHelper]::IsMicInUse()) { return $true }
+      } catch {}
+      return CheckConsentRegistry "microphone"
     }
 
     function GetActiveCall {
@@ -469,8 +683,8 @@ function startCombinedBackgroundMonitor() {
     while ($true) {
       Start-Sleep -Seconds 1
       
-      $cam = CheckPrivacy "webcam"
-      $mic = CheckPrivacy "microphone"
+      $cam = CheckCameraInUse
+      $mic = CheckMicrophoneInUse
       
       $nets = Get-CimInstance Win32_PerfRawData_Tcpip_NetworkInterface
       $currRx = [double]0
@@ -493,12 +707,16 @@ function startCombinedBackgroundMonitor() {
       $prevRx = $currRx
       $prevTx = $currTx
       
-      [System.GC]::Collect()
-      [System.GC]::WaitForPendingFinalizers()
+      $gcCounter++
+      if ($gcCounter -ge 60) {
+        [System.GC]::Collect()
+        $gcCounter = 0
+      }
     }
   `;
 
   const ps = spawn('powershell.exe', ['-NoProfile', '-Command', psScript]);
+  combinedPs = ps;
   
   let psStdoutBuffer = '';
   ps.stdout.on('data', (data) => {
@@ -597,44 +815,183 @@ ipcMain.on('spotify-seek', (event, progressMs) => {
   }
 });
 
-ipcMain.on('adjust-volume', (e, delta) => {
-  const key = delta > 0 ? 175 : 174;
-  pressMediaKey(key);
+// ── Unified Fast System Controller (Volume, Brightness, Bluetooth) ───────────
+let sysWorker = null;
+let sysWorkerReady = false;
+let currentVolumeVal = 50;
+let currentMuteVal = false;
+let currentBrightnessVal = 80;
+let lastSentVol = -1;
+let lastSentMute = null;
+let lastSentBright = -1;
+let lastUserVolTime = 0;
+let lastUserBrightTime = 0;
+
+function startSystemControlWorker() {
+  const scriptPath = path.join(__dirname, 'system_control.ps1');
+  if (!fs.existsSync(scriptPath)) { logg('system_control.ps1 not found'); return; }
+  
+  sysWorker = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
+  
+  let buffer = '';
+  sysWorker.stdout.on('data', (data) => {
+    buffer += data.toString();
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop();
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t) continue;
+      if (t === 'READY') {
+        sysWorkerReady = true;
+        continue;
+      }
+      if (t.startsWith('VOL:')) {
+        const parts = t.split('|');
+        const v = Math.round(parseFloat(parts[0].substring(4)));
+        let m = currentMuteVal;
+        if (parts.length > 1 && parts[1].startsWith('MUTE:')) {
+          m = parts[1].substring(5).trim() === 'True';
+        }
+        currentVolumeVal = v;
+        currentMuteVal = m;
+        // Don't echo back if the user recently interacted with the volume control
+        if (Date.now() - lastUserVolTime < 800) {
+          lastSentVol = v;
+          lastSentMute = m;
+          continue;
+        }
+        if (v !== lastSentVol || m !== lastSentMute) {
+          lastSentVol = v;
+          lastSentMute = m;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('osd-level', { type: 'volume', value: v, isMuted: m });
+          }
+        }
+      } else if (t.startsWith('BRIGHTNESS:')) {
+        const b = parseInt(t.substring(11));
+        if (!isNaN(b)) {
+          // If the user recently changed brightness, ignore stale incoming WMI reads
+          if (Date.now() - lastUserBrightTime < 2500) {
+            continue;
+          }
+          currentBrightnessVal = b;
+          if (b !== lastSentBright) {
+            lastSentBright = b;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('osd-level', { type: 'brightness', value: b });
+            }
+          }
+        }
+      } else if (t.startsWith('BT_CONNECTED:')) {
+        const parts = t.substring(13).split('|BATTERY:');
+        const name = parts[0];
+        const battery = parts.length > 1 ? parseInt(parts[1]) : -1;
+        logg(`BT_CONNECTED event: name=${name}, battery=${battery}`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('bt-device-event', { type: 'connected', name, battery });
+        }
+      } else if (t.startsWith('BT_DISCONNECTED:')) {
+        const name = t.substring(16);
+        logg(`BT_DISCONNECTED event: name=${name}`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('bt-device-event', { type: 'disconnected', name });
+        }
+      } else if (t.startsWith('BT_PRESENT:')) {
+        const parts = t.substring(11).split('|BATTERY:');
+        const name = parts[0];
+        const battery = parts.length > 1 ? parseInt(parts[1]) : -1;
+        logg(`BT_PRESENT event: name=${name}, battery=${battery}`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('bt-device-event', { type: 'present', name, battery });
+        }
+      } else if (t.startsWith('BT_AUDIO:')) {
+        const isBt = t.substring(9).trim() === 'True';
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('bt-audio-status', isBt);
+        }
+      }
+    }
+  });
+
+  sysWorker.stderr.on('data', (d) => logg('sysWorker stderr: ' + d.toString().trim()));
+  sysWorker.on('close', () => {
+    sysWorkerReady = false;
+    setTimeout(startSystemControlWorker, 3000);
+  });
+  sysWorker.on('error', (e) => logg('sysWorker error: ' + e.message));
+}
+
+function sysWorkerSend(cmd) {
+  if (sysWorker && sysWorker.stdin && sysWorker.stdin.writable) {
+    try { 
+      sysWorker.stdin.write(cmd + '\n'); 
+    } catch(e) {
+      logg('sysWorkerSend error: ' + e.message);
+    }
+  } else {
+    logg('sysWorkerSend skipped: ' + cmd);
+  }
+}
+
+let volDebounce = null;
+ipcMain.on('set-volume', (e, val) => {
+  const clamped = Math.max(0, Math.min(100, Math.round(val)));
+  currentVolumeVal = clamped;
+  lastSentVol = clamped;
+  lastUserVolTime = Date.now();
+  if (volDebounce) clearTimeout(volDebounce);
+  volDebounce = setTimeout(() => {
+    sysWorkerSend(`v ${clamped}`);
+  }, 10);
 });
 
-let nextBrightnessDelta = 0;
-let isBrightnessRunning = false;
+ipcMain.on('adjust-volume', (e, delta) => {
+  const newVol = Math.max(0, Math.min(100, currentVolumeVal + delta));
+  currentVolumeVal = newVol;
+  lastSentVol = newVol;
+  lastUserVolTime = Date.now();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('osd-level', { type: 'volume', value: newVol, isMuted: currentMuteVal });
+  }
+  sysWorkerSend(`v ${newVol}`);
+});
+
+ipcMain.on('toggle-mute', () => {
+  lastUserVolTime = Date.now();
+  sysWorkerSend('mute');
+});
+
+ipcMain.handle('get-volume', async () => {
+  return { volume: currentVolumeVal, isMuted: currentMuteVal };
+});
+
+let brightDebounce = null;
+ipcMain.on('set-brightness', (e, val) => {
+  const clamped = Math.max(0, Math.min(100, Math.round(val)));
+  currentBrightnessVal = clamped;
+  lastSentBright = clamped;
+  lastUserBrightTime = Date.now();
+  if (brightDebounce) clearTimeout(brightDebounce);
+  brightDebounce = setTimeout(() => {
+    sysWorkerSend(`b ${clamped}`);
+  }, 15);
+});
 
 ipcMain.on('adjust-brightness', (e, delta) => {
-  nextBrightnessDelta += delta;
-  if (isBrightnessRunning) return;
-  
-  isBrightnessRunning = true;
-  const run = () => {
-    const d = nextBrightnessDelta;
-    nextBrightnessDelta = 0;
-    
-    const ps = `
-      $monitors = Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue
-      $current = Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CurrentBrightness
-      if ($monitors -and $current -ne $null) {
-        $new = $current + (${d})
-        if ($new -gt 100) { $new = 100 }
-        if ($new -lt 0) { $new = 0 }
-        $monitors | Invoke-WmiMethod -Name WmiSetBrightness -ArgumentList 1, $new
-      }
-    `;
-    
-    exec(`powershell -NoProfile -Command "${ps}"`, () => {
-      if (nextBrightnessDelta !== 0) {
-        run();
-      } else {
-        isBrightnessRunning = false;
-      }
-    });
-  };
-  
-  run();
+  const clamped = Math.max(0, Math.min(100, Math.round(currentBrightnessVal + delta)));
+  currentBrightnessVal = clamped;
+  lastSentBright = clamped;
+  lastUserBrightTime = Date.now();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('osd-level', { type: 'brightness', value: clamped });
+  }
+  sysWorkerSend(`b ${clamped}`);
+});
+
+ipcMain.handle('get-brightness', async () => {
+  return currentBrightnessVal;
 });
 ipcMain.on('open-file', (e, filePath) => {
   shell.openPath(filePath);
@@ -642,36 +999,45 @@ ipcMain.on('open-file', (e, filePath) => {
 
 ipcMain.on('open-url', (e, link) => shell.openExternal(link));
 ipcMain.on('open-weather', () => shell.openExternal('bingweather:'));
-ipcMain.on('open-media-app', (e, appId) => {
-  if (!appId) return;
-  let procName = appId.replace('.exe', '');
-  if (procName.includes('Spotify')) procName = 'Spotify';
-  else if (procName.includes('edge')) procName = 'msedge';
-  else if (procName.includes('chrome')) procName = 'chrome';
+ipcMain.on('open-nightlight', () => shell.openExternal('ms-settings:nightlight'));
+ipcMain.on('open-focus', () => shell.openExternal('ms-settings:quiethours'));
+ipcMain.on('open-taskmgr', () => exec('taskmgr'));
+ipcMain.on('open-snip', () => shell.openExternal('ms-screenclip:'));
+ipcMain.on('open-calc', () => exec('calc'));
+ipcMain.on('open-media-app', (e, appId, trackTitle, artist) => {
+  logg(`[IPC] open-media-app received: appId='${appId}', trackTitle='${trackTitle}', artist='${artist}'`);
+  try {
+    const rawId = (appId || '').trim();
+    const lower = rawId.toLowerCase();
 
-  const ps = `
-    $app = Get-Process -Name "${procName}" -ErrorAction SilentlyContinue | Where-Object {$_.MainWindowHandle -ne 0} | Select-Object -First 1
-    if (-not $app) {
-      $app = Get-Process -Name "${procName}" -ErrorAction SilentlyContinue | Select-Object -First 1
+    // 1. Instant Spotify protocol ONLY if appId explicitly contains spotify
+    if (lower && lower.includes('spotify')) {
+      shell.openExternal('spotify:').catch(() => {
+        exec('start spotify:');
+      });
+      return;
     }
-    if ($app) {
-      try {
-        $sig = '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);'
-        Add-Type -MemberDefinition $sig -Name WindowAPI -Namespace Win32 -ErrorAction SilentlyContinue
-        if ($app.MainWindowHandle -ne 0) {
-          [Win32.WindowAPI]::ShowWindow($app.MainWindowHandle, 9)
-          [Win32.WindowAPI]::SetForegroundWindow($app.MainWindowHandle)
-        } else {
-          $wshell = New-Object -ComObject wscript.shell
-          $wshell.AppActivate($app.Id)
-        }
-      } catch {
-        $wshell = New-Object -ComObject wscript.shell
-        $wshell.AppActivate($app.Id)
-      }
-    }
-  `;
-  exec(`powershell -NoProfile -Command "${ps}"`);
+
+    // 2. Run open_media_tab.ps1 asynchronously via exec
+    const scriptPath = path.join(__dirname, 'open_media_tab.ps1');
+    const safeApp = (appId || '').replace(/"/g, '`"');
+    const safeTitle = (trackTitle || '').replace(/"/g, '`"');
+    const safeArt = (artist || '').replace(/"/g, '`"');
+    
+    let psCmd = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`;
+    if (safeApp) psCmd += ` -AppId "${safeApp}"`;
+    if (safeTitle) psCmd += ` -TrackTitle "${safeTitle}"`;
+    if (safeArt) psCmd += ` -Artist "${safeArt}"`;
+
+    logg('[IPC] Executing media focus command: ' + psCmd);
+    exec(psCmd, (err, stdout, stderr) => {
+      if (err) logg('[IPC] Media focus error: ' + err.message);
+      if (stdout && stdout.trim()) logg('[IPC] Media focus stdout: ' + stdout.trim());
+      if (stderr && stderr.trim()) logg('[IPC] Media focus stderr: ' + stderr.trim());
+    });
+  } catch (err) {
+    logg('Error in open-media-app: ' + err.message);
+  }
 });
 ipcMain.on('focus-call-window', (event, handle) => {
   if (!handle) return;
@@ -717,7 +1083,7 @@ ipcMain.on('set-window-mode', (event, mode, position) => {
       // Horizontal top bar (default for all top positions)
       mainWindow.setBounds({ x: 0, y: 0, width: screenWidth, height: 64 });
     }
-    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    mainWindow.setIgnoreMouseEvents(false);
   } else {
     // Notch mode — position-aware
     const windowWidth = 600;
@@ -736,6 +1102,8 @@ ipcMain.on('set-window-mode', (event, mode, position) => {
       x = Math.floor((screenWidth - windowWidth) / 2); y = 0;
     }
     mainWindow.setBounds({ x, y, width: windowWidth, height: windowHeight });
+    stopCursorChecking();
+    stopEdgeChecking();
     mainWindow.setIgnoreMouseEvents(true, { forward: true });
   }
 });
@@ -816,9 +1184,41 @@ function animateWindowBounds(target, duration = 250) {
 let dragStartMousePos = null;
 let dragStartWindowPos = null;
 
+function getSnapDirection(cursor) {
+  const display = screen.getDisplayNearestPoint(cursor) || screen.getPrimaryDisplay();
+  const { width: sw, height: sh } = display.bounds;
+  const dx0 = display.bounds.x;
+  const dy0 = display.bounds.y;
+
+  const curX = cursor.x - dx0;
+  const curY = cursor.y - dy0;
+
+  // Generous snap thresholds: 25% of screen width or at least 250px
+  const sideThreshold = Math.max(250, Math.floor(sw * 0.25));
+
+  let direction = 'top';
+  if (curX < sideThreshold) {
+    if (curY < 80 && curX > 120) {
+      direction = 'top';
+    } else {
+      direction = 'left';
+    }
+  } else if (curX > sw - sideThreshold) {
+    if (curY < 80 && curX < sw - 120) {
+      direction = 'top';
+    } else {
+      direction = 'right';
+    }
+  } else {
+    direction = 'top';
+  }
+  return { direction, display, curX, curY, sw, sh, dx0, dy0 };
+}
+
 ipcMain.on('custom-drag-start', (event) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   isWindowBeingDragged = true;
+  mainWindow.setIgnoreMouseEvents(false);
   
   const cursor = screen.getCursorScreenPoint();
   const w = 140;
@@ -826,7 +1226,6 @@ ipcMain.on('custom-drag-start', (event) => {
   const x = cursor.x - Math.floor(w / 2);
   const y = cursor.y - Math.floor(h / 2);
   
-  // Set bounds instantly to matches the small drag pill size (stops click blocking)
   mainWindow.setBounds({ x, y, width: w, height: h });
   
   dragStartMousePos = { x: cursor.x, y: cursor.y };
@@ -850,26 +1249,7 @@ ipcMain.on('custom-drag-move', (event) => {
     height: dragStartWindowPos.height
   });
 
-  const display = screen.getPrimaryDisplay();
-  const { width: sw, height: sh } = display.bounds;
-  const dx0 = display.bounds.x;
-  const dy0 = display.bounds.y;
-
-  const curX = cursor.x - dx0;
-  const curY = cursor.y - dy0;
-
-  const sideEdge = 100;
-  const topEdge  = 200;
-
-  let direction = 'top';
-  if (curX < sideEdge && curY > topEdge) {
-    direction = 'left';
-  } else if (curX > sw - sideEdge && curY > topEdge) {
-    direction = 'right';
-  } else {
-    direction = 'top';
-  }
-
+  const { direction } = getSnapDirection(cursor);
   mainWindow.webContents.send('drag-snap-preview', direction);
 });
 
@@ -887,32 +1267,14 @@ ipcMain.on('custom-drag-end', (event) => {
   }
   isWindowAnimating = false;
 
-  const display = screen.getPrimaryDisplay();
-  const { width: sw, height: sh } = display.bounds;
-  const dx0 = display.bounds.x;
-  const dy0 = display.bounds.y;
-
   const cursor = screen.getCursorScreenPoint();
-  const curX = cursor.x - dx0;
-  const curY = cursor.y - dy0;
+  const { direction: newPos, curX, curY, sw, sh, dx0, dy0 } = getSnapDirection(cursor);
 
-  logg(`SNAP: cursor=(${curX}, ${curY}) screen=(${sw}x${sh})`);
+  logg(`SNAP: cursor=(${curX}, ${curY}) screen=(${sw}x${sh}) decided newPos=${newPos}`);
 
-  const sideEdge = 100;
-  const topEdge  = 200;
-  
   // Calculate final target window size
   let ww = 600;
   let wh = 450;
-  let newPos = 'top';
-
-  if (curX < sideEdge && curY > topEdge) {
-    newPos = 'left';
-  } else if (curX > sw - sideEdge && curY > topEdge) {
-    newPos = 'right';
-  } else {
-    newPos = 'top';
-  }
 
   if (currentWindowMode === 'shelf') {
     if (newPos === 'left' || newPos === 'right') {
@@ -932,19 +1294,16 @@ ipcMain.on('custom-drag-end', (event) => {
     finalX = dx0 + sw - ww;
     finalY = dy0 + Math.floor((sh - wh) / 2);
   } else {
-    finalX = dx0 + curX - Math.floor(ww / 2);
+    finalX = dx0 + Math.floor((sw - ww) / 2);
     finalY = dy0;
-    if (finalX < dx0) finalX = dx0;
-    if (finalX + ww > dx0 + sw) finalX = dx0 + sw - ww;
   }
 
-  logg(`SNAP: decided newPos=${newPos} -> x=${finalX} y=${finalY}`);
+  logg(`SNAP: target position x=${finalX} y=${finalY} ww=${ww} wh=${wh}`);
 
   const bounds = mainWindow.getBounds();
   const hasMoved = startPos && (Math.abs(bounds.x - startPos.x) > 5 || Math.abs(bounds.y - startPos.y) > 5);
 
   if (!hasMoved) {
-    // If not moved, restore size instantly
     mainWindow.setBounds({
       x: Math.round(finalX),
       y: Math.round(finalY),
@@ -955,7 +1314,7 @@ ipcMain.on('custom-drag-end', (event) => {
     return;
   }
 
-  // Instantly resize the window to target size before animating position (eliminates texture resizing stutter)
+  // Instantly resize the window to target size before animating position
   const startX = Math.round(bounds.x - (ww - bounds.width) / 2);
   const startY = Math.round(bounds.y - (wh - bounds.height) / 2);
   
@@ -966,6 +1325,7 @@ ipcMain.on('custom-drag-end', (event) => {
     height: wh
   });
 
+  currentScreenPosition = newPos;
   animateWindowBounds({ x: Math.round(finalX), y: Math.round(finalY), width: ww, height: wh });
   mainWindow.webContents.send('window-dragged-to', newPos);
   mainWindow.webContents.send('drag-snap-end', newPos);
@@ -974,22 +1334,58 @@ ipcMain.on('custom-drag-end', (event) => {
 let checkCursorInterval = null;
 let checkCursorTimeout = null;
 
+let checkEdgeInterval = null;
+function startEdgeChecking() {
+  if (checkEdgeInterval) clearInterval(checkEdgeInterval);
+  checkEdgeInterval = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed() || currentWindowMode !== 'shelf') {
+      clearInterval(checkEdgeInterval);
+      checkEdgeInterval = null;
+      return;
+    }
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.bounds;
+    const point = screen.getCursorScreenPoint();
+    const pos = currentScreenPosition;
+    const atEdge = (pos === 'left') ? (point.x <= 4) : ((pos === 'right') ? (point.x >= screenWidth - 4) : (point.y <= 4));
+    if (atEdge) {
+      clearInterval(checkEdgeInterval);
+      checkEdgeInterval = null;
+      const targetWidth = (pos === 'left' || pos === 'right') ? 160 : screenWidth;
+      const targetHeight = (pos === 'left' || pos === 'right') ? screenHeight : 64;
+      const x = pos === 'right' ? screenWidth - 160 : 0;
+      mainWindow.setBounds({ x, y: 0, width: targetWidth, height: targetHeight });
+      mainWindow.setIgnoreMouseEvents(false);
+      mainWindow.webContents.send('expand-shelf');
+      startCursorChecking();
+    }
+  }, 50);
+}
+
+function stopEdgeChecking() {
+  if (checkEdgeInterval) {
+    clearInterval(checkEdgeInterval);
+    checkEdgeInterval = null;
+  }
+}
+
+let outsideCounter = 0;
 function startCursorChecking() {
   if (checkCursorInterval) clearInterval(checkCursorInterval);
   if (checkCursorTimeout) clearTimeout(checkCursorTimeout);
-  
-  // Wait 400ms for OS resize transition to finish before checking
+  outsideCounter = 0;
+
+  // Wait 300ms before checking to allow cursor to travel onto the expanded bar
   checkCursorTimeout = setTimeout(() => {
     checkCursorInterval = setInterval(() => {
-      if (!mainWindow || mainWindow.isDestroyed()) {
+      if (!mainWindow || mainWindow.isDestroyed() || currentWindowMode !== 'shelf') {
         clearInterval(checkCursorInterval);
         checkCursorInterval = null;
         return;
       }
       const bounds = mainWindow.getBounds();
       const point = screen.getCursorScreenPoint();
-      
-      // We allow a 15px buffer for extremely smooth hover transitions
+
       const buffer = 15;
       const isInside = (
         point.x >= bounds.x - buffer &&
@@ -997,14 +1393,20 @@ function startCursorChecking() {
         point.y >= bounds.y - buffer &&
         point.y <= bounds.y + bounds.height + buffer
       );
-      
+
       if (!isInside) {
-        mainWindow.webContents.send('force-collapse-shelf');
-        clearInterval(checkCursorInterval);
-        checkCursorInterval = null;
+        outsideCounter++;
+        // 2 consecutive checks outside (~160ms) before signaling collapse
+        if (outsideCounter >= 2) {
+          mainWindow.webContents.send('force-collapse-shelf');
+          clearInterval(checkCursorInterval);
+          checkCursorInterval = null;
+        }
+      } else {
+        outsideCounter = 0;
       }
-    }, 120);
-  }, 400);
+    }, 80);
+  }, 300);
 }
 
 function stopCursorChecking() {
@@ -1016,6 +1418,7 @@ function stopCursorChecking() {
     clearInterval(checkCursorInterval);
     checkCursorInterval = null;
   }
+  outsideCounter = 0;
 }
 
 ipcMain.on('set-shelf-height', (event, height) => {
@@ -1036,8 +1439,12 @@ ipcMain.on('set-shelf-height', (event, height) => {
   }
 
   if (height <= 6) {
+    mainWindow.setIgnoreMouseEvents(true, { forward: true });
     stopCursorChecking();
+    startEdgeChecking();
   } else {
+    mainWindow.setIgnoreMouseEvents(false);
+    stopEdgeChecking();
     startCursorChecking();
   }
 });
@@ -1222,6 +1629,7 @@ ipcMain.handle('boost-system', async (event) => {
 
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
+  logg('PRIMARY DISPLAY: ' + JSON.stringify(primaryDisplay));
   const { width } = primaryDisplay.bounds;
   const windowWidth = 600; 
   const windowHeight = 450; 
@@ -1242,7 +1650,8 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: false
     }
   });
 
@@ -1277,12 +1686,22 @@ function createWindow() {
   });
 
   ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
+    if (isWindowBeingDragged) return;
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) win.setIgnoreMouseEvents(ignore, options);
   });
   
+  mainWindow.on('close', (e) => {
+    logg('mainWindow close event triggered');
+  });
+  mainWindow.on('closed', () => {
+    logg('mainWindow closed event triggered');
+  });
   mainWindow.webContents.on('did-fail-load', (e, code, desc) => {
     logg('Failed to load UI: ' + desc + ' (' + code + ')');
+  });
+  mainWindow.webContents.on('render-process-gone', (e, details) => {
+    logg('Renderer process gone: ' + JSON.stringify(details));
   });
   mainWindow.webContents.on('crashed', (e) => {
     logg('Renderer Crashed!');
@@ -1290,29 +1709,20 @@ function createWindow() {
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     logg(`RENDERER CONSOLE: [level ${level}] ${message} (at ${sourceId}:${line})`);
   });
+  mainWindow.webContents.on('did-finish-load', () => {
+    logg('webContents did-finish-load fired');
+    setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.show();
+      logg('WINDOW BOUNDS: ' + JSON.stringify(mainWindow.getBounds()) + ' isVisible=' + mainWindow.isVisible() + ' isAlwaysOnTop=' + mainWindow.isAlwaysOnTop());
+    }, 1500);
+  });
   
-  const isDev = !app.isPackaged;
-  if (isDev) {
-    // Toggle DevTools on F12 or Ctrl+Shift+I instead of auto-opening on startup
-    mainWindow.webContents.on('before-input-event', (event, input) => {
-      if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
-        if (mainWindow.webContents.isDevToolsOpened()) {
-          mainWindow.webContents.closeDevTools();
-        } else {
-          mainWindow.webContents.openDevTools({ mode: 'detach' });
-        }
-        event.preventDefault();
-      }
-    });
-
-    const loadVite = () => {
-      mainWindow.loadURL('http://localhost:5173').catch(() => {
-        setTimeout(loadVite, 1000);
-      });
-    };
-    loadVite();
+  const distIndex = path.join(__dirname, 'build_dist', 'index.html');
+  if (fs.existsSync(distIndex)) {
+    mainWindow.loadFile(distIndex);
   } else {
-    mainWindow.loadFile(path.join(__dirname, 'build_dist', 'index.html'));
+    mainWindow.loadURL('http://127.0.0.1:5173');
   }
 }
 
@@ -1361,6 +1771,7 @@ app.whenReady().then(() => {
   // startClipboardPolling();
   startHardwarePolling();
   startCombinedBackgroundMonitor();
+  startSystemControlWorker();
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1370,6 +1781,9 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   if (smtcWorker) {
     try { smtcWorker.kill(); } catch(e){}
+  }
+  if (combinedPs) {
+    try { combinedPs.kill(); } catch(e){}
   }
 });
 

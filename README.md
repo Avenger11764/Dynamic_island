@@ -9,17 +9,21 @@
 A sleek, Smart Notch style application for Windows desktops built with Electron and React.
 
 ## Screenshots
-| Compact Mode | Media Player Mode |
+| Dashboard View | Media Player (Lyrics) |
 |:---:|:---:|
-| ![Compact Mode](./assets/compact_mode_v2.png) | ![Spotify Player](./assets/media_player_v2.png) |
+| ![Dashboard Mode](./assets/bar_mode_v2.png) | ![Spotify Player](./assets/media_player_v2.png) |
 
-|  Settings & Customization | Hardware Stats Mode |
+| Hardware Stats Mode | Network Speed Mode |
 |:---:|:---:|
-| ![Settings Mode](./assets/settings_mode_v2.png) | ![Hardware Stats](./assets/hardware_stats_v2.png) |
+| ![Hardware Stats](./assets/hardware_stats_v2.png) | ![Network Speed](./assets/network_stats_v2.png) |
 
-| Network Speed Mode | Pomodoro Timer Mode |
+| Control Center Mode | Settings & Customization |
 |:---:|:---:|
-| ![Network Speed](./assets/network_stats_v2.png) | ![Pomodoro Timer](./assets/pomodoro_mode_v2.png) |
+| ![Control Center](./assets/control_center_v2.png) | ![Settings Mode](./assets/settings_mode_v2.png) |
+
+| Compact Mode | Pomodoro Timer Mode |
+|:---:|:---:|
+| ![Compact Mode](./assets/compact_mode_v2.png) | ![Pomodoro Timer](./assets/pomodoro_mode_v2.png) |
 
 ## Features
 - **Media Controls**: Native Spotify integration with a dynamic audio waveform and liquid ambient glow that pulses with the beat.

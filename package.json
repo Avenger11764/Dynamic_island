@@ -1,12 +1,12 @@
 {
   "name": "smart-notch",
   "private": true,
-  "version": "6.0.7",
+  "version": "7.0.0",
   "changelog": [
-    "Memory Optimization: Added periodic Garbage Collection routines to background system monitoring to completely eliminate RAM accumulation.",
-    "IPC Efficiency: Optimized SMTC media controller to only transmit track thumbnails over IPC when the track or artwork changes.",
-    "Process Stability: Significantly reduced long-term CPU/RAM usage of child processes.",
-    "Resource Cleanup: Resolved redundant base64 image serialization loops during track playback."
+    "Premium Bespoke Hardware Badges: Authentic Apple Silicon CPU microchip die, DRAM memory modules, sculpted acoustic headphones, and Wi-Fi radar wave badges.",
+    "Adaptive Side Docking Architecture: Refined side notch geometries, vertically expanding Bluetooth alerts, and balanced vertical centering.",
+    "Persistent Pin Mode: Keep dynamic notch pinned open without accidental closing on mouse-leave or loss of focus.",
+    "Performance Optimization: Memoized view trees, zero-overhead background monitoring, and smooth hardware-accelerated transitions."
   ],
   "main": "main.js",
   "author": "Avinash",
@@ -50,6 +50,8 @@
       "main.js",
       "preload.js",
       "smtc-worker.js",
+      "system_control.ps1",
+      "open_media_tab.ps1",
       "build_dist/**/*",
       "node_modules/**/*"
     ]
@@ -58,6 +60,8 @@
     "@coooookies/windows-smtc-monitor": "^1.0.12",
     "dotenv": "^17.4.2",
     "framer-motion": "^11.0.0",
+    "koffi": "^3.3.1",
+    "loudness": "^0.4.2",
     "lucide-react": "^0.360.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
