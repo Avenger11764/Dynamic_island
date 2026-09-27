@@ -201,8 +201,8 @@ function App() {
           >
             <div className="glass-card p-2 sm:p-4 rounded-2xl sm:rounded-3xl border border-white/10 bg-white/5 backdrop-blur-md">
               <img 
-                src="/assets/media_player_v2.png" 
-                alt="Media Player Island" 
+                src="/assets/dashboard_mode_v2.png" 
+                alt="Smart Notch Dashboard" 
                 className="w-full rounded-xl sm:rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)]"
               />
             </div>
