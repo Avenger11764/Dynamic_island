@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { 
   LayoutGrid, Music, Coffee, Timer as TimerIcon, Activity, Signal, 
   SlidersHorizontal, Settings as SettingsIcon, Rocket, Pin, Power, 
-  BatteryCharging, Battery 
+  BatteryCharging, Battery, X 
 } from 'lucide-react';
 import WeatherIcon from '../../WeatherIcon';
 
@@ -110,12 +110,13 @@ export const ExpandedHeader = React.memo(({
               </button>
               <button 
                 type="button"
-                title="Quit Smart Notch"
+                title="Close Smart Notch"
+                aria-label="Close Smart Notch"
                 className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
                 style={{ pointerEvents: 'auto' }}
                 onClick={() => ipcRenderer?.send('quit-app')}
               >
-                <Power size={12} />
+                <X size={13} strokeWidth={2.2} />
               </button>
             </div>
           </div>
@@ -355,6 +356,18 @@ export const ExpandedHeader = React.memo(({
               ) : whatsNewAvailable ? (
                 <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse" />
               ) : null}
+            </button>
+            <button 
+              type="button"
+              title="Close Smart Notch"
+              aria-label="Close Smart Notch"
+              className="w-7 h-7 rounded-full flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-red-500/15 transition-all duration-150 cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (ipcRenderer) ipcRenderer.send('quit-app');
+              }}
+            >
+              <X size={13} strokeWidth={2.2} />
             </button>
           </div>
         </div>

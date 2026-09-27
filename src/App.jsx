@@ -59,11 +59,7 @@ export default function App() {
   const [spotifyState, setSpotifyState] = useState(null);
   const [clipboardUrl, setClipboardUrl] = useState(null);
   const [privacy, setPrivacy] = useState({ cam: false, mic: false });
-  const [testPrivacy, setTestPrivacy] = useState(false);
-  const effectivePrivacy = useMemo(
-    () => ({ cam: !!(privacy.cam || testPrivacy), mic: !!(privacy.mic || testPrivacy) }),
-    [privacy, testPrivacy]
-  );
+  const effectivePrivacy = privacy;
   const [localProgress, setLocalProgress] = useState(0);
   const [network, setNetwork] = useState({ rx: 0, tx: 0 });
   const [battery, setBattery] = useState({ level: 100, charging: false });
@@ -1820,8 +1816,6 @@ export default function App() {
                                 config={config}
                                 setConfig={setConfig}
                                 isResolvingBgUrl={isResolvingBgUrl}
-                                testPrivacy={testPrivacy}
-                                setTestPrivacy={setTestPrivacy}
                               />
                             )}
                           </AnimatePresence>

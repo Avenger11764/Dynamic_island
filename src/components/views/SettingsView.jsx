@@ -1,5 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Power } from 'lucide-react';
+
+const ipcRenderer = typeof window !== 'undefined' 
+  ? (window.electronAPI || (window.require ? window.require('electron').ipcRenderer : null)) 
+  : null;
 
 export const SettingsView = React.memo(({
   updateAvailable,
@@ -12,9 +17,7 @@ export const SettingsView = React.memo(({
   CURRENT_VERSION,
   config,
   setConfig,
-  isResolvingBgUrl,
-  testPrivacy,
-  setTestPrivacy
+  isResolvingBgUrl
 }) => {
   return (
     <motion.div
@@ -487,30 +490,6 @@ export const SettingsView = React.memo(({
         </button>
       </div>
 
-      {/* Preview Privacy Indicators */}
-      <div className="flex items-center justify-between">
-        <div className="flex flex-col text-left">
-          <span className="text-xs font-semibold text-white/90">Preview Privacy Indicators</span>
-          <span className="text-[10px] text-white/40">Test Apple-style orange (mic) & green (cam) dots</span>
-        </div>
-        <button
-          type="button"
-          aria-label="Toggle Privacy Preview"
-          className={`w-10 h-6 rounded-full p-1 transition-colors ${
-            testPrivacy ? 'bg-[#30D158]' : 'bg-white/20'
-          }`}
-          onClick={() => setTestPrivacy && setTestPrivacy(!testPrivacy)}
-        >
-          <div
-            className={`w-4 h-4 rounded-full bg-white transition-transform ${
-              testPrivacy ? 'translate-x-4' : 'translate-x-0'
-            }`}
-          />
-        </button>
-      </div>
-
-
-
       {/* Clock Format */}
       <div className="flex flex-col gap-2">
         <span className="text-xs font-semibold text-white/70">Clock Format</span>
@@ -534,6 +513,20 @@ export const SettingsView = React.memo(({
             24 Hour
           </button>
         </div>
+      </div>
+
+      {/* Application Controls */}
+      <div className="flex flex-col gap-2 pt-2 border-t border-white/10 mt-1">
+        <button
+          type="button"
+          onClick={() => {
+            if (ipcRenderer) ipcRenderer.send('quit-app');
+          }}
+          className="w-full py-2 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer select-none"
+        >
+          <Power size={13} />
+          Quit Smart Notch
+        </button>
       </div>
     </motion.div>
   );
