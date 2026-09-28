@@ -44,6 +44,67 @@ export default function SettingsWindow() {
   const [autostartEnabled, setAutostartEnabled] = useState(true);
   const [version, setVersion] = useState('7.0.1');
 
+  // Update & Changelog State
+  const CURRENT_VERSION = '7.0.1';
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  const [whatsNewAvailable, setWhatsNewAvailable] = useState(false);
+  const [changelog, setChangelog] = useState([]);
+
+  useEffect(() => {
+    const compareVersions = (v1, v2) => {
+      const parts1 = v1.split('.').map(Number);
+      const parts2 = v2.split('.').map(Number);
+      for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+        const p1 = parts1[i] || 0;
+        const p2 = parts2[i] || 0;
+        if (p1 > p2) return 1;
+        if (p1 < p2) return -1;
+      }
+      return 0;
+    };
+
+    const checkUpdate = async () => {
+      try {
+        const res = await fetch(`https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/package.json?t=${Date.now()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.version) {
+            setLatestVersion(data.version);
+            if (data.changelog) setChangelog(data.changelog);
+            if (compareVersions(data.version, CURRENT_VERSION) > 0 || window.location.search.includes('simulate-update')) {
+              setUpdateAvailable(true);
+            } else {
+              setUpdateAvailable(false);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to check updates in SettingsWindow:', e);
+      }
+    };
+
+    checkUpdate();
+    const lastSeen = localStorage.getItem('lastSeenVersion');
+    const hasConfig = localStorage.getItem('smart-notch-config') !== null;
+
+    if (lastSeen) {
+      if (compareVersions(CURRENT_VERSION, lastSeen) > 0 || window.location.search.includes('simulate-whats-new')) {
+        setWhatsNewAvailable(true);
+      } else {
+        setWhatsNewAvailable(false);
+      }
+    } else {
+      localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
+      if (hasConfig || window.location.search.includes('simulate-whats-new')) {
+        setWhatsNewAvailable(true);
+      } else {
+        setWhatsNewAvailable(false);
+      }
+    }
+  }, []);
+
   // Load config from localStorage
   const [config, setConfig] = useState(() => {
     try {
@@ -187,21 +248,27 @@ export default function SettingsWindow() {
             {navTabs.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
+              const hasBadge = tab.id === 'about' && (updateAvailable || whatsNewAvailable);
               return (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
                     isActive 
                       ? 'bg-white/[0.12] text-white shadow-sm ring-1 ring-white/15' 
                       : 'text-white/60 hover:text-white hover:bg-white/[0.06]'
                   }`}
                 >
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-gradient-to-b ${tab.gradient} text-white ${tab.shadow}`}>
-                    <Icon size={14} strokeWidth={2.4} />
+                  <div className="flex items-center gap-3 truncate">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-gradient-to-b ${tab.gradient} text-white ${tab.shadow}`}>
+                      <Icon size={14} strokeWidth={2.4} />
+                    </div>
+                    <span className="truncate">{tab.label}</span>
                   </div>
-                  <span className="truncate">{tab.label}</span>
+                  {hasBadge && (
+                    <span className={`w-2 h-2 rounded-full ${updateAvailable ? 'bg-red-500 shadow-[0_0_8px_#ef4444]' : 'bg-cyan-400 shadow-[0_0_8px_#22d3ee]'} animate-pulse flex-shrink-0`} />
+                  )}
                 </button>
               );
             })}
@@ -211,8 +278,10 @@ export default function SettingsWindow() {
           <div className="pt-3 border-t border-white/[0.08] px-2 flex items-center justify-between text-[11px] text-white/40">
             <span>Version {version}</span>
             <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] text-emerald-400/90 font-medium">Ready</span>
+              <span className={`w-2 h-2 rounded-full ${updateAvailable ? 'bg-red-400' : 'bg-emerald-400'} animate-pulse`} />
+              <span className={`text-[10px] font-medium ${updateAvailable ? 'text-red-400' : 'text-emerald-400/90'}`}>
+                {updateAvailable ? 'Update ready' : 'Up to date'}
+              </span>
             </div>
           </div>
         </aside>
@@ -241,7 +310,110 @@ export default function SettingsWindow() {
           </div>
 
           {/* Scrollable Settings View */}
-          <div className="flex-1 overflow-y-auto px-6 py-5 custom-scrollbar flex flex-col gap-6" style={{ WebkitAppRegion: 'no-drag' }}>
+          <div className="flex-1 overflow-y-auto px-6 py-5 custom-scrollbar flex flex-col gap-5" style={{ WebkitAppRegion: 'no-drag' }}>
+            
+            {/* Update Available notification banner */}
+            {updateAvailable && (
+              <div 
+                className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex flex-col gap-2 cursor-pointer hover:bg-red-500/15 transition-all select-none shadow-[0_4px_20px_rgba(239,68,68,0.15)]"
+                onClick={() => setShowReleaseNotes(!showReleaseNotes)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse" />
+                    <div>
+                      <span className="text-xs font-bold text-red-200">
+                        New Version Available (v{latestVersion})
+                      </span>
+                      <p className="text-[11px] text-red-300/70">Click to view release notes & download.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS"
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-[11px] px-3 py-1 rounded-full bg-red-500/25 hover:bg-red-500/40 text-red-100 font-semibold border border-red-400/40 transition-colors flex items-center gap-1"
+                    >
+                      Store <ExternalLink size={11} />
+                    </a>
+                    <span className="text-[11px] text-white/50 underline ml-1">
+                      {showReleaseNotes ? 'Hide details' : 'Changelog'}
+                    </span>
+                  </div>
+                </div>
+                {showReleaseNotes && (
+                  <div className="text-[11px] text-white/80 flex flex-col gap-1.5 pl-3 border-l-2 border-red-500/40 mt-1.5 leading-relaxed">
+                    {changelog && changelog.length > 0 ? (
+                      changelog.map((point, index) => {
+                        const colonIndex = point.indexOf(':');
+                        if (colonIndex !== -1) {
+                          const title = point.substring(0, colonIndex);
+                          const desc = point.substring(colonIndex + 1);
+                          return (
+                            <div key={index} className="flex items-start gap-1.5">
+                              <span className="text-red-400">•</span>
+                              <span><b className="text-white">{title}:</b>{desc}</span>
+                            </div>
+                          );
+                        }
+                        return <div key={index} className="flex items-start gap-1.5"><span className="text-red-400">•</span><span>{point}</span></div>;
+                      })
+                    ) : (
+                      <p className="text-white/60">New performance improvements and features available in Microsoft Store.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* What's New in Current Version Banner */}
+            {whatsNewAvailable && (
+              <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-2 select-none shadow-[0_4px_20px_rgba(34,211,238,0.12)]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee] animate-pulse" />
+                    <div>
+                      <span className="text-xs font-bold text-cyan-200">
+                        What's New in v{CURRENT_VERSION}!
+                      </span>
+                      <p className="text-[11px] text-cyan-300/70">Welcome to your updated Smart Notch experience.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
+                      setWhatsNewAvailable(false);
+                    }}
+                    className="text-[11px] px-3 py-1 rounded-full bg-cyan-500/25 hover:bg-cyan-500/40 text-cyan-100 font-semibold border border-cyan-400/40 transition-colors cursor-pointer"
+                  >
+                    Got it
+                  </button>
+                </div>
+                <div className="text-[11px] text-white/80 flex flex-col gap-1.5 pl-3 border-l-2 border-cyan-500/40 mt-1.5 leading-relaxed">
+                  <div className="flex items-start gap-1.5">
+                    <span className="text-cyan-400">•</span>
+                    <span><b className="text-white">Floating Settings Window:</b> Real-time live customization preview window with persistent controls.</span>
+                  </div>
+                  <div className="flex items-start gap-1.5">
+                    <span className="text-cyan-400">•</span>
+                    <span><b className="text-white">Authentic Apple Silicon Badges:</b> Bespoke CPU microchip, DRAM memory, and acoustic headphone icons.</span>
+                  </div>
+                  <div className="flex items-start gap-1.5">
+                    <span className="text-cyan-400">•</span>
+                    <span><b className="text-white">Island Mode Hover Auto-Hide:</b> 2-second graceful dismiss for Bar mode; persistent 5-second mode for Notch.</span>
+                  </div>
+                  <div className="flex items-start gap-1.5">
+                    <span className="text-cyan-400">•</span>
+                    <span><b className="text-white">GPU Hardware Acceleration:</b> Zero-copy rasterization for seamless 60/120Hz liquid animations.</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             
             {/* ────────────────── GENERAL TAB ────────────────── */}
             {activeTab === 'general' && (

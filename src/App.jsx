@@ -558,7 +558,7 @@ export default function App() {
     }
   };
 
-  const CURRENT_VERSION = '7.0.0';
+  const CURRENT_VERSION = '7.0.1';
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
