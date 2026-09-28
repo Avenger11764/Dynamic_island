@@ -43,10 +43,10 @@ export default function SettingsWindow() {
   const [activeTab, setActiveTab] = useState('general');
   const [monitors, setMonitors] = useState([]);
   const [autostartEnabled, setAutostartEnabled] = useState(true);
-  const [version, setVersion] = useState('7.0.2');
+  const [version, setVersion] = useState('7.0.3');
 
   // Update & Changelog State
-  const CURRENT_VERSION = '7.0.2';
+  const CURRENT_VERSION = '7.0.3';
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);

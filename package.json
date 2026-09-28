@@ -1,7 +1,7 @@
 {
   "name": "smart-notch",
   "private": true,
-  "version": "7.0.2",
+  "version": "7.0.3",
   "changelog": [
     "Hotfix: Resolved Microsoft Store package issue where keyboard volume/brightness OSD notch popups and Bluetooth device status monitoring were prevented by package archive restrictions.",
     "Premium Bespoke Hardware Badges: Authentic Apple Silicon CPU microchip die, DRAM memory modules, sculpted acoustic headphones, and Wi-Fi radar wave badges.",
