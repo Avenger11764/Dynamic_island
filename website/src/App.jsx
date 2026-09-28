@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Download, MonitorPlay, Activity, Timer, Settings2, ShieldCheck, ChevronRight, ChevronLeft, BatteryCharging, Layers, Sun, Palette, Power } from 'lucide-react';
+import Lenis from 'lenis';
 import MoltenMetal from './MoltenMetal';
 import SpecularButton from './SpecularButton';
 import BounceCards from './BounceCards';
@@ -8,6 +9,30 @@ import BounceCards from './BounceCards';
 function App() {
   const carouselRef = useRef(null);
   const [isNavigating, setIsNavigating] = useState(false);
+
+  // Initialize Lenis smooth scroll
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      smoothWheel: true,
+      touchMultiplier: 1.5,
+      infinite: false,
+    });
+
+    let rafId;
+    function raf(time) {
+      lenis.raf(time);
+      rafId = requestAnimationFrame(raf);
+    }
+
+    rafId = requestAnimationFrame(raf);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      lenis.destroy();
+    };
+  }, []);
 
   useEffect(() => {
     let animationFrameId;
