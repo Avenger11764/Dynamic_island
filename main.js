@@ -826,6 +826,7 @@ let sysWorkerReady = false;
 let currentVolumeVal = 50;
 let currentMuteVal = false;
 let currentBrightnessVal = 80;
+let currentIsBtAudio = false;
 let lastSentVol = -1;
 let lastSentMute = null;
 let lastSentBright = -1;
@@ -921,18 +922,33 @@ function startSystemControlWorker() {
         currentVolumeVal = v;
         currentMuteVal = m;
         const isInitial = (lastSentVol === -1);
+        const changed = (v !== lastSentVol || m !== lastSentMute);
         lastSentVol = v;
         lastSentMute = m;
         if (!isInitial) {
-          if (Date.now() - lastUserVolTime >= 800) {
+          if (changed && Date.now() - lastUserVolTime >= 800) {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('osd-level', { type: 'volume', value: v, isMuted: m });
             }
           }
         } else {
           if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('init-levels', { volume: v, isMuted: m });
+            mainWindow.webContents.send('init-levels', { volume: v, isMuted: m, isBtAudio: currentIsBtAudio });
           }
+        }
+      } else if (t.startsWith('VOL_SYNC:')) {
+        const parts = t.split('|');
+        const v = Math.round(parseFloat(parts[0].substring(9)));
+        let m = currentMuteVal;
+        if (parts.length > 1 && parts[1].startsWith('MUTE:')) {
+          m = parts[1].substring(5).trim() === 'True';
+        }
+        currentVolumeVal = v;
+        currentMuteVal = m;
+        lastSentVol = v;
+        lastSentMute = m;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('init-levels', { volume: v, isMuted: m, isBtAudio: currentIsBtAudio });
         }
       } else if (t.startsWith('BRIGHTNESS:')) {
         const b = parseInt(t.substring(11));
@@ -979,6 +995,7 @@ function startSystemControlWorker() {
         }
       } else if (t.startsWith('BT_AUDIO:')) {
         const isBt = t.substring(9).trim() === 'True';
+        currentIsBtAudio = isBt;
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('bt-audio-status', isBt);
         }
@@ -1035,7 +1052,11 @@ ipcMain.on('toggle-mute', () => {
 });
 
 ipcMain.handle('get-volume', async () => {
-  return { volume: currentVolumeVal, isMuted: currentMuteVal };
+  return { volume: currentVolumeVal, isMuted: currentMuteVal, isBtAudio: currentIsBtAudio };
+});
+
+ipcMain.handle('get-bt-audio-status', async () => {
+  return currentIsBtAudio;
 });
 
 let brightDebounce = null;

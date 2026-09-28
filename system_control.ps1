@@ -72,70 +72,191 @@ namespace WinAudioSys {
         public IntPtr pwszVal;
     }
 
+    [Guid("7991EEC9-7E89-4D85-8390-6C703CEC60C0"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IMMNotificationClient {
+        void OnDeviceStateChanged([MarshalAs(UnmanagedType.LPWStr)] string pwstrDeviceId, uint dwNewState);
+        void OnDeviceAdded([MarshalAs(UnmanagedType.LPWStr)] string pwstrDeviceId);
+        void OnDeviceRemoved([MarshalAs(UnmanagedType.LPWStr)] string pwstrDeviceId);
+        void OnDefaultDeviceChanged(int dataFlow, int role, [MarshalAs(UnmanagedType.LPWStr)] string pwstrDefaultDeviceId);
+        void OnPropertyValueChanged([MarshalAs(UnmanagedType.LPWStr)] string pwstrDeviceId, PROPERTYKEY key);
+    }
+
     [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface IMMDeviceEnumerator {
         int EnumAudioEndpoints(int df, int sm, out IMMDeviceCollection devs);
         int GetDefaultAudioEndpoint(int df, int role, out IMMDevice ep);
+        int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string pwstrId, out IMMDevice ep);
+        int RegisterEndpointNotificationCallback(IMMNotificationClient pClient);
+        int UnregisterEndpointNotificationCallback(IMMNotificationClient pClient);
     }
 
     [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
     public class MMDevEnum { }
 
+    public class DeviceNotifier : IMMNotificationClient {
+        public void OnDeviceStateChanged(string pwstrDeviceId, uint dwNewState) {}
+        public void OnDeviceAdded(string pwstrDeviceId) {}
+        public void OnDeviceRemoved(string pwstrDeviceId) {}
+        public void OnDefaultDeviceChanged(int dataFlow, int role, string pwstrDefaultDeviceId) {
+            if (dataFlow == 0 && (role == 1 || role == 0)) {
+                Audio.RehookDefaultEndpoint();
+            }
+        }
+        public void OnPropertyValueChanged(string pwstrDeviceId, PROPERTYKEY key) {}
+    }
+
     public class AudioCallback : IAudioEndpointVolumeCallback {
         public int OnNotify(IntPtr pNotify) {
-            float v = Audio.GetMasterVolume();
-            bool m = Audio.GetMute();
-            Console.WriteLine("VOL:" + (int)Math.Round(v) + "|MUTE:" + m);
+            Audio.CheckVolumeChanged();
             return 0;
         }
     }
 
     public class Audio {
+        private static readonly object _lock = new object();
         private static IAudioEndpointVolume _cached;
-        private static AudioCallback _callback;
+        private static AudioCallback _callback = new AudioCallback();
+        private static IMMDeviceEnumerator _enumerator;
+        private static DeviceNotifier _notifier = new DeviceNotifier();
+        private static int _lastReportedVol = -1;
+        private static bool _lastReportedMute = false;
+
+        public static void Init() {
+            lock (_lock) {
+                if (_enumerator == null) {
+                    try {
+                        _enumerator = (IMMDeviceEnumerator)new MMDevEnum();
+                        _enumerator.RegisterEndpointNotificationCallback(_notifier);
+                    } catch {}
+                }
+                RehookDefaultEndpointInternal(false);
+            }
+        }
+
+        public static void RehookDefaultEndpoint() {
+            lock (_lock) {
+                RehookDefaultEndpointInternal(true);
+            }
+        }
+
+        private static void RehookDefaultEndpointInternal(bool notifySync) {
+            try {
+                if (_cached != null) {
+                    try { _cached.UnregisterControlChangeNotify(_callback); } catch {}
+                    try { Marshal.ReleaseComObject(_cached); } catch {}
+                    _cached = null;
+                }
+                if (_enumerator == null) {
+                    _enumerator = (IMMDeviceEnumerator)new MMDevEnum();
+                    try { _enumerator.RegisterEndpointNotificationCallback(_notifier); } catch {}
+                }
+                IMMDevice dev = null;
+                int hr = _enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
+                if (hr == 0 && dev != null) {
+                    Guid IID_IAudioEndpointVolume = typeof(IAudioEndpointVolume).GUID;
+                    object epv = null;
+                    dev.Activate(ref IID_IAudioEndpointVolume, 1, IntPtr.Zero, out epv);
+                    _cached = (IAudioEndpointVolume)epv;
+                    if (_cached != null) {
+                        _cached.RegisterControlChangeNotify(_callback);
+                        float v = 0;
+                        _cached.GetMasterVolumeLevelScalar(out v);
+                        bool m = false;
+                        _cached.GetMute(out m);
+                        int iv = (int)Math.Round(v * 100f);
+                        _lastReportedVol = iv;
+                        _lastReportedMute = m;
+                        if (notifySync) {
+                            Console.WriteLine("VOL_SYNC:" + iv + "|MUTE:" + m);
+                        }
+                    }
+                    try { Marshal.ReleaseComObject(dev); } catch {}
+                }
+            } catch {}
+        }
 
         public static IAudioEndpointVolume GetVolume() {
-            if (_cached == null) {
-                IMMDeviceEnumerator enumerator = (IMMDeviceEnumerator)(new MMDevEnum());
-                IMMDevice dev = null;
-                enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
-                Guid IID_IAudioEndpointVolume = typeof(IAudioEndpointVolume).GUID;
-                object epv = null;
-                dev.Activate(ref IID_IAudioEndpointVolume, 1, IntPtr.Zero, out epv);
-                _cached = (IAudioEndpointVolume)epv;
-
-                _callback = new AudioCallback();
-                _cached.RegisterControlChangeNotify(_callback);
+            lock (_lock) {
+                if (_cached == null) {
+                    Init();
+                }
+                return _cached;
             }
-            return _cached;
         }
 
         public static float GetMasterVolume() {
-            float v = 0;
-            GetVolume().GetMasterVolumeLevelScalar(out v);
-            return v * 100f;
+            lock (_lock) {
+                try {
+                    var vObj = GetVolume();
+                    if (vObj == null) return 0f;
+                    float v = 0;
+                    vObj.GetMasterVolumeLevelScalar(out v);
+                    return v * 100f;
+                } catch {
+                    RehookDefaultEndpointInternal(false);
+                    try {
+                        float v = 0;
+                        if (_cached != null) _cached.GetMasterVolumeLevelScalar(out v);
+                        return v * 100f;
+                    } catch { return 0f; }
+                }
+            }
         }
 
         public static void SetMasterVolume(float level) {
-            Guid g = Guid.Empty;
-            GetVolume().SetMasterVolumeLevelScalar(level / 100f, ref g);
+            lock (_lock) {
+                try {
+                    Guid g = Guid.Empty;
+                    GetVolume().SetMasterVolumeLevelScalar(level / 100f, ref g);
+                    _lastReportedVol = (int)Math.Round(level);
+                } catch {}
+            }
         }
 
         public static bool GetMute() {
-            bool m = false;
-            GetVolume().GetMute(out m);
-            return m;
+            lock (_lock) {
+                try {
+                    var vObj = GetVolume();
+                    if (vObj == null) return false;
+                    bool m = false;
+                    vObj.GetMute(out m);
+                    return m;
+                } catch { return false; }
+            }
         }
 
         public static void SetMute(bool mute) {
-            Guid g = Guid.Empty;
-            GetVolume().SetMute(mute, ref g);
+            lock (_lock) {
+                try {
+                    Guid g = Guid.Empty;
+                    GetVolume().SetMute(mute, ref g);
+                    _lastReportedMute = mute;
+                } catch {}
+            }
         }
 
         public static bool ToggleMute() {
             bool cur = GetMute();
             SetMute(!cur);
             return !cur;
+        }
+
+        public static void CheckVolumeChanged() {
+            lock (_lock) {
+                try {
+                    float v = GetMasterVolume();
+                    bool m = GetMute();
+                    int iv = (int)Math.Round(v);
+                    if (_lastReportedVol != -1 && (iv != _lastReportedVol || m != _lastReportedMute)) {
+                        _lastReportedVol = iv;
+                        _lastReportedMute = m;
+                        Console.WriteLine("VOL:" + iv + "|MUTE:" + m);
+                    } else if (_lastReportedVol == -1) {
+                        _lastReportedVol = iv;
+                        _lastReportedMute = m;
+                    }
+                } catch {}
+            }
         }
 
         public static string[] GetEndpoints() {
@@ -275,7 +396,7 @@ namespace WinAudioSys {
 Add-Type -TypeDefinition $audioCode -ErrorAction SilentlyContinue
 
 # Initialize Volume COM & Callback
-[WinAudioSys.Audio]::GetVolume() | Out-Null
+[WinAudioSys.Audio]::Init()
 
 # Initialize Brightness CIM
 $brightMethods = $null
@@ -301,10 +422,15 @@ function Set-CurrentBrightness([int]$val) {
 }
 
 function Parse-BtName($epName) {
+    if (-not $epName) { return $null }
     if ($epName -match '\((.*?)\)') {
         $inner = $matches[1]
         if ($inner -notmatch '(?i)Realtek|Intel|High Definition|AMD|NVIDIA|USB') {
-            return $inner -replace '(?i) Hands-Free', ''
+            return $inner -replace '(?i) Hands-Free', '' -replace '(?i) AG', ''
+        }
+    } else {
+        if ($epName -notmatch '(?i)Realtek|Intel|High Definition|AMD|NVIDIA|USB|Speaker|Microphone') {
+            return $epName -replace '(?i) Hands-Free', '' -replace '(?i) AG', ''
         }
     }
     return $null
@@ -366,6 +492,11 @@ $powershell.AddScript({
         Start-Sleep -Milliseconds 150
         $counter++
         
+        # Check volume every ~150ms to guarantee Bluetooth volume keys and AVRCP/Absolute Volume are detected instantly
+        try {
+            [WinAudioSys.Audio]::CheckVolumeChanged()
+        } catch {}
+
         # Check brightness every ~1500ms (10 iterations) to prevent WMI bottleneck
         if ($counter % 10 -eq 0) {
             try {
@@ -377,18 +508,25 @@ $powershell.AddScript({
             } catch {}
         }
         
-        # Check Bluetooth every 1000ms (~7 iterations)
-        if ($counter % 7 -eq 0) {
+        # Check Bluetooth every ~900ms (6 iterations)
+        if ($counter % 6 -eq 0) {
             try {
                 $eps = [WinAudioSys.Audio]::GetEndpoints()
                 $curDevs = @{}
                 foreach ($ep in $eps) {
+                    $bName = $null
                     if ($ep -match '\((.*?)\)') {
                         $inner = $matches[1]
                         if ($inner -notmatch '(?i)Realtek|Intel|High Definition|AMD|NVIDIA|USB') {
-                            $cleanName = $inner -replace '(?i) Hands-Free', ''
-                            $curDevs[$cleanName] = [WinAudioSys.BtHelper]::GetBatteryFor($cleanName)
+                            $bName = $inner -replace '(?i) Hands-Free', '' -replace '(?i) AG', ''
                         }
+                    } else {
+                        if ($ep -notmatch '(?i)Realtek|Intel|High Definition|AMD|NVIDIA|USB|Speaker|Microphone') {
+                            $bName = $ep -replace '(?i) Hands-Free', '' -replace '(?i) AG', ''
+                        }
+                    }
+                    if ($bName) {
+                        $curDevs[$bName] = [WinAudioSys.BtHelper]::GetBatteryFor($bName)
                     }
                 }
                 
@@ -410,10 +548,15 @@ $powershell.AddScript({
                 $curAud = [WinAudioSys.Audio]::GetDefaultAudioName()
                 if ($curAud -ne $lastAud) {
                     $lastAud = $curAud
+                    [WinAudioSys.Audio]::RehookDefaultEndpoint()
                     $isBt = $false
                     if ($curAud -match '\((.*?)\)') {
                         $inner = $matches[1]
                         if ($inner -notmatch '(?i)Realtek|Intel|High Definition|AMD|NVIDIA|USB') {
+                            $isBt = $true
+                        }
+                    } else {
+                        if ($curAud -notmatch '(?i)Realtek|Intel|High Definition|AMD|NVIDIA|USB|Speaker|Microphone') {
                             $isBt = $true
                         }
                     }

@@ -1,13 +1,13 @@
 {
   "name": "smart-notch",
   "private": true,
-  "version": "7.0.3",
+  "version": "7.0.4",
   "changelog": [
-    "Hotfix: Resolved Microsoft Store package issue where keyboard volume/brightness OSD notch popups and Bluetooth device status monitoring were prevented by package archive restrictions.",
-    "Premium Bespoke Hardware Badges: Authentic Apple Silicon CPU microchip die, DRAM memory modules, sculpted acoustic headphones, and Wi-Fi radar wave badges.",
+    "Hotfix: Resolved Bluetooth volume synchronization where keyboard volume keys did not pop up the notch volume HUD when Bluetooth audio devices were connected.",
+    "Native Dynamic Audio Endpoint Tracking: Real-time IMMNotificationClient integration with automatic endpoint re-hooking and sub-millisecond volume change detection.",
+    "Hardware Glow HUD: Cyan neon segmented volume meter and authentic Bluetooth headset indicator on active Bluetooth audio.",
     "Adaptive Side Docking Architecture: Refined side notch geometries, vertically expanding Bluetooth alerts, and balanced vertical centering.",
-    "Persistent Pin Mode: Keep dynamic notch pinned open without accidental closing on mouse-leave or loss of focus.",
-    "Performance Optimization: Memoized view trees, zero-overhead background monitoring, and smooth hardware-accelerated transitions."
+    "Persistent Pin Mode: Keep dynamic notch pinned open without accidental closing on mouse-leave or loss of focus."
   ],
   "main": "main.js",
   "author": "Avinash",
@@ -19,7 +19,7 @@
     "preview": "vite preview",
     "electron:start": "electron .",
     "pack": "vite build && electron-builder --dir",
-    "dist": "vite build && electron-builder",
+    "dist": "vite build && electron-builder --win nsis",
     "store": "vite build && electron-builder --win appx"
   },
   "build": {

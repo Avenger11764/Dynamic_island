@@ -142,6 +142,8 @@ export const OsdAlert = React.memo(React.forwardRef(({ osdAlert, isBtAudio, acti
                 isFilled
                   ? (osdAlert.type === 'brightness'
                       ? 'bg-gradient-to-t from-amber-400 to-amber-200 shadow-[0_0_5px_rgba(251,191,36,0.7)]'
+                      : isBtAudio
+                      ? 'bg-gradient-to-t from-cyan-400 via-sky-300 to-white shadow-[0_0_5px_rgba(6,182,212,0.6)]'
                       : 'bg-gradient-to-t from-amber-500 via-amber-300 to-white shadow-[0_0_5px_rgba(245,158,11,0.6)]')
                   : 'bg-white/[0.12]'
               }`}

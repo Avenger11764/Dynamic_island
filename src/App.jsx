@@ -103,6 +103,7 @@ export default function App() {
       setBrightnessLevel(e.value);
     }
     if (!isExpandedRef.current) {
+      setBtAlert(null);
       setOsdAlert(e);
       if (osdTimeoutRef.current) clearTimeout(osdTimeoutRef.current);
       osdTimeoutRef.current = setTimeout(() => {
@@ -120,6 +121,7 @@ export default function App() {
       if (levels.volume !== undefined) setVolumeLevel(levels.volume);
       if (levels.isMuted !== undefined) setIsMuted(levels.isMuted);
       if (levels.brightness !== undefined) setBrightnessLevel(levels.brightness);
+      if (levels.isBtAudio !== undefined) setIsBtAudio(levels.isBtAudio);
     });
     return () => {
       ipcRenderer.removeAllListeners('osd-level');
@@ -162,6 +164,7 @@ export default function App() {
             if (v && typeof v.volume === 'number' && !isNaN(v.volume)) {
               setVolumeLevel(v.volume);
               if (v.isMuted !== undefined) setIsMuted(v.isMuted);
+              if (v.isBtAudio !== undefined) setIsBtAudio(v.isBtAudio);
             }
           })
           .catch(() => {});
@@ -558,7 +561,7 @@ export default function App() {
     }
   };
 
-  const CURRENT_VERSION = '7.0.3';
+  const CURRENT_VERSION = '7.0.4';
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
