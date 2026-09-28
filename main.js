@@ -827,9 +827,68 @@ let lastSentBright = -1;
 let lastUserVolTime = 0;
 let lastUserBrightTime = 0;
 
+function getExecutableScriptPath(scriptName) {
+  const directPath = path.join(__dirname, scriptName);
+  if (!app.isPackaged && fs.existsSync(directPath)) {
+    return directPath;
+  }
+
+  try {
+    const scriptsDir = path.join(app.getPath('userData'), 'scripts');
+    if (!fs.existsSync(scriptsDir)) {
+      fs.mkdirSync(scriptsDir, { recursive: true });
+    }
+    const targetPath = path.join(scriptsDir, scriptName);
+
+    const candidates = [
+      directPath,
+      path.join(__dirname.replace(/app\.asar[/\\]?$/i, 'app.asar.unpacked'), scriptName),
+      process.resourcesPath ? path.join(process.resourcesPath, 'app.asar.unpacked', scriptName) : null,
+      process.resourcesPath ? path.join(process.resourcesPath, scriptName) : null,
+      app.getAppPath ? path.join(app.getAppPath(), scriptName) : null,
+      app.getAppPath ? path.join(app.getAppPath().replace(/app\.asar[/\\]?$/i, 'app.asar.unpacked'), scriptName) : null,
+      path.join(process.cwd(), scriptName)
+    ].filter(Boolean);
+
+    let sourceContent = null;
+    for (const cand of candidates) {
+      try {
+        if (fs.existsSync(cand)) {
+          sourceContent = fs.readFileSync(cand);
+          if (sourceContent && sourceContent.length > 0) break;
+        }
+      } catch (_) {}
+    }
+
+    if (sourceContent && sourceContent.length > 0) {
+      let needsWrite = true;
+      if (fs.existsSync(targetPath)) {
+        try {
+          const currentContent = fs.readFileSync(targetPath);
+          if (sourceContent.equals(currentContent)) {
+            needsWrite = false;
+          }
+        } catch (_) {}
+      }
+      if (needsWrite) {
+        fs.writeFileSync(targetPath, sourceContent);
+      }
+      return targetPath;
+    }
+
+    if (fs.existsSync(targetPath)) {
+      return targetPath;
+    }
+  } catch (err) {
+    logg(`getExecutableScriptPath error for ${scriptName}: ${err.message}`);
+  }
+
+  return directPath;
+}
+
 function startSystemControlWorker() {
-  const scriptPath = path.join(__dirname, 'system_control.ps1');
-  if (!fs.existsSync(scriptPath)) { logg('system_control.ps1 not found'); return; }
+  const scriptPath = getExecutableScriptPath('system_control.ps1');
+  if (!fs.existsSync(scriptPath)) { logg('system_control.ps1 not found at: ' + scriptPath); return; }
   
   sysWorker = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
     stdio: ['pipe', 'pipe', 'pipe']
@@ -856,31 +915,38 @@ function startSystemControlWorker() {
         }
         currentVolumeVal = v;
         currentMuteVal = m;
-        // Don't echo back if the user recently interacted with the volume control
-        if (Date.now() - lastUserVolTime < 800) {
-          lastSentVol = v;
-          lastSentMute = m;
-          continue;
-        }
-        if (v !== lastSentVol || m !== lastSentMute) {
-          lastSentVol = v;
-          lastSentMute = m;
+        const isInitial = (lastSentVol === -1);
+        lastSentVol = v;
+        lastSentMute = m;
+        if (!isInitial) {
+          if (Date.now() - lastUserVolTime >= 800) {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('osd-level', { type: 'volume', value: v, isMuted: m });
+            }
+          }
+        } else {
           if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('osd-level', { type: 'volume', value: v, isMuted: m });
+            mainWindow.webContents.send('init-levels', { volume: v, isMuted: m });
           }
         }
       } else if (t.startsWith('BRIGHTNESS:')) {
         const b = parseInt(t.substring(11));
         if (!isNaN(b)) {
-          // If the user recently changed brightness, ignore stale incoming WMI reads
-          if (Date.now() - lastUserBrightTime < 2500) {
-            continue;
-          }
+          const isInitial = (lastSentBright === -1);
           currentBrightnessVal = b;
-          if (b !== lastSentBright) {
+          if (!isInitial) {
+            if (Date.now() - lastUserBrightTime >= 2500) {
+              if (b !== lastSentBright) {
+                lastSentBright = b;
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('osd-level', { type: 'brightness', value: b });
+                }
+              }
+            }
+          } else {
             lastSentBright = b;
             if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('osd-level', { type: 'brightness', value: b });
+              mainWindow.webContents.send('init-levels', { brightness: b });
             }
           }
         }
@@ -1019,7 +1085,7 @@ ipcMain.on('open-media-app', (e, appId, trackTitle, artist) => {
     }
 
     // 2. Run open_media_tab.ps1 asynchronously via exec
-    const scriptPath = path.join(__dirname, 'open_media_tab.ps1');
+    const scriptPath = getExecutableScriptPath('open_media_tab.ps1');
     const safeApp = (appId || '').replace(/"/g, '`"');
     const safeTitle = (trackTitle || '').replace(/"/g, '`"');
     const safeArt = (artist || '').replace(/"/g, '`"');
@@ -1065,29 +1131,28 @@ ipcMain.on('show-context-menu', (event) => {
 let currentWindowMode = 'notch';
 let currentScreenPosition = 'top';
 
-ipcMain.on('set-window-mode', (event, mode, position) => {
+function applyWindowMode(mode, position) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  currentWindowMode = mode;
+  currentWindowMode = (mode === 'bar' || mode === 'shelf') ? 'shelf' : 'notch';
   if (position) currentScreenPosition = position;
   const pos = currentScreenPosition;
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.bounds;
 
-  if (mode === 'shelf') {
+  if (currentWindowMode === 'shelf') {
     if (pos === 'left' || pos === 'right') {
-      // Vertical sidebar
       const sideWidth = 160;
       const x = pos === 'left' ? 0 : screenWidth - sideWidth;
       mainWindow.setBounds({ x, y: 0, width: sideWidth, height: screenHeight });
     } else {
-      // Horizontal top bar (default for all top positions)
       mainWindow.setBounds({ x: 0, y: 0, width: screenWidth, height: 64 });
     }
+    stopCursorChecking();
+    stopEdgeChecking();
     mainWindow.setIgnoreMouseEvents(false);
   } else {
-    // Notch mode — position-aware
-    const windowWidth = 600;
-    const windowHeight = 450;
+    const windowWidth = 760;
+    const windowHeight = 520;
     let x, y;
     if (pos === 'top-left') {
       x = 20; y = 0;
@@ -1098,7 +1163,6 @@ ipcMain.on('set-window-mode', (event, mode, position) => {
     } else if (pos === 'right') {
       x = screenWidth - windowWidth; y = Math.floor((screenHeight - windowHeight) / 2);
     } else {
-      // 'top' (default center)
       x = Math.floor((screenWidth - windowWidth) / 2); y = 0;
     }
     mainWindow.setBounds({ x, y, width: windowWidth, height: windowHeight });
@@ -1106,6 +1170,10 @@ ipcMain.on('set-window-mode', (event, mode, position) => {
     stopEdgeChecking();
     mainWindow.setIgnoreMouseEvents(true, { forward: true });
   }
+}
+
+ipcMain.on('set-window-mode', (event, mode, position) => {
+  applyWindowMode(mode, position);
 });
 
 ipcMain.on('set-screen-position', (event, position, options = {}) => {
@@ -1347,7 +1415,7 @@ function startEdgeChecking() {
     const { width: screenWidth, height: screenHeight } = primaryDisplay.bounds;
     const point = screen.getCursorScreenPoint();
     const pos = currentScreenPosition;
-    const atEdge = (pos === 'left') ? (point.x <= 4) : ((pos === 'right') ? (point.x >= screenWidth - 4) : (point.y <= 4));
+    const atEdge = (pos === 'left') ? (point.x <= 12) : ((pos === 'right') ? (point.x >= screenWidth - 12) : (point.y <= 12));
     if (atEdge) {
       clearInterval(checkEdgeInterval);
       checkEdgeInterval = null;
@@ -1627,12 +1695,161 @@ ipcMain.handle('boost-system', async (event) => {
 
 
 
+let settingsWindow = null;
+
+function openSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.setAlwaysOnTop(true, 'screen-saver');
+    settingsWindow.show();
+    settingsWindow.focus();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setIgnoreMouseEvents(true, { forward: true });
+      mainWindow.webContents.send('settings-window-opened');
+    }
+    return;
+  }
+
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workArea;
+  const winWidth = Math.min(880, Math.floor(width * 0.9));
+  const winHeight = Math.min(620, Math.floor(height * 0.9));
+
+  settingsWindow = new BrowserWindow({
+    width: winWidth,
+    height: winHeight,
+    center: true,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    alwaysOnTop: true,
+    resizable: true,
+    minWidth: 740,
+    minHeight: 500,
+    skipTaskbar: false,
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: false
+    }
+  });
+
+  settingsWindow.setAlwaysOnTop(true, 'screen-saver');
+
+  const distIndex = path.join(__dirname, 'build_dist', 'index.html');
+  if (fs.existsSync(distIndex)) {
+    settingsWindow.loadFile(distIndex, { hash: 'settings' });
+  } else {
+    settingsWindow.loadURL('http://127.0.0.1:5173/#settings');
+  }
+
+  settingsWindow.once('ready-to-show', () => {
+    settingsWindow.setAlwaysOnTop(true, 'screen-saver');
+    settingsWindow.show();
+    settingsWindow.focus();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setIgnoreMouseEvents(true, { forward: true });
+      mainWindow.webContents.send('settings-window-opened');
+    }
+  });
+
+  settingsWindow.on('closed', () => {
+    settingsWindow = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('settings-window-closed');
+    }
+  });
+}
+
+ipcMain.on('open-settings-window', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('settings-window-opened');
+  }
+  openSettingsWindow();
+});
+
+ipcMain.on('close-settings-window', () => {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.close();
+  }
+});
+
+ipcMain.on('sync-config', (event, newConfig) => {
+  if (newConfig && newConfig.mode) {
+    applyWindowMode(newConfig.mode, newConfig.screenPosition);
+  }
+  if (mainWindow && !mainWindow.isDestroyed() && event.sender !== mainWindow.webContents) {
+    mainWindow.webContents.send('config-updated', newConfig);
+  }
+  if (settingsWindow && !settingsWindow.isDestroyed() && event.sender !== settingsWindow.webContents) {
+    settingsWindow.webContents.send('config-updated', newConfig);
+  }
+});
+
+let hideBehindMaximized = false;
+ipcMain.on('set-hide-behind-maximized', (event, val) => {
+  hideBehindMaximized = !!val;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (hideBehindMaximized) {
+      mainWindow.setAlwaysOnTop(false);
+    } else {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    }
+  }
+});
+
+ipcMain.handle('get-monitors', () => {
+  try {
+    const displays = screen.getAllDisplays();
+    const primaryId = screen.getPrimaryDisplay().id;
+    return displays.map((d, index) => ({
+      id: d.id,
+      label: d.id === primaryId ? `Primary Display (${d.bounds.width}x${d.bounds.height})` : `Display ${index + 1} (${d.bounds.width}x${d.bounds.height})`,
+      isPrimary: d.id === primaryId,
+      width: d.bounds.width,
+      height: d.bounds.height
+    }));
+  } catch(e) {
+    return [{ id: 0, label: 'Primary Display', isPrimary: true }];
+  }
+});
+
+ipcMain.handle('get-autostart-status', () => {
+  try {
+    return app.getLoginItemSettings().openAtLogin;
+  } catch (_) {
+    return true;
+  }
+});
+
+ipcMain.on('set-autostart', (event, enable) => {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!enable,
+      path: process.execPath,
+      args: []
+    });
+    const startupDir = path.join(process.env.APPDATA || app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    const shortcutPath = path.join(startupDir, 'Smart Notch.lnk');
+    if (!enable) {
+      if (fs.existsSync(shortcutPath)) {
+        try { fs.unlinkSync(shortcutPath); } catch (_) {}
+      }
+    } else {
+      ensureAutoStart();
+    }
+  } catch (e) {
+    logg('set-autostart error: ' + e.message);
+  }
+});
+
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   logg('PRIMARY DISPLAY: ' + JSON.stringify(primaryDisplay));
   const { width } = primaryDisplay.bounds;
-  const windowWidth = 600; 
-  const windowHeight = 450; 
+  const windowWidth = 760; 
+  const windowHeight = 520; 
   const x = Math.floor((width - windowWidth) / 2);
   const y = 0;
 
@@ -1663,6 +1880,7 @@ function createWindow() {
   // below them. This listener detects when we lose the top position and
   // immediately re-asserts it.
   mainWindow.on('always-on-top-changed', (_event, isAlwaysOnTop) => {
+    if (hideBehindMaximized) return;
     if (!isAlwaysOnTop && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setAlwaysOnTop(true, 'screen-saver');
     }
@@ -1672,7 +1890,9 @@ function createWindow() {
   // apps that don't trigger the event (e.g. some D3D11 overlays) are handled.
   setInterval(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      if (!hideBehindMaximized) {
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      }
     }
   }, 3000);
 
@@ -1728,6 +1948,48 @@ function createWindow() {
 
 // (Single-instance lock is now at the top of the file)
 
+function ensureAutoStart() {
+  try {
+    // 1. Electron official login item settings (Windows Registry Run key)
+    if (app.isPackaged) {
+      app.setLoginItemSettings({
+        openAtLogin: true,
+        path: process.execPath,
+        args: []
+      });
+    }
+
+    // 2. Windows Startup Folder Shortcut (Universal fallback executed on every logon)
+    const startupDir = path.join(process.env.APPDATA || app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    if (fs.existsSync(startupDir) && app.isPackaged) {
+      const shortcutPath = path.join(startupDir, 'Smart Notch.lnk');
+      const vbsCreateShortcut = [
+        'Set ws = CreateObject("WScript.Shell")',
+        `Set sc = ws.CreateShortcut("${shortcutPath.replace(/\\/g, '\\\\')}")`,
+        `sc.TargetPath = "${process.execPath.replace(/\\/g, '\\\\')}"`,
+        `sc.WorkingDirectory = "${path.dirname(process.execPath).replace(/\\/g, '\\\\')}"`,
+        'sc.Description = "Smart Notch Auto Start"',
+        'sc.Save'
+      ].join('\r\n');
+      const tempVbs = path.join(app.getPath('userData'), 'create_startup_shortcut.vbs');
+      fs.writeFileSync(tempVbs, vbsCreateShortcut);
+      exec(`cscript //nologo "${tempVbs}"`, () => {
+        try { fs.unlinkSync(tempVbs); } catch (_) {}
+      });
+    }
+
+    // 3. For Microsoft Store / AppX packages: Ensure AppModel StartupTask is enabled in registry
+    const pkgFamily = 'Devavinash.DynamicIslandWindows_mv0cm4vwdc0m6';
+    const appModelReg = `HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\SystemAppData\\${pkgFamily}\\SmartNotchStartup`;
+    const psCmd = `if (Test-Path '${appModelReg}') { Set-ItemProperty -Path '${appModelReg}' -Name 'State' -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path '${appModelReg}' -Name 'UserEnabledStartupOnce' -Value 1 -ErrorAction SilentlyContinue }`;
+    exec(`powershell.exe -NoProfile -Command "${psCmd}"`, (err) => {
+      if (err) logg('StartupTask registry check error: ' + err.message);
+    });
+  } catch (err) {
+    logg('ensureAutoStart error: ' + err.message);
+  }
+}
+
 app.whenReady().then(() => {
   vbsPath = path.join(app.getPath('userData'), 'sendkeys.vbs');
   try {
@@ -1766,6 +2028,7 @@ app.whenReady().then(() => {
     logg('Failed to write seek.ps1: ' + e.message);
   }
 
+  ensureAutoStart();
   createWindow();
   authenticateSpotify();
   // startClipboardPolling();

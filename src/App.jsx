@@ -30,7 +30,10 @@ import {
 import { 
   MatrixBackground, 
   HyperspaceBackground, 
-  RainBackground 
+  RainBackground,
+  LiquidGlowBackground,
+  CosmicOrbitsBackground,
+  AuroraWaveBackground
 } from './components/background';
 import { SourceAppIcon } from './components/ui';
 import { formatTime, formatSpeed } from './utils/formatters';
@@ -41,6 +44,9 @@ export default function App() {
   const [isPinned, setIsPinned] = useState(false);
   const isPinnedRef = useRef(false);
   isPinnedRef.current = isPinned;
+  const isSettingsWindowOpenRef = useRef(false);
+  const [isSettingsWindowOpen, setIsSettingsWindowOpen] = useState(false);
+  const [viewMode, setViewMode] = useState('dashboard');
 
   const togglePin = useCallback((val) => {
     setIsPinned(prev => {
@@ -78,6 +84,8 @@ export default function App() {
   const btTimeoutRef = useRef(null);
   const osdTimeoutRef = useRef(null);
   const isExpandedRef = useRef(isExpanded);
+  const notchContainerRef = useRef(null);
+  const notchHideTimeoutRef = useRef(null);
 
   useEffect(() => {
     isExpandedRef.current = isExpanded;
@@ -107,7 +115,15 @@ export default function App() {
     ipcRenderer.on('osd-level', (e) => {
       handleOsdEvent(e);
     });
-    return () => ipcRenderer.removeAllListeners('osd-level');
+    ipcRenderer.on('init-levels', (levels) => {
+      if (levels.volume !== undefined) setVolumeLevel(levels.volume);
+      if (levels.isMuted !== undefined) setIsMuted(levels.isMuted);
+      if (levels.brightness !== undefined) setBrightnessLevel(levels.brightness);
+    });
+    return () => {
+      ipcRenderer.removeAllListeners('osd-level');
+      ipcRenderer.removeAllListeners('init-levels');
+    };
   }, [handleOsdEvent]);
 
   useEffect(() => {
@@ -170,7 +186,6 @@ export default function App() {
     }
   }, []);
 
-  const [viewMode, setViewMode] = useState('dashboard');
   const defaultConfig = {
     bgAnimation: 'off',
     bgColor: '#000000',
@@ -187,13 +202,23 @@ export default function App() {
     mode: 'notch',
     screenPosition: 'top',
     lockDrag: false,
-    customBgUrl: ''
+    customBgUrl: '',
+    islandScale: 1.0,
+    hoverToShow: false,
+    hideBehindMaximized: false,
+    pinMode: false,
+    runOnStartup: true,
+    showMediaWidget: true,
+    showHardwareWidget: true,
+    showWeatherWidget: true,
+    showQuickTools: true,
+    showAudioWaveform: true
   };
 
   const [config, setConfig] = useState(() => {
     try {
       const saved = localStorage.getItem('smart-notch-config');
-      const parsed = saved ? JSON.parse(saved) : defaultConfig;
+      const parsed = saved ? { ...defaultConfig, ...JSON.parse(saved) } : defaultConfig;
       if (!localStorage.getItem('smart-notch-bg-off-default')) {
         parsed.bgAnimation = 'off';
         localStorage.setItem('smart-notch-bg-off-default', 'true');
@@ -206,6 +231,11 @@ export default function App() {
         parsed.lockDrag = false;
         localStorage.setItem('smart-notch-unlocked-drag-v2', 'true');
       }
+      if (parsed.mode === 'bar') {
+        parsed.hoverToShow = parsed.barHoverToShow !== undefined ? parsed.barHoverToShow : true;
+      } else {
+        parsed.hoverToShow = parsed.notchHoverToShow !== undefined ? parsed.notchHoverToShow : false;
+      }
       return parsed;
     } catch {
       return defaultConfig;
@@ -217,6 +247,31 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('smart-notch-config', JSON.stringify(config));
   }, [config]);
+
+  // Real-time synchronization with external Settings window
+  useEffect(() => {
+    if (!ipcRenderer) return;
+    const handleConfigSync = (newConfig) => {
+      if (newConfig) {
+        setConfig((prev) => ({ ...prev, ...newConfig }));
+      }
+    };
+    ipcRenderer.on('config-updated', handleConfigSync);
+
+    const handleStorage = (e) => {
+      if (e.key === 'smart-notch-config' && e.newValue) {
+        try {
+          setConfig(JSON.parse(e.newValue));
+        } catch (_) {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      ipcRenderer.removeAllListeners?.('config-updated');
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (!config.customBgUrl) return;
@@ -249,6 +304,45 @@ export default function App() {
   }, [config.screenPosition]);
 
   useEffect(() => {
+    if (config.pinMode) {
+      setIsPinned(true);
+      setIsExpanded(true);
+      if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', false);
+    } else {
+      setIsPinned(false);
+    }
+  }, [config.pinMode]);
+
+  useEffect(() => {
+    if (ipcRenderer) {
+      ipcRenderer.send('set-hide-behind-maximized', !!config.hideBehindMaximized);
+    }
+  }, [config.hideBehindMaximized]);
+
+  const [isHoverRevealed, setIsHoverRevealed] = useState(false);
+  const hoverHideTimeoutRef = useRef(null);
+
+  const handleHoverRevealEnter = useCallback(() => {
+    if (hoverHideTimeoutRef.current) {
+      clearTimeout(hoverHideTimeoutRef.current);
+      hoverHideTimeoutRef.current = null;
+    }
+    setIsHoverRevealed(true);
+    if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', false);
+  }, []);
+
+  const handleHoverRevealLeave = useCallback(() => {
+    if (hoverHideTimeoutRef.current) clearTimeout(hoverHideTimeoutRef.current);
+    const delay = config.hoverToShow ? 5000 : 350;
+    hoverHideTimeoutRef.current = setTimeout(() => {
+      setIsHoverRevealed(false);
+      if (!isExpandedRef.current && !isPinnedRef.current) {
+        if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+      }
+    }, delay);
+  }, [config.hoverToShow]);
+
+  useEffect(() => {
     if (!ipcRenderer) return;
     ipcRenderer.on('window-dragged-to', (pos) => {
       window.isDraggingUpdate = true;
@@ -276,15 +370,15 @@ export default function App() {
       return { boxShadow: ['0 0 0 1px rgba(255, 255, 255, 0.12)', ...baseShadows].join(', ') };
     }
     if (config.accentColor === 'rgb') return { boxShadow: baseShadows.join(', ') };
+    const hex = config.accentColor?.startsWith('#') ? config.accentColor : '#06b6d4';
+    const hexToRgba = (h, a) => {
+      try {
+        return `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${a})`;
+      } catch {
+        return `rgba(6,182,212,${a})`;
+      }
+    };
     if (config.glowIntensity !== 'none') {
-      const hex = config.accentColor?.startsWith('#') ? config.accentColor : '#06b6d4';
-      const hexToRgba = (hex, a) => {
-        try {
-          return `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
-        } catch {
-          return `rgba(6,182,212,${a})`;
-        }
-      };
       const glowMap = {
         low: { size: '16px', alpha: 0.2 },
         medium: { size: '32px', alpha: 0.32 },
@@ -292,6 +386,9 @@ export default function App() {
       };
       const { size, alpha } = glowMap[config.glowIntensity] || glowMap.medium;
       baseShadows.push(`0 0 ${size} ${hexToRgba(hex, alpha)}`);
+      baseShadows.unshift(`0 0 0 1px ${hexToRgba(hex, isExpanded ? 0.35 : 0.18)}`);
+    } else {
+      baseShadows.unshift('0 0 0 1px rgba(255, 255, 255, 0.08)');
     }
     return { boxShadow: baseShadows.join(', ') };
   };
@@ -307,24 +404,32 @@ export default function App() {
       '#00cc44': isIdle ? 'text-green-300' : 'text-green-100',
       '#ec4899': isIdle ? 'text-pink-300' : 'text-pink-100',
       '#ff6600': isIdle ? 'text-orange-300' : 'text-orange-100',
+      '#ff0000': isIdle ? 'text-red-300' : 'text-red-100',
+      '#ffcc00': isIdle ? 'text-yellow-300' : 'text-yellow-100',
+      '#3b82f6': isIdle ? 'text-blue-300' : 'text-blue-100',
       '#ffffff': isIdle ? 'text-white' : 'text-white/90'
     };
-    return textColors[config.accentColor] || (config.accentColor.startsWith('#') ? 'text-white/90' : 'text-cyan-100');
+    return textColors[config.accentColor] || (config.accentColor?.startsWith('#') ? '' : 'text-cyan-100');
   };
 
   const getTextShadowStyle = (isIdle) => {
-    if (config.glowIntensity === 'none' || config.accentColor === 'rgb') return {};
-    const hex = config.accentColor.startsWith('#') ? config.accentColor : '#06b6d4';
-    const hexToRgba = (hex, a) => {
+    if (config.accentColor === 'rgb') return {};
+    const hex = config.accentColor?.startsWith('#') ? config.accentColor : '#06b6d4';
+    const hexToRgba = (h, a) => {
       try {
-        return `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
+        return `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${a})`;
       } catch {
         return `rgba(6,182,212,${a})`;
       }
     };
-    return {
-      textShadow: `0 0 ${isIdle ? '8px' : '5px'} ${hexToRgba(hex, isIdle ? 0.8 : 0.6)}`
-    };
+    const style = {};
+    if (hex && hex !== '#ffffff') {
+      style.color = hex;
+    }
+    if (config.glowIntensity !== 'none') {
+      style.textShadow = `0 0 ${isIdle ? '8px' : '5px'} ${hexToRgba(hex, isIdle ? 0.8 : 0.6)}`;
+    }
+    return style;
   };
 
   const getPanelBorderStyle = () => {
@@ -520,6 +625,17 @@ export default function App() {
   const isNotificationRef = useRef(false);
   isNotificationRef.current = isNotification;
 
+  const isNotchHidden = Boolean(
+    config.hoverToShow &&
+    !isHoverRevealed &&
+    !isExpanded &&
+    !osdAlert &&
+    !btAlert &&
+    !isNotification &&
+    !isPinned &&
+    !isDragging
+  );
+
   useEffect(() => {
     if ('getBattery' in navigator) {
       navigator.getBattery().then((batt) => {
@@ -702,7 +818,7 @@ export default function App() {
     if (ipcRenderer) ipcRenderer.send('spotify-seek', targetMs);
   };
 
-  const [shelfVisible, setShelfVisible] = useState(false);
+  const [shelfVisible, setShelfVisible] = useState(() => (config.mode === 'bar' ? !config.hoverToShow : false));
   const shelfVisibleRef = useRef(false);
   shelfVisibleRef.current = shelfVisible;
   const initialShelfHoldRef = useRef(false);
@@ -785,22 +901,20 @@ export default function App() {
       ipcRenderer.send('set-shelf-height', isSide ? 160 : 64);
       ipcRenderer.send('set-ignore-mouse-events', false);
       setShelfVisible(true);
-      initialShelfHoldRef.current = true;
-      const t = setTimeout(() => {
-        initialShelfHoldRef.current = false;
-        handleShelfMouseLeave();
-      }, 2000);
-      return () => {
-        clearTimeout(t);
-        initialShelfHoldRef.current = false;
-      };
+      setIsExpanded(false);
+      initialShelfHoldRef.current = false;
     } else {
       ipcRenderer.send('set-window-mode', 'notch', config.screenPosition);
-      if (isExpanded) ipcRenderer.send('set-ignore-mouse-events', false);
+      ipcRenderer.send('set-ignore-mouse-events', isExpanded ? false : true, { forward: true });
       setShelfVisible(false);
       initialShelfHoldRef.current = false;
     }
-  }, [config.mode, isExpanded, config.screenPosition]);
+  }, [config.mode, config.screenPosition]);
+
+  useEffect(() => {
+    if (!ipcRenderer || config.mode === 'bar') return;
+    ipcRenderer.send('set-ignore-mouse-events', isExpanded ? false : true, { forward: true });
+  }, [isExpanded, config.mode]);
 
   useEffect(() => {
     if (config.mode !== 'bar') return;
@@ -815,39 +929,6 @@ export default function App() {
     window.addEventListener('mousemove', handleBarHoverTrigger);
     return () => window.removeEventListener('mousemove', handleBarHoverTrigger);
   }, [config.mode, config.screenPosition, shelfVisible]);
-
-  useEffect(() => {
-    if (config.mode === 'bar') return;
-    const handleNotchMouseMove = (e) => {
-      const isSide = config.screenPosition === 'left' || config.screenPosition === 'right';
-      let inZone = false;
-      if (isSide) {
-        inZone = config.screenPosition === 'left' ? e.clientX <= (isExpanded ? 280 : 38) : e.clientX >= window.innerWidth - (isExpanded ? 280 : 38);
-      } else if (config.screenPosition === 'top-left') {
-        inZone = e.clientY <= (isExpanded ? 360 : 42) && e.clientX <= (isExpanded ? 460 : 200);
-      } else if (config.screenPosition === 'top-right') {
-        inZone = e.clientY <= (isExpanded ? 360 : 42) && e.clientX >= (isExpanded ? window.innerWidth - 460 : window.innerWidth - 200);
-      } else {
-        inZone = e.clientY <= (isExpanded ? 360 : 42) && e.clientX >= (isExpanded ? 40 : 190) && e.clientX <= (isExpanded ? 560 : 410);
-      }
-
-      if (inZone) {
-        if (!isExpanded && !isIgnoringHoverRef.current) {
-          if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', false);
-          setIsExpanded(true);
-        }
-      } else if (isExpanded) {
-        if (isDragging || isPinnedRef.current) return;
-        const isInput = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
-        if (!isInput) {
-          setIsExpanded(false);
-          if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
-        }
-      }
-    };
-    window.addEventListener('mousemove', handleNotchMouseMove);
-    return () => window.removeEventListener('mousemove', handleNotchMouseMove);
-  }, [config.mode, config.screenPosition, isExpanded, isDragging]);
 
   const handleShelfMouseEnter = () => {
     initialShelfHoldRef.current = false;
@@ -871,8 +952,11 @@ export default function App() {
     const isInput = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
     if (isInput) return;
     if (shelfSettingsOpenRef.current) return;
+    if (isSettingsWindowOpenRef.current) return;
+    if (!config.hoverToShow) return; // Persistent unless user explicitly enabled hoverToShow
 
     if (shelfHideTimeoutRef.current) clearTimeout(shelfHideTimeoutRef.current);
+    const delay = config.hoverToShow ? 2000 : 150;
     shelfHideTimeoutRef.current = setTimeout(() => {
       setShelfVisible(false);
       if (ipcRenderer) {
@@ -880,12 +964,12 @@ export default function App() {
           if (!shelfVisibleRef.current) ipcRenderer.send('set-shelf-height', 6);
         }, 220);
       }
-    }, 150);
+    }, delay);
   };
 
   useEffect(() => {
-    if (config.mode === 'bar' && ipcRenderer && !initialShelfHoldRef.current) {
-      if (isNotification) {
+    if (config.mode === 'bar' && ipcRenderer) {
+      if (isNotification || !config.hoverToShow) {
         setShelfVisible(true);
         const isSide = config.screenPosition === 'left' || config.screenPosition === 'right';
         ipcRenderer.send('set-shelf-height', isSide ? 160 : 64);
@@ -894,7 +978,7 @@ export default function App() {
         handleShelfMouseLeave();
       }
     }
-  }, [isNotification, config.mode, config.screenPosition]);
+  }, [isNotification, config.mode, config.screenPosition, config.hoverToShow]);
 
   // Auto-shrink logic: Automatically compress notch to 28px mode after 15s of complete inactivity
   const isIgnoringHoverRef = useRef(false);
@@ -931,6 +1015,10 @@ export default function App() {
   }, [isExpanded, isDragging, osdAlert, isNotification, isPinned, startAutoShrinkTimer, resetAutoShrinkTimer]);
 
   const handleMouseEnter = () => {
+    if (notchHideTimeoutRef.current) {
+      clearTimeout(notchHideTimeoutRef.current);
+      notchHideTimeoutRef.current = null;
+    }
     resetAutoShrinkTimer();
     if (!isIgnoringHoverRef.current) {
       if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', false);
@@ -943,26 +1031,32 @@ export default function App() {
     const isInput = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
     if (isInput) return;
 
-    if (isExpanded && e && e.clientX !== undefined && e.clientY !== undefined) {
-      const isSide = config.screenPosition === 'left' || config.screenPosition === 'right';
-      let inBox = false;
-      if (isSide) {
-        inBox = config.screenPosition === 'left' ? e.clientX <= 300 : e.clientX >= window.innerWidth - 300;
-      } else if (config.screenPosition === 'top-left') {
-        inBox = e.clientY <= 360 && e.clientX <= 460;
-      } else if (config.screenPosition === 'top-right') {
-        inBox = e.clientY <= 360 && e.clientX >= window.innerWidth - 460;
-      } else {
-        inBox = e.clientY <= 360 && e.clientX >= 40 && e.clientX <= 560;
-      }
+    // Dynamically check against the actual rendered bounding box of the notch container
+    if (isExpanded && notchContainerRef.current && e && e.clientX !== undefined && e.clientY !== undefined) {
+      const rect = notchContainerRef.current.getBoundingClientRect();
+      const buffer = 25; // 25px safe margin around notch so moving to borders never collapses
+      const inBox = (
+        e.clientX >= rect.left - buffer &&
+        e.clientX <= rect.right + buffer &&
+        e.clientY >= rect.top - buffer &&
+        e.clientY <= rect.bottom + buffer
+      );
       if (inBox) return;
     }
 
-    setIsExpanded(false);
-    if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+    if (notchHideTimeoutRef.current) clearTimeout(notchHideTimeoutRef.current);
+    notchHideTimeoutRef.current = setTimeout(() => {
+      if (isDragging || isPinnedRef.current) return;
+      setIsExpanded(false);
+      if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+    }, 280);
   };
 
   const handleDismissNotch = (force = false) => {
+    if (notchHideTimeoutRef.current) {
+      clearTimeout(notchHideTimeoutRef.current);
+      notchHideTimeoutRef.current = null;
+    }
     if (isDragging) return;
     if (isPinnedRef.current && !force) return;
     setIsPinned(false);
@@ -977,22 +1071,51 @@ export default function App() {
 
   useEffect(() => {
     if (!ipcRenderer) return;
+
+    const onSettingsOpen = () => {
+      isSettingsWindowOpenRef.current = true;
+      setIsSettingsWindowOpen(true);
+      if (config.mode === 'notch') {
+        if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', false);
+        setIsExpanded(true);
+      } else if (config.mode === 'bar') {
+        handleShelfMouseEnter();
+      }
+    };
+
+    const onSettingsClose = () => {
+      isSettingsWindowOpenRef.current = false;
+      setIsSettingsWindowOpen(false);
+      if (config.mode === 'notch') {
+        handleDismissNotch(true);
+      } else if (config.mode === 'bar') {
+        handleShelfMouseLeave();
+      }
+    };
+
+    ipcRenderer.on('settings-window-opened', onSettingsOpen);
+    ipcRenderer.on('settings-window-closed', onSettingsClose);
+
     ipcRenderer.on('window-blur', () => {
-      if (!isDragging && !isPinnedRef.current) {
+      if (!isDragging && !isPinnedRef.current && !isSettingsWindowOpenRef.current) {
         if (config.mode === 'notch') handleDismissNotch();
-        else if (config.mode === 'bar') handleShelfMouseLeave();
+        else if (config.mode === 'bar' && config.hoverToShow) handleShelfMouseLeave();
       }
     });
     ipcRenderer.on('force-collapse-shelf', () => {
-      if (!isDragging && config.mode === 'bar') handleShelfMouseLeave();
+      if (!isDragging && config.mode === 'bar' && !isSettingsWindowOpenRef.current && config.hoverToShow) {
+        handleShelfMouseLeave();
+      }
     });
     ipcRenderer.on('expand-shelf', handleShelfMouseEnter);
     return () => {
+      ipcRenderer.removeAllListeners('settings-window-opened');
+      ipcRenderer.removeAllListeners('settings-window-closed');
       ipcRenderer.removeAllListeners('window-blur');
       ipcRenderer.removeAllListeners('force-collapse-shelf');
       ipcRenderer.removeAllListeners('expand-shelf');
     };
-  }, [config.mode, isDragging]);
+  }, [config.mode, isDragging, config.hoverToShow]);
 
   const formatDate = useCallback(() => {
     return new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -1029,16 +1152,18 @@ export default function App() {
   }, []);
   const handleQuit = useCallback(() => ipcRenderer?.send('quit-app'), []);
   const handleShowSettings = useCallback(() => {
-    setShelfSettingsOpen((prev) => {
-      const next = !prev;
-      shelfSettingsOpenRef.current = next;
-      if (ipcRenderer) {
-        const isSide = config.screenPosition === 'left' || config.screenPosition === 'right';
-        ipcRenderer.send('set-shelf-height', next ? (isSide ? 516 : 420) : (isSide ? 160 : 64));
+    if (ipcRenderer) {
+      isSettingsWindowOpenRef.current = true;
+      setIsSettingsWindowOpen(true);
+      if (config.mode === 'notch') {
+        setIsExpanded(false);
+        ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
       }
-      return next;
-    });
-  }, [config.screenPosition]);
+      ipcRenderer.send('open-settings-window');
+    } else {
+      setShelfSettingsOpen((prev) => !prev);
+    }
+  }, [config.mode]);
 
   const handleBoost = useCallback(async () => {
     if (isBoosting) return;
@@ -1145,12 +1270,33 @@ export default function App() {
         if (isExpanded && !isDragging) handleDismissNotch();
       }}
     >
+      {/* Edge Hover Strip for Hover-to-Show Mode - Only active when notch is hidden off-screen */}
+      {config.hoverToShow && isNotchHidden && (
+        <div
+          className={`fixed z-[99] ${
+            config.screenPosition === 'left' || config.screenPosition === 'right'
+              ? (config.screenPosition === 'left' ? 'top-1/4 bottom-1/4 left-0 w-8' : 'top-1/4 bottom-1/4 right-0 w-8')
+              : (config.screenPosition === 'top-left' ? 'top-0 left-0 w-80 h-7' : (config.screenPosition === 'top-right' ? 'top-0 right-0 w-80 h-7' : 'top-0 left-1/2 -translate-x-1/2 w-96 h-7'))
+          }`}
+          style={{ pointerEvents: 'auto', backgroundColor: 'rgba(255, 255, 255, 0.01)' }}
+          onMouseEnter={() => {
+            handleHoverRevealEnter();
+            handleMouseEnter();
+          }}
+          onMouseMove={() => {
+            handleHoverRevealEnter();
+            handleMouseEnter();
+          }}
+        />
+      )}
       {(() => {
         const isSideNotch = config.screenPosition === 'left' || config.screenPosition === 'right';
         return (
           <motion.div
+            ref={notchContainerRef}
             onClick={(e) => {
               e.stopPropagation();
+              handleHoverRevealEnter();
               if (!isExpanded) {
                 if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', false);
                 setIsExpanded(true);
@@ -1159,8 +1305,24 @@ export default function App() {
             onContextMenu={() => {
               if (ipcRenderer) ipcRenderer.send('show-context-menu');
             }}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
+            onMouseMove={() => {
+              if (notchHideTimeoutRef.current) {
+                clearTimeout(notchHideTimeoutRef.current);
+                notchHideTimeoutRef.current = null;
+              }
+              if (hoverHideTimeoutRef.current) {
+                clearTimeout(hoverHideTimeoutRef.current);
+                hoverHideTimeoutRef.current = null;
+              }
+            }}
+            onMouseEnter={() => {
+              handleHoverRevealEnter();
+              handleMouseEnter();
+            }}
+            onMouseLeave={(e) => {
+              handleHoverRevealLeave();
+              handleMouseLeave(e);
+            }}
             initial={{
               borderBottomLeftRadius: config.screenPosition === 'left' ? 0 : 100,
               borderBottomRightRadius: config.screenPosition === 'right' ? 0 : 100,
@@ -1168,6 +1330,10 @@ export default function App() {
               borderTopRightRadius: (config.screenPosition === 'right' || config.screenPosition?.startsWith('top')) ? 0 : 100
             }}
             animate={{
+              y: isNotchHidden ? (isSideNotch ? 0 : -70) : 0,
+              x: isNotchHidden ? (isSideNotch ? (config.screenPosition === 'left' ? -70 : 70) : 0) : 0,
+              opacity: isNotchHidden ? 0 : 1,
+              scale: config.islandScale || 1.0,
               width: (() => {
                 if (isDragging) return 140;
                 if (osdAlert) return isSideNotch ? 68 : 320;
@@ -1228,7 +1394,6 @@ export default function App() {
                     }
                     return isAutoShrunk ? 28 : 40;
                   })(),
-              opacity: 1,
               borderBottomLeftRadius: config.screenPosition === 'left' ? 0 : (isDragging ? 16 : ((isExpanded || isNotification) ? getRadius('expanded') : (isAutoShrunk ? 14 : getRadius('collapsed')))),
               borderBottomRightRadius: config.screenPosition === 'right' ? 0 : (isDragging ? 16 : ((isExpanded || isNotification) ? getRadius('expanded') : (isAutoShrunk ? 14 : getRadius('collapsed')))),
               borderTopLeftRadius: (config.screenPosition === 'left' || config.screenPosition?.startsWith('top')) ? (isDragging ? 16 : 0) : (isDragging ? 16 : getRadius((isExpanded || isNotification) ? 'expanded' : 'collapsed')),
@@ -1242,8 +1407,9 @@ export default function App() {
                   : (config.panelStyle === 'solid' ? (config.bgColor || '#000000') : 'rgba(10, 10, 14, 0.94)'))
             }}
             style={{
-              pointerEvents: 'auto',
-              willChange: 'width, height, border-radius',
+              pointerEvents: isNotchHidden ? 'none' : 'auto',
+              willChange: 'width, height, border-radius, transform',
+              transformOrigin: isSideNotch ? (config.screenPosition === 'left' ? 'left center' : 'right center') : 'top center',
               originY: isSideNotch ? 0.5 : 0,
               originX: config.screenPosition === 'left' ? 0 : (config.screenPosition === 'right' ? 1 : 0.5),
               backdropFilter: isExpanded || isNotification ? 'blur(36px) saturate(190%)' : 'blur(20px)',
@@ -1256,6 +1422,7 @@ export default function App() {
               damping: 28,
               mass: 0.75,
               restDelta: 0.001,
+              scale: { type: 'spring', stiffness: 350, damping: 26 },
               width: isDragging ? { duration: 0 } : undefined,
               height: isDragging ? { duration: 0 } : undefined,
               borderBottomLeftRadius: isDragging ? { duration: 0 } : undefined,
@@ -1376,6 +1543,9 @@ export default function App() {
                       {config.bgAnimation === 'rain' && <RainBackground accentColor={config.accentColor} />}
                       {config.bgAnimation === 'matrix' && <MatrixBackground />}
                       {config.bgAnimation === 'hyperspace' && <HyperspaceBackground isPlaying={spotifyState?.is_playing} />}
+                      {config.bgAnimation === 'liquid' && <LiquidGlowBackground accentColor={config.accentColor} />}
+                      {config.bgAnimation === 'cosmic' && <CosmicOrbitsBackground />}
+                      {config.bgAnimation === 'aurora' && <AuroraWaveBackground />}
                     </motion.div>
                   </motion.div>
                 )}
@@ -1537,9 +1707,9 @@ export default function App() {
                     </div>
 
                     <div className={`flex items-center ${isSideNotch ? 'flex-col gap-3 w-full mb-1 justify-end' : 'justify-end gap-2 flex-1'}`}>
-                      {spotifyState?.item ? (
+                      {spotifyState?.item && config.showAudioWaveform !== false ? (
                         <div className={isSideNotch ? 'h-[14px] overflow-hidden flex items-center' : 'h-[10px] overflow-hidden flex items-center'}>
-                          <AudioWaveform isPlaying={spotifyState?.is_playing} color={isSpotify ? '#22c55e' : '#60a5fa'} width={isSideNotch ? 12 : 24} height={isSideNotch ? 14 : 10} />
+                          <AudioWaveform isPlaying={spotifyState?.is_playing} color={isSpotify ? '#22c55e' : (activeAccentHex || '#60a5fa')} width={isSideNotch ? 12 : 24} height={isSideNotch ? 14 : 10} />
                         </div>
                       ) : (
                         <div className={isSideNotch ? 'h-[14px]' : 'w-[10px]'} />
@@ -1654,6 +1824,7 @@ export default function App() {
                           weather={weather}
                           battery={battery}
                           idleTextColor={idleTextColor}
+                          onOpenSettings={handleShowSettings}
                         />
 
                         <AnimatePresence>
@@ -1706,6 +1877,7 @@ export default function App() {
                                 network={network}
                                 privacy={effectivePrivacy}
                                 setViewMode={setViewMode}
+                                config={config}
                               />
                             )}
 

@@ -10,9 +10,16 @@ import {
 } from 'lucide-react';
 import WeatherIcon from '../../WeatherIcon';
 import AudioWaveform from '../../AudioWaveform';
-import { SourceAppIcon } from '../ui/SourceAppIcon';
-import { MatrixBackground, HyperspaceBackground, RainBackground } from '../background';
+import { 
+  MatrixBackground, 
+  HyperspaceBackground, 
+  RainBackground,
+  LiquidGlowBackground,
+  CosmicOrbitsBackground,
+  AuroraWaveBackground
+} from '../background';
 import { formatTime, formatSpeed } from '../../utils/formatters';
+import { SourceAppIcon } from '../ui/SourceAppIcon';
 
 export const ShelfBar = React.memo(({ 
   isVisible, time, formatDate, weather, spotifyState, isSpotify, localProgress, 
@@ -112,6 +119,9 @@ export const ShelfBar = React.memo(({
           {config.bgAnimation === 'rain' && <RainBackground accentColor={config.accentColor} />}
           {config.bgAnimation === 'matrix' && <MatrixBackground />}
           {config.bgAnimation === 'hyperspace' && <HyperspaceBackground isPlaying={isPlaying} />}
+          {config.bgAnimation === 'liquid' && <LiquidGlowBackground accentColor={config.accentColor} />}
+          {config.bgAnimation === 'cosmic' && <CosmicOrbitsBackground />}
+          {config.bgAnimation === 'aurora' && <AuroraWaveBackground />}
         </div>
       )}
 
@@ -122,12 +132,12 @@ export const ShelfBar = React.memo(({
           {/* Header Card: Clock & Date */}
           <div className="w-full bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.14] rounded-2xl p-2.5 flex flex-col items-center shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.12)] transition-all flex-shrink-0">
             {greeting ? (
-              <span className={greeting.startsWith('Good') ? "mac-hello-text text-[23px] text-center px-1 select-none" : "text-[11px] font-extrabold text-cyan-300 text-center uppercase tracking-wider px-1 leading-tight select-none"}>
+              <span className={greeting.startsWith('Good') ? "mac-hello-text text-[23px] text-center px-1 select-none" : "text-[11px] font-extrabold text-center uppercase tracking-wider px-1 leading-tight select-none"} style={accentHex !== '#ffffff' && !isRgb ? { color: accentHex } : { color: '#67e8f9' }}>
                 {greeting.startsWith('Good') ? greeting.toLowerCase() : greeting}
               </span>
             ) : (
               <>
-                <span className={`text-[30px] font-black tracking-tight leading-none tabular-nums ${isRgb ? 'rgb-text' : 'text-white'}`} style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif" }}>
+                <span className={`text-[30px] font-black tracking-tight leading-none tabular-nums ${isRgb ? 'rgb-text' : 'text-white'}`} style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif", ...(accentHex !== '#ffffff' && !isRgb ? { color: accentHex } : {}) }}>
                   {time.replace(/\s*[aApP]\.?[mM]\.?/, '')}
                 </span>
                 <span className="text-[9.5px] text-white/50 font-bold tracking-widest uppercase mt-1.5 bg-white/[0.06] px-2 py-0.5 rounded-full">
@@ -138,7 +148,7 @@ export const ShelfBar = React.memo(({
           </div>
 
           {/* Weather Card */}
-          {config.showWeather !== false && (
+          {config.showWeather !== false && config.showWeatherWidget !== false && (
             <div 
               className="w-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-white/[0.16] rounded-2xl p-2.5 flex items-center gap-2.5 cursor-pointer transition-all active:scale-[0.98] shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.1)] flex-shrink-0"
               onClick={onOpenWeather}
@@ -155,7 +165,7 @@ export const ShelfBar = React.memo(({
           )}
 
           {/* Media Player Card OR Ambient Glance */}
-          {spotifyState?.item ? (
+          {spotifyState?.item && config.showMediaWidget !== false ? (
             <div 
               className="w-full bg-white/[0.04] border border-white/[0.08] rounded-2xl p-2.5 flex flex-col items-center gap-2 shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.1)] flex-shrink-0 cursor-pointer hover:bg-white/[0.07] transition-all group"
               title={spotifyState?.item ? `Click to open application: ${spotifyState.item.name}` : 'Click to open media player'}
@@ -170,7 +180,7 @@ export const ShelfBar = React.memo(({
                 )}
                 {spotifyState?.sourceAppId && (
                   <div className="absolute bottom-0 right-0 bg-black/80 rounded-tl-lg p-0.5 flex items-center justify-center border-t border-l border-white/15 z-10">
-                    <SourceAppIcon sourceAppId={spotifyState.sourceAppId} />
+                    <SourceAppIcon appId={spotifyState.sourceAppId} />
                   </div>
                 )}
               </div>
@@ -179,6 +189,11 @@ export const ShelfBar = React.memo(({
               <div className="flex flex-col items-center w-full text-center px-0.5">
                 <span className="text-xs font-bold text-white truncate w-full tracking-tight">{spotifyState.item.name}</span>
                 <span className="text-[9.5px] text-white/50 truncate w-full mt-0.5">{spotifyState.item.artists?.map(a => a.name).join(', ')}</span>
+                {config.showAudioWaveform !== false && (
+                  <div className="mt-1 flex justify-center">
+                    <AudioWaveform isPlaying={spotifyState.is_playing} color={accentHex !== '#ffffff' ? accentHex : '#22c55e'} width={22} height={10} />
+                  </div>
+                )}
               </div>
 
               {/* Progress Slider */}
@@ -331,7 +346,7 @@ export const ShelfBar = React.memo(({
 
           {/* System Performance Card */}
           <div className="w-full bg-white/[0.04] border border-white/[0.08] rounded-2xl p-2.5 flex flex-col gap-2 shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.1)] flex-shrink-0">
-            {config.showHardware !== false && (
+            {config.showHardware !== false && config.showHardwareWidget !== false && (
               <>
                 {/* CPU */}
                 <div className="flex flex-col gap-0.5" title={`CPU: ${hardware.cpu}%`}>
@@ -417,19 +432,19 @@ export const ShelfBar = React.memo(({
           {/* Left Section: Time, Date, Weather Capsule */}
           <div className="flex items-center gap-3 bg-white/[0.04] border border-white/[0.08] px-3.5 py-1.5 rounded-xl shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.1)]">
             {greeting ? (
-              <span className={greeting.startsWith('Good') ? "mac-hello-text text-[24px] animate-pulse select-none px-1" : "text-xs font-extrabold text-cyan-300 uppercase tracking-wider select-none"}>
+              <span className={greeting.startsWith('Good') ? "mac-hello-text text-[24px] animate-pulse select-none px-1" : "text-xs font-extrabold uppercase tracking-wider select-none"} style={accentHex !== '#ffffff' && !isRgb ? { color: accentHex } : { color: '#67e8f9' }}>
                 {greeting.startsWith('Good') ? greeting.toLowerCase() : greeting}
               </span>
             ) : (
               <div className="flex items-baseline gap-2">
-                <span className={`text-xl font-black tracking-tight leading-none tabular-nums ${isRgb ? 'rgb-text' : 'text-white'}`} style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif" }}>
+                <span className={`text-xl font-black tracking-tight leading-none tabular-nums ${isRgb ? 'rgb-text' : 'text-white'}`} style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif", ...(accentHex !== '#ffffff' && !isRgb ? { color: accentHex } : {}) }}>
                   {time}
                 </span>
                 <span className="text-[10px] text-white/45 font-bold tracking-wider uppercase">{formatDate()}</span>
               </div>
             )}
 
-            {config.showWeather !== false && (
+            {config.showWeather !== false && config.showWeatherWidget !== false && (
               <>
                 <div className="w-px h-4 bg-white/[0.12] mx-0.5" />
                 <div 
@@ -446,7 +461,7 @@ export const ShelfBar = React.memo(({
 
           {/* Center Section: Media Player Capsule */}
           <div className="flex items-center gap-3.5 bg-white/[0.04] border border-white/[0.08] px-3 py-1.5 rounded-xl max-w-[460px] flex-1 justify-center mx-4 shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.1)]">
-            {spotifyState?.item ? (
+            {spotifyState?.item && config.showMediaWidget !== false ? (
               <>
                 {/* Thumbnail */}
                 <div 
@@ -461,7 +476,7 @@ export const ShelfBar = React.memo(({
                   )}
                   {spotifyState?.sourceAppId && (
                     <div className="absolute bottom-0 right-0 bg-black/80 rounded-tl-sm p-0.5 flex items-center justify-center">
-                      <SourceAppIcon sourceAppId={spotifyState.sourceAppId} />
+                      <SourceAppIcon appId={spotifyState.sourceAppId} />
                     </div>
                   )}
                 </div>
@@ -473,7 +488,14 @@ export const ShelfBar = React.memo(({
                     title="Click to open player"
                     onClick={() => onOpenMediaApp && onOpenMediaApp(spotifyState?.sourceAppId, spotifyState?.item?.name, spotifyState?.item?.artists?.[0]?.name)}
                   >
-                    <span className="font-bold text-xs leading-none truncate text-white">{spotifyState.item.name || 'Unknown Track'}</span>
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                      <span className="font-bold text-xs leading-none truncate text-white">{spotifyState.item.name || 'Unknown Track'}</span>
+                      {config.showAudioWaveform !== false && (
+                        <div className="flex-shrink-0">
+                          <AudioWaveform isPlaying={spotifyState.is_playing} color={accentHex !== '#ffffff' ? accentHex : '#22c55e'} width={16} height={9} />
+                        </div>
+                      )}
+                    </div>
                     <span className="text-[9.5px] text-white/50 truncate mt-0.5">{spotifyState.item.artists?.map(a => a.name).join(', ') || ''}</span>
                   </div>
                   <div 
@@ -512,7 +534,7 @@ export const ShelfBar = React.memo(({
           <div className="flex items-center gap-3">
             
             {/* Stats Capsule */}
-            {config.showHardware !== false && (
+            {config.showHardware !== false && config.showHardwareWidget !== false && (
               <div className="flex items-center gap-3 bg-white/[0.04] border border-white/[0.08] px-3 py-1.5 rounded-xl shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.1)]">
                 <div className="flex items-center gap-1 font-mono text-[11px] font-bold text-white/80" title={`CPU: ${hardware.cpu}%`}>
                   <Cpu size={12} className="text-cyan-400" />
@@ -557,14 +579,16 @@ export const ShelfBar = React.memo(({
 
             {/* Actions Dock */}
             <div className="flex items-center gap-1 bg-white/[0.04] border border-white/[0.08] p-1 rounded-xl shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.1)]">
-              <button 
-                onClick={onBoost} 
-                disabled={isBoosting}
-                className="w-7 h-7 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 flex items-center justify-center transition-all disabled:opacity-50"
-                title="Boost Memory"
-              >
-                <Rocket size={13} className={isBoosting ? "animate-pulse" : ""} />
-              </button>
+              {config.showQuickTools !== false && (
+                <button 
+                  onClick={onBoost} 
+                  disabled={isBoosting}
+                  className="w-7 h-7 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 flex items-center justify-center transition-all disabled:opacity-50"
+                  title="Boost Memory"
+                >
+                  <Rocket size={13} className={isBoosting ? "animate-pulse" : ""} />
+                </button>
+              )}
               <button 
                 onClick={onShowSettings}
                 className="w-7 h-7 rounded-lg hover:bg-white/[0.12] text-white/60 hover:text-white flex items-center justify-center transition-all relative"

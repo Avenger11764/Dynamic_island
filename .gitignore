@@ -27,6 +27,6 @@ cam_hierarchy_fix.js
 *.bat
 screenshot_test.png
 .agents/
-brag-output/
+brag-output*/
 src/*.backup.*.jsx
 capture_screen.ps1

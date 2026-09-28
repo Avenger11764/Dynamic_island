@@ -1,5 +1,8 @@
 export { 
   MatrixBackground, 
   HyperspaceBackground, 
-  RainBackground 
+  RainBackground,
+  LiquidGlowBackground,
+  CosmicOrbitsBackground,
+  AuroraWaveBackground
 } from './BackgroundEffects';

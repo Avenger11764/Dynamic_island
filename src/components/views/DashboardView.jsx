@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Music, SkipBack, Play, Pause, SkipForward, Coffee, 
-  Battery, Shield 
+  Battery, Shield, Calculator, Scissors, Activity 
 } from 'lucide-react';
 import { 
   CpuChipIcon, RamStickIcon, PremiumHeadphonesIcon, PremiumWifiIcon, PremiumBadge 
@@ -30,7 +30,8 @@ export const DashboardView = React.memo(({
   hardware,
   network,
   privacy = { cam: false, mic: false },
-  setViewMode
+  setViewMode,
+  config = {}
 }) => {
   const currentProgress = localProgress || spotifyState?.progress_ms || 0;
   const durationMs = spotifyState?.duration_ms || spotifyState?.item?.duration_ms || 0;
@@ -60,11 +61,12 @@ export const DashboardView = React.memo(({
       exit={{ opacity: 0 }}
     >
       {/* Left Column: Media Card */}
-      <div
-        className={`${isSideNotch ? 'w-full flex-row justify-between' : 'w-[235px] flex-col justify-center h-[210px]'} bg-white/[0.04] rounded-2xl flex items-center p-3 relative overflow-hidden group hover:bg-white/[0.08] active:scale-[0.99] transition-all border border-white/5 cursor-pointer flex-shrink-0`}
-        title={spotifyState?.item ? `Click to open application: ${spotifyState.item.name}` : 'Click to open media player'}
-        onClick={handleOpenMediaApp}
-      >
+      {(config?.showMediaWidget !== false) && (
+        <div
+          className={`${isSideNotch ? 'w-full flex-row justify-between' : 'w-[235px] flex-col justify-center h-[210px]'} bg-white/[0.04] rounded-2xl flex items-center p-3 relative overflow-hidden group hover:bg-white/[0.08] active:scale-[0.99] transition-all border border-white/5 cursor-pointer flex-shrink-0`}
+          title={spotifyState?.item ? `Click to open application: ${spotifyState.item.name}` : 'Click to open media player'}
+          onClick={handleOpenMediaApp}
+        >
         {/* Ambient artwork glow – confined by overflow-hidden on this card */}
         <AmbientGlow artUrl={albumArtUrl} colors={albumColors} isPlaying={!!spotifyState?.is_playing} />
 
@@ -184,6 +186,7 @@ export const DashboardView = React.memo(({
           </button>
         )}
       </div>
+      )}
 
       {/* Right Column: Stacked Widgets */}
       <div className={`flex-grow flex flex-col justify-center ${privacy?.cam || privacy?.mic ? 'gap-1.5' : 'gap-2'} w-full`}>
@@ -274,74 +277,111 @@ export const DashboardView = React.memo(({
         )}
 
         {/* CPU / RAM Mini Widget */}
-        <div
-          className="bg-white/[0.04] rounded-2xl flex flex-col px-3 py-2 gap-1.5 cursor-pointer hover:bg-white/[0.08] transition-colors border border-white/5"
-          onClick={(e) => {
-            e.stopPropagation();
-            setViewMode('stats');
-          }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 w-[52px] flex-shrink-0">
-              <PremiumBadge variant="green" size="sm">
-                <CpuChipIcon size={11} className="text-emerald-300" />
-              </PremiumBadge>
-              <span className="text-[10px] font-bold text-white/75">CPU</span>
+        {(config?.showHardware !== false && config?.showHardwareWidget !== false) && (
+          <div
+            className="bg-white/[0.04] rounded-2xl flex flex-col px-3 py-2 gap-1.5 cursor-pointer hover:bg-white/[0.08] transition-colors border border-white/5"
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewMode('stats');
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 w-[52px] flex-shrink-0">
+                <PremiumBadge variant="green" size="sm">
+                  <CpuChipIcon size={11} className="text-emerald-300" />
+                </PremiumBadge>
+                <span className="text-[10px] font-bold text-white/75">CPU</span>
+              </div>
+              <div className="flex-grow bg-white/5 h-1.5 rounded-full overflow-hidden shadow-inner ring-1 ring-white/5">
+                <div
+                  className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.5)]"
+                  style={{ width: `${hardware.cpu}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-mono font-bold text-white/90 w-8 text-right flex-shrink-0">
+                {hardware.cpu}%
+              </span>
             </div>
-            <div className="flex-grow bg-white/5 h-1.5 rounded-full overflow-hidden shadow-inner ring-1 ring-white/5">
-              <div
-                className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.5)]"
-                style={{ width: `${hardware.cpu}%` }}
-              />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 w-[52px] flex-shrink-0">
+                <PremiumBadge variant="blue" size="sm">
+                  <RamStickIcon size={11} className="text-cyan-300" />
+                </PremiumBadge>
+                <span className="text-[10px] font-bold text-white/75">RAM</span>
+              </div>
+              <div className="flex-grow bg-white/5 h-1.5 rounded-full overflow-hidden shadow-inner ring-1 ring-white/5">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full shadow-[0_0_8px_rgba(34,211,238,0.5)]"
+                  style={{ width: `${hardware.ram}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-mono font-bold text-white/90 w-8 text-right flex-shrink-0">
+                {hardware.ram}%
+              </span>
             </div>
-            <span className="text-[10px] font-mono font-bold text-white/90 w-8 text-right flex-shrink-0">
-              {hardware.cpu}%
-            </span>
           </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 w-[52px] flex-shrink-0">
-              <PremiumBadge variant="blue" size="sm">
-                <RamStickIcon size={11} className="text-cyan-300" />
-              </PremiumBadge>
-              <span className="text-[10px] font-bold text-white/75">RAM</span>
-            </div>
-            <div className="flex-grow bg-white/5 h-1.5 rounded-full overflow-hidden shadow-inner ring-1 ring-white/5">
-              <div
-                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full shadow-[0_0_8px_rgba(34,211,238,0.5)]"
-                style={{ width: `${hardware.ram}%` }}
-              />
-            </div>
-            <span className="text-[10px] font-mono font-bold text-white/90 w-8 text-right flex-shrink-0">
-              {hardware.ram}%
-            </span>
-          </div>
-        </div>
+        )}
 
         {/* Network Speed Mini Widget */}
-        <div
-          className="bg-white/[0.04] rounded-2xl flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-white/[0.08] transition-colors border border-white/5"
-          onClick={(e) => {
-            e.stopPropagation();
-            setViewMode('network');
-          }}
-        >
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <PremiumBadge variant="purple" size="sm">
-              <PremiumWifiIcon size={11} className="text-purple-300" />
-            </PremiumBadge>
-            <span className="text-[10px] font-bold text-white/80">Network</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 font-mono text-[10px]">
-              <span className="text-[9px] text-emerald-400 font-bold">↓</span>
-              <span className="text-white/85 font-semibold">{formatSpeed(network.rx)}</span>
+        {(config?.showNetworkWidget !== false) && (
+          <div
+            className="bg-white/[0.04] rounded-2xl flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-white/[0.08] transition-colors border border-white/5"
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewMode('network');
+            }}
+          >
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <PremiumBadge variant="purple" size="sm">
+                <PremiumWifiIcon size={11} className="text-purple-300" />
+              </PremiumBadge>
+              <span className="text-[10px] font-bold text-white/80">Network</span>
             </div>
-            <div className="flex items-center gap-1 font-mono text-[10px]">
-              <span className="text-[9px] text-cyan-400 font-bold">↑</span>
-              <span className="text-white/85 font-semibold">{formatSpeed(network.tx)}</span>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1 font-mono text-[10px]">
+                <span className="text-[9px] text-emerald-400 font-bold">↓</span>
+                <span className="text-white/85 font-semibold">{formatSpeed(network.rx)}</span>
+              </div>
+              <div className="flex items-center gap-1 font-mono text-[10px]">
+                <span className="text-[9px] text-cyan-400 font-bold">↑</span>
+                <span className="text-white/85 font-semibold">{formatSpeed(network.tx)}</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Quick Utilities Bar */}
+        {(config?.showQuickTools !== false) && (
+          <div className="bg-white/[0.04] rounded-2xl flex items-center justify-between px-3 py-1.5 border border-white/5 shadow-sm">
+            <span className="text-[10px] font-bold text-white/50 pl-0.5 uppercase tracking-wider">Quick Tools</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                title="Calculator"
+                onClick={(e) => { e.stopPropagation(); ipcRenderer?.send('open-calc'); }}
+                className="w-7 h-7 rounded-xl bg-white/[0.06] hover:bg-white/[0.14] text-white/80 hover:text-white flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 border border-white/5"
+              >
+                <Calculator size={13} />
+              </button>
+              <button
+                type="button"
+                title="Screen Snip & Sketch"
+                onClick={(e) => { e.stopPropagation(); ipcRenderer?.send('open-snip'); }}
+                className="w-7 h-7 rounded-xl bg-white/[0.06] hover:bg-white/[0.14] text-white/80 hover:text-white flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 border border-white/5"
+              >
+                <Scissors size={13} />
+              </button>
+              <button
+                type="button"
+                title="Task Manager"
+                onClick={(e) => { e.stopPropagation(); ipcRenderer?.send('open-taskmgr'); }}
+                className="w-7 h-7 rounded-xl bg-white/[0.06] hover:bg-white/[0.14] text-white/80 hover:text-white flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 border border-white/5"
+              >
+                <Activity size={13} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Privacy Indicators Explanation (Visible only when Camera or Mic is active) */}
         <AnimatePresence>

@@ -25,7 +25,8 @@ export const ExpandedHeader = React.memo(({
   privacy = {},
   weather = {},
   battery = {},
-  idleTextColor = 'white'
+  idleTextColor = 'white',
+  onOpenSettings
 }) => {
   return (
     <div className="w-full p-2 flex flex-col justify-start z-20" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -34,7 +35,7 @@ export const ExpandedHeader = React.memo(({
           {/* Top row: Weather, Battery and Utilities (Pin + Power) */}
           <div className="flex items-center justify-between w-full px-1 pt-0.5">
             <div className="flex items-center gap-2" style={{ pointerEvents: 'auto', WebkitAppRegion: 'no-drag' }}>
-              {config.showWeather !== false && (
+              {(config.showWeather !== false && config.showWeatherWidget !== false) && (
                 <div 
                   className="flex items-center gap-1.5 cursor-pointer group px-1 py-0.5 rounded-md hover:bg-white/5 transition-colors" 
                   title="Weather"
@@ -131,14 +132,16 @@ export const ExpandedHeader = React.memo(({
             >
               <LayoutGrid size={13} />
             </button>
-            <button 
-              type="button"
-              title="Media Player" 
-              className={`flex-1 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'media' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} 
-              onClick={() => setViewMode('media')}
-            >
-              <Music size={13} />
-            </button>
+            {(config.showMediaWidget !== false) && (
+              <button 
+                type="button"
+                title="Media Player" 
+                className={`flex-1 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'media' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} 
+                onClick={() => setViewMode('media')}
+              >
+                <Music size={13} />
+              </button>
+            )}
             <button 
               type="button"
               title="Control Center" 
@@ -157,7 +160,7 @@ export const ExpandedHeader = React.memo(({
                 <Coffee size={13} />
               </button>
             )}
-            {config.showHardware !== false && (
+            {(config.showHardware !== false && config.showHardwareWidget !== false) && (
               <>
                 <button 
                   type="button"
@@ -190,7 +193,17 @@ export const ExpandedHeader = React.memo(({
               type="button"
               title="Settings" 
               className={`relative flex-1 h-7 rounded-lg flex items-center justify-center transition-all ${viewMode === 'settings' ? 'bg-white text-black shadow-md' : 'text-white/60 hover:text-white hover:bg-white/5'}`} 
-              onClick={(e) => { e.stopPropagation(); setViewMode('settings'); }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (onOpenSettings) {
+                  onOpenSettings();
+                } else if (ipcRenderer) {
+                  ipcRenderer.send('open-settings-window');
+                } else {
+                  setViewMode('settings');
+                }
+              }}
             >
               <SettingsIcon size={13} />
               {updateAvailable ? (
@@ -214,14 +227,16 @@ export const ExpandedHeader = React.memo(({
             >
               <LayoutGrid size={13} />
             </button>
-            <button 
-              type="button"
-              title="Media Player" 
-              className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150 ${viewMode === 'media' ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white'}`} 
-              onClick={(e) => { e.stopPropagation(); setViewMode('media'); }}
-            >
-              <Music size={13} />
-            </button>
+            {(config.showMediaWidget !== false) && (
+              <button 
+                type="button"
+                title="Media Player" 
+                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150 ${viewMode === 'media' ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white'}`} 
+                onClick={(e) => { e.stopPropagation(); setViewMode('media'); }}
+              >
+                <Music size={13} />
+              </button>
+            )}
             {config.showPomodoro !== false && (
               <button 
                 type="button"
@@ -242,7 +257,7 @@ export const ExpandedHeader = React.memo(({
                 <TimerIcon size={13} />
               </button>
             )}
-            {config.showHardware !== false && (
+            {(config.showHardware !== false && config.showHardwareWidget !== false) && (
               <>
                 <button 
                   type="button"
@@ -311,20 +326,24 @@ export const ExpandedHeader = React.memo(({
               </div>
             )}
             <div className="flex items-center gap-2.5 mr-2" style={{ pointerEvents: 'auto' }}>
-              <div 
-                className="flex items-center gap-1.5 cursor-pointer group" 
-                title="Weather"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (ipcRenderer) ipcRenderer.send('open-weather');
-                }}
-              >
-                <WeatherIcon desc={weather.desc} size={13} className="text-white/60 group-hover:text-yellow-400 transition-colors" />
-                <span className="text-[11px] font-semibold text-white/60 group-hover:text-white transition-colors tracking-tight">
-                  {weather.temp}
-                </span>
-              </div>
-              <div className="w-[1px] h-3 bg-white/15" />
+              {(config.showWeather !== false && config.showWeatherWidget !== false) && (
+                <>
+                  <div 
+                    className="flex items-center gap-1.5 cursor-pointer group" 
+                    title="Weather"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (ipcRenderer) ipcRenderer.send('open-weather');
+                    }}
+                  >
+                    <WeatherIcon desc={weather.desc} size={13} className="text-white/60 group-hover:text-yellow-400 transition-colors" />
+                    <span className="text-[11px] font-semibold text-white/60 group-hover:text-white transition-colors tracking-tight">
+                      {weather.temp}
+                    </span>
+                  </div>
+                  <div className="w-[1px] h-3 bg-white/15" />
+                </>
+              )}
               <div className="flex items-center gap-1.5 cursor-default group" title="System Battery">
                 {battery.charging ? (
                   <BatteryCharging size={13} className="text-green-400/80 group-hover:text-green-400 transition-colors" />
@@ -348,7 +367,17 @@ export const ExpandedHeader = React.memo(({
               type="button"
               title="Settings" 
               className={`relative w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150 ${viewMode === 'settings' ? 'bg-white/20 text-white' : 'text-white/40 hover:text-white'}`} 
-              onClick={(e) => { e.stopPropagation(); setViewMode('settings'); }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (onOpenSettings) {
+                  onOpenSettings();
+                } else if (ipcRenderer) {
+                  ipcRenderer.send('open-settings-window');
+                } else {
+                  setViewMode('settings');
+                }
+              }}
             >
               <SettingsIcon size={14} />
               {updateAvailable ? (
