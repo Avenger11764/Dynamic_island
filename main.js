@@ -24,6 +24,11 @@ app.on('second-instance', () => {
   }
 });
 
+// Hardware acceleration & GPU rendering flags for smooth 60/120Hz transitions
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+
 function logg(msg) {
   try { fs.appendFileSync(path.join(app.getPath('userData'), 'app-debug.log'), new Date().toISOString() + ': ' + msg + '\n'); } catch(e){}
 }
