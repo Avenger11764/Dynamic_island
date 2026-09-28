@@ -3,7 +3,8 @@ import {
   SlidersHorizontal, Palette, LayoutGrid, Info, BookOpen, 
   X, Monitor, Sparkles, Check, RefreshCw, ExternalLink,
   Volume2, Sun, Wifi, Cpu, Battery, Eye, Lock, Pin, Play, Music,
-  ChevronDown, Layers, Zap, Clock, Timer, Wrench, Minimize2, Image, Terminal, Activity
+  ChevronDown, Layers, Zap, Clock, Timer, Wrench, Minimize2, Image, Terminal, Activity,
+  Coffee
 } from 'lucide-react';
 
 import appLogo from './assets/logo.png';
@@ -97,7 +98,7 @@ export default function SettingsWindow() {
       }
     } else {
       localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
-      if (hasConfig || window.location.search.includes('simulate-whats-new')) {
+      if (window.location.search.includes('simulate-whats-new')) {
         setWhatsNewAvailable(true);
       } else {
         setWhatsNewAvailable(false);
@@ -274,8 +275,26 @@ export default function SettingsWindow() {
             })}
           </nav>
 
+          {/* Buy Me a Coffee Support Button */}
+          <div className="pt-2" style={{ WebkitAppRegion: 'no-drag' }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (ipcRenderer) {
+                  ipcRenderer.send('open-url', 'https://buymeacoffee.com/dev_avinash');
+                } else {
+                  window.open('https://buymeacoffee.com/dev_avinash', '_blank');
+                }
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 transition-all hover:scale-[1.02] active:scale-95 shadow-[0_0_15px_rgba(245,158,11,0.15)] cursor-pointer"
+            >
+              <Coffee size={14} className="text-amber-400" />
+              <span>Buy Me a Coffee ☕</span>
+            </button>
+          </div>
+
           {/* Bottom Version Tag */}
-          <div className="pt-3 border-t border-white/[0.08] px-2 flex items-center justify-between text-[11px] text-white/40">
+          <div className="pt-2.5 border-t border-white/[0.08] px-2 flex items-center justify-between text-[11px] text-white/40">
             <span>Version {version}</span>
             <div className="flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${updateAvailable ? 'bg-red-400' : 'bg-emerald-400'} animate-pulse`} />
@@ -387,6 +406,9 @@ export default function SettingsWindow() {
                       e.stopPropagation();
                       localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
                       setWhatsNewAvailable(false);
+                      if (ipcRenderer) {
+                        ipcRenderer.send('dismiss-whats-new');
+                      }
                     }}
                     className="text-[11px] px-3 py-1 rounded-full bg-cyan-500/25 hover:bg-cyan-500/40 text-cyan-100 font-semibold border border-cyan-400/40 transition-colors cursor-pointer"
                   >
@@ -1098,13 +1120,27 @@ export default function SettingsWindow() {
                   <p className="text-xs text-white/60 max-w-md leading-relaxed">
                     A beautiful, intelligent dynamic notch and island experience for Windows 10 & 11 with live hardware telemetry, media controls, and instant HUD alerts.
                   </p>
-                  <div className="flex items-center gap-2 pt-2">
+                  <div className="flex flex-wrap items-center gap-2 pt-2">
                     <span className="text-[11px] px-3 py-1 rounded-full bg-white/10 text-white/80 font-semibold border border-white/10">
                       Author: Avinash
                     </span>
                     <span className="text-[11px] px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
                       Store Edition v{version}
                     </span>
+                    <button
+                      onClick={() => {
+                        if (ipcRenderer) {
+                          ipcRenderer.send('open-url', 'https://buymeacoffee.com/dev_avinash');
+                        } else {
+                          window.open('https://buymeacoffee.com/dev_avinash', '_blank');
+                        }
+                      }}
+                      className="text-[11px] px-3 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-semibold border border-amber-500/30 flex items-center gap-1.5 transition-all hover:scale-[1.03] active:scale-95 cursor-pointer shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                      title="Support the development of Smart Notch"
+                    >
+                      <Coffee size={12} className="text-amber-400" />
+                      <span>Support Smart Notch ☕</span>
+                    </button>
                   </div>
                 </div>
 

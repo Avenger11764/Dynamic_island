@@ -1,59 +1,48 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-export default function AudioWaveform({ isPlaying, color = "#22c55e", height = 10, width = 24 }) {
-  const barCount = 4;
-  
-  // Custom height bounds and animation properties for organic physics-like bouncing motion
-  const barConfigs = [
-    { duration: 0.75, delay: 0.0, minHeight: height * 0.3, maxHeight: height },
-    { duration: 0.55, delay: 0.15, minHeight: height * 0.2, maxHeight: height * 0.8 },
-    { duration: 0.7, delay: 0.05, minHeight: height * 0.4, maxHeight: height * 0.95 },
-    { duration: 0.5, delay: 0.2, minHeight: height * 0.25, maxHeight: height * 0.75 }
-  ];
+export default function AudioWaveform({ isPlaying, color, height = 12, width = 24, isSideNotch = false }) {
+  const delays = [0.15, 0.4, 0.65, 0.3];
 
   return (
     <div 
-      className="flex items-end justify-center gap-[2px] no-drag h-full" 
+      className={`flex items-center justify-center no-drag ${isSideNotch ? 'flex-col gap-[3px]' : 'gap-[3px]'}`} 
       style={{ width, height }}
+      title={isPlaying ? "Media Playing" : "Media Paused"}
     >
-      {Array.from({ length: barCount }).map((_, i) => {
-        const config = barConfigs[i];
-        return (
-          <motion.div
-            key={i}
-            className="rounded-full flex-shrink-0"
-            style={{
-              width: 2.2,
-              backgroundColor: color,
-            }}
-            animate={
-              isPlaying
-                ? {
-                    height: [config.minHeight, config.maxHeight, config.minHeight],
-                  }
-                : {
-                    height: 2.2, // Tiny dot when paused
-                  }
-            }
-            transition={
-              isPlaying
-                ? {
-                    duration: config.duration,
-                    repeat: Infinity,
-                    repeatType: "reverse",
-                    ease: "easeInOut",
-                    delay: config.delay,
-                  }
-                : {
-                    type: "spring",
-                    stiffness: 250,
-                    damping: 18,
-                  }
-            }
-          />
-        );
-      })}
+      {delays.map((delay, i) => (
+        <motion.span
+          key={i}
+          className="rounded-full bg-gradient-to-t from-cyan-400 via-sky-300 to-white shadow-[0_0_8px_rgba(56,189,248,0.7)] flex-shrink-0"
+          style={{
+            width: isSideNotch ? (isPlaying ? 12 : 3) : 2.5,
+            height: isSideNotch ? 2.5 : (isPlaying ? 12 : 3),
+          }}
+          animate={
+            isPlaying
+              ? (isSideNotch
+                  ? { width: ['4px', '14px', '4px'], opacity: [0.5, 1, 0.5] }
+                  : { height: ['3px', '13px', '3px'], opacity: [0.5, 1, 0.5] })
+              : (isSideNotch
+                  ? { width: '3px', opacity: 0.35 }
+                  : { height: '3px', opacity: 0.35 })
+          }
+          transition={
+            isPlaying
+              ? {
+                  repeat: Infinity,
+                  duration: 0.85,
+                  ease: 'easeInOut',
+                  delay,
+                }
+              : {
+                  type: 'spring',
+                  stiffness: 300,
+                  damping: 20
+                }
+          }
+        />
+      ))}
     </div>
   );
 }

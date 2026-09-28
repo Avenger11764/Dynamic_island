@@ -1780,6 +1780,15 @@ ipcMain.on('close-settings-window', () => {
   }
 });
 
+ipcMain.on('dismiss-whats-new', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('whats-new-dismissed');
+  }
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('whats-new-dismissed');
+  }
+});
+
 ipcMain.on('sync-config', (event, newConfig) => {
   if (newConfig && newConfig.mode) {
     applyWindowMode(newConfig.mode, newConfig.screenPosition);

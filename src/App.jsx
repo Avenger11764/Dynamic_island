@@ -9,6 +9,7 @@ import {
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import WeatherIcon from './WeatherIcon';
 import AudioWaveform from './AudioWaveform';
+import appLogo from './assets/logo.png';
 
 import { 
   DashboardView, 
@@ -172,18 +173,8 @@ export default function App() {
       }
     }
 
-    if (localStorage.getItem('smart-notch-version') !== '6.0.8') {
-      setGreeting('Updated to v6.0.8: Ambient artwork lights & auto-shrink! ✨');
-      localStorage.setItem('smart-notch-version', '6.0.8');
-      setTimeout(() => setGreeting(null), 6000);
-    } else {
-      const hour = new Date().getHours();
-      let g = 'Good Evening';
-      if (hour < 12) g = 'Good Morning';
-      else if (hour < 17) g = 'Good Afternoon';
-      setGreeting(g);
-      setTimeout(() => setGreeting(null), 4000);
-    }
+    setGreeting('Smart Notch');
+    setTimeout(() => setGreeting(null), 4000);
   }, []);
 
   const defaultConfig = {
@@ -258,17 +249,26 @@ export default function App() {
     };
     ipcRenderer.on('config-updated', handleConfigSync);
 
+    const handleWhatsNewDismissed = () => {
+      setWhatsNewAvailable(false);
+    };
+    ipcRenderer.on('whats-new-dismissed', handleWhatsNewDismissed);
+
     const handleStorage = (e) => {
       if (e.key === 'smart-notch-config' && e.newValue) {
         try {
           setConfig(JSON.parse(e.newValue));
         } catch (_) {}
       }
+      if (e.key === 'lastSeenVersion') {
+        setWhatsNewAvailable(false);
+      }
     };
     window.addEventListener('storage', handleStorage);
 
     return () => {
       ipcRenderer.removeAllListeners?.('config-updated');
+      ipcRenderer.removeAllListeners?.('whats-new-dismissed');
       window.removeEventListener('storage', handleStorage);
     };
   }, []);
@@ -611,7 +611,7 @@ export default function App() {
       }
     } else {
       localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
-      if (hasConfig || window.location.search.includes('simulate-whats-new')) {
+      if (window.location.search.includes('simulate-whats-new')) {
         setWhatsNewAvailable(true);
       } else {
         setWhatsNewAvailable(false);
@@ -637,31 +637,46 @@ export default function App() {
   );
 
   useEffect(() => {
+    let battRef = null;
+    let onChargingChange = null;
+    let onLevelChange = null;
+
     if ('getBattery' in navigator) {
       navigator.getBattery().then((batt) => {
+        battRef = batt;
         setBattery({ level: Math.round(batt.level * 100), charging: batt.charging });
         let prevCharging = batt.charging;
         let prevLevel = batt.level;
 
-        batt.addEventListener('chargingchange', () => {
+        onChargingChange = () => {
           setBattery((b) => ({ ...b, charging: batt.charging }));
           if (batt.charging !== prevCharging) {
             prevCharging = batt.charging;
             setBatteryEvent({ charging: batt.charging, level: Math.round(batt.level * 100) });
             setTimeout(() => setBatteryEvent(null), 5000);
           }
-        });
+        };
 
-        batt.addEventListener('levelchange', () => {
+        onLevelChange = () => {
           setBattery((b) => ({ ...b, level: Math.round(batt.level * 100) }));
           if (!batt.charging && Math.round(batt.level * 100) === 20 && Math.round(prevLevel * 100) > 20) {
             setBatteryEvent({ charging: false, level: Math.round(batt.level * 100), low: true });
             setTimeout(() => setBatteryEvent(null), 8000);
           }
           prevLevel = batt.level;
-        });
+        };
+
+        batt.addEventListener('chargingchange', onChargingChange);
+        batt.addEventListener('levelchange', onLevelChange);
       });
     }
+
+    return () => {
+      if (battRef) {
+        if (onChargingChange) battRef.removeEventListener('chargingchange', onChargingChange);
+        if (onLevelChange) battRef.removeEventListener('levelchange', onLevelChange);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -1031,10 +1046,10 @@ export default function App() {
     const isInput = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
     if (isInput) return;
 
-    // Dynamically check against the actual rendered bounding box of the notch container
+    // Check if cursor is still within a tiny boundary around the notch
     if (isExpanded && notchContainerRef.current && e && e.clientX !== undefined && e.clientY !== undefined) {
       const rect = notchContainerRef.current.getBoundingClientRect();
-      const buffer = 25; // 25px safe margin around notch so moving to borders never collapses
+      const buffer = 4;
       const inBox = (
         e.clientX >= rect.left - buffer &&
         e.clientX <= rect.right + buffer &&
@@ -1049,8 +1064,49 @@ export default function App() {
       if (isDragging || isPinnedRef.current) return;
       setIsExpanded(false);
       if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
-    }, 280);
+    }, 220);
   };
+
+  // Reliably collapse notch whenever cursor moves outside of its bounds
+  useEffect(() => {
+    if (!isExpanded || isPinned || isDragging || config.mode !== 'notch') return;
+
+    const handleWindowMouseMove = (e) => {
+      if (isPinnedRef.current || isDragging) return;
+      const isInput = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+      if (isInput) return;
+
+      if (!notchContainerRef.current) return;
+      const rect = notchContainerRef.current.getBoundingClientRect();
+      const buffer = 6;
+      const inside = (
+        e.clientX >= rect.left - buffer &&
+        e.clientX <= rect.right + buffer &&
+        e.clientY >= rect.top - buffer &&
+        e.clientY <= rect.bottom + buffer
+      );
+
+      if (!inside) {
+        if (!notchHideTimeoutRef.current) {
+          notchHideTimeoutRef.current = setTimeout(() => {
+            if (isDragging || isPinnedRef.current) return;
+            setIsExpanded(false);
+            if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+          }, 220);
+        }
+      } else {
+        if (notchHideTimeoutRef.current) {
+          clearTimeout(notchHideTimeoutRef.current);
+          notchHideTimeoutRef.current = null;
+        }
+      }
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+    };
+  }, [isExpanded, isPinned, isDragging, config.mode]);
 
   const handleDismissNotch = (force = false) => {
     if (notchHideTimeoutRef.current) {
@@ -1351,7 +1407,7 @@ export default function App() {
                   baseWidth = 195;
                 }
                 let extra = 0;
-                if (spotifyState?.item) extra += 30;
+                if (spotifyState?.is_playing && spotifyState?.item) extra += 30;
                 if (effectivePrivacy.cam && effectivePrivacy.mic) {
                   extra += 36;
                 } else if (effectivePrivacy.cam || effectivePrivacy.mic) {
@@ -1589,17 +1645,19 @@ export default function App() {
                         {greeting ? (
                           <motion.span
                             key="greeting"
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: -2 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className={greeting.startsWith('Good') ? `mac-hello-text text-[24px] pb-1 ${isSideNotch ? '' : 'mx-2'}` : `font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(true)}`}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.25 }}
+                            className={`smart-notch-brand-text ${isSideNotch ? 'text-[12px] tracking-wider py-1 select-none text-center' : 'text-[13px] tracking-tight mx-2 select-none'}`}
                             style={{
-                              writingMode: isSideNotch && !greeting.startsWith('Good') ? 'vertical-rl' : 'horizontal-tb',
-                              textOrientation: isSideNotch && !greeting.startsWith('Good') ? 'upright' : 'mixed',
-                              ...(!greeting.startsWith('Good') && idleTextColor !== 'black' ? getTextShadowStyle(true) : {})
+                              writingMode: isSideNotch ? 'vertical-rl' : 'horizontal-tb',
+                              textOrientation: isSideNotch ? 'mixed' : 'mixed',
+                              display: 'inline-block',
+                              whiteSpace: 'nowrap'
                             }}
                           >
-                            {greeting.startsWith('Good') ? greeting.toLowerCase() : greeting}
+                            {greeting}
                           </motion.span>
                         ) : isPomoRunning ? (
                           <motion.span
@@ -1707,9 +1765,48 @@ export default function App() {
                     </div>
 
                     <div className={`flex items-center ${isSideNotch ? 'flex-col gap-3 w-full mb-1 justify-end' : 'justify-end gap-2 flex-1'}`}>
-                      {spotifyState?.item && config.showAudioWaveform !== false ? (
-                        <div className={isSideNotch ? 'h-[14px] overflow-hidden flex items-center' : 'h-[10px] overflow-hidden flex items-center'}>
-                          <AudioWaveform isPlaying={spotifyState?.is_playing} color={isSpotify ? '#22c55e' : (activeAccentHex || '#60a5fa')} width={isSideNotch ? 12 : 24} height={isSideNotch ? 14 : 10} />
+                      {greeting ? (
+                        <motion.div
+                          key="greeting-right-anim"
+                          initial={{ opacity: 0, scale: 0.7 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.7 }}
+                          transition={{ duration: 0.35, ease: 'easeOut' }}
+                          className={`relative flex items-center justify-center ${isSideNotch ? 'py-1' : 'pr-1.5'}`}
+                          title="Smart Notch"
+                        >
+                          {/* Ambient Pulsing Glow Halo */}
+                          <motion.div
+                            className="absolute -inset-1 rounded-xl bg-cyan-400/30 blur-md pointer-events-none"
+                            animate={{
+                              opacity: [0.3, 0.85, 0.3],
+                              scale: [0.9, 1.25, 0.9]
+                            }}
+                            transition={{
+                              repeat: Infinity,
+                              duration: 1.8,
+                              ease: 'easeInOut'
+                            }}
+                          />
+                          {/* Brand Logo with gentle breathing floating effect */}
+                          <motion.img
+                            src={appLogo}
+                            alt="Smart Notch"
+                            className="w-[18px] h-[18px] rounded-[5px] object-contain drop-shadow-[0_0_8px_rgba(56,189,248,0.7)] relative z-10"
+                            animate={{
+                              scale: [0.95, 1.08, 0.95],
+                              rotate: [0, 4, -4, 0]
+                            }}
+                            transition={{
+                              repeat: Infinity,
+                              duration: 2.2,
+                              ease: 'easeInOut'
+                            }}
+                          />
+                        </motion.div>
+                      ) : spotifyState?.is_playing && spotifyState?.item && config.showAudioWaveform !== false ? (
+                        <div className={isSideNotch ? 'h-[14px] overflow-hidden flex items-center' : 'h-[12px] overflow-hidden flex items-center'}>
+                          <AudioWaveform isPlaying={true} isSideNotch={isSideNotch} width={isSideNotch ? 14 : 24} height={isSideNotch ? 14 : 12} />
                         </div>
                       ) : (
                         <div className={isSideNotch ? 'h-[14px]' : 'w-[10px]'} />

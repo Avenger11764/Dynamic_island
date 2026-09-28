@@ -1,19 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Yellowtail&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Yellowtail&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer components {
-  .mac-hello-text {
-    font-family: 'Yellowtail', 'Dancing Script', cursive;
+  .smart-notch-brand-text {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
     color: #ffffff;
+    font-weight: 600;
+    letter-spacing: -0.02em;
     text-shadow: 
-      0 0 8px rgba(255, 255, 255, 0.8),
-      0 0 16px rgba(160, 210, 255, 0.6),
-      0 0 30px rgba(160, 210, 255, 0.4);
-    letter-spacing: 0.02em;
-    font-weight: normal;
+      0 0 8px rgba(255, 255, 255, 0.45),
+      0 0 16px rgba(56, 189, 248, 0.25);
   }
 }
 
