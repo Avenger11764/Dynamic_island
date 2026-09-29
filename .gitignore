@@ -30,3 +30,6 @@ screenshot_test.png
 brag-output*/
 src/*.backup.*.jsx
 capture_screen.ps1
+
+# Previous logo set (kept locally; also in git history)
+store/_archive-old-logo/

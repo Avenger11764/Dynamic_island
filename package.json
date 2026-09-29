@@ -1,13 +1,15 @@
 {
   "name": "smart-notch",
   "private": true,
-  "version": "7.0.4",
+  "version": "7.0.5",
   "changelog": [
-    "Hotfix: Resolved Bluetooth volume synchronization where keyboard volume keys did not pop up the notch volume HUD when Bluetooth audio devices were connected.",
-    "Native Dynamic Audio Endpoint Tracking: Real-time IMMNotificationClient integration with automatic endpoint re-hooking and sub-millisecond volume change detection.",
-    "Hardware Glow HUD: Cyan neon segmented volume meter and authentic Bluetooth headset indicator on active Bluetooth audio.",
-    "Adaptive Side Docking Architecture: Refined side notch geometries, vertically expanding Bluetooth alerts, and balanced vertical centering.",
-    "Persistent Pin Mode: Keep dynamic notch pinned open without accidental closing on mouse-leave or loss of focus."
+    "A fresh new look: A calmer, cleaner design for the notch, alerts, bar and settings, with a new battery ring and logo.",
+    "Lights that move to your music: The music bars, album glow and effects now pulse to the beat of whatever is playing.",
+    "New background effects: Visualizer, Waves and Synthwave in your album's colours, plus Fireflies, Holographic and Topographic.",
+    "More reliable popups: Bluetooth, volume and brightness popups keep working after connecting headphones or waking from sleep.",
+    "Better bar mode: Focus timer, calendar and quick toggles in the side bar, and a startable timer in the top bar.",
+    "Smoother dragging: See where the notch will land while dragging, and it keeps up with quick moves.",
+    "Update notices: Get a heads-up when a new version is in the Microsoft Store, and see what's new after updating."
   ],
   "main": "main.js",
   "author": "Avinash",
@@ -49,9 +51,8 @@
       "buildResources": "store"
     },
     "files": [
-      "secrets.js",
-      ".env",
       "main.js",
+      "updater.js",
       "preload.js",
       "smtc-worker.js",
       "system_control.ps1",

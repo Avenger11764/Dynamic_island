@@ -8,7 +8,7 @@ export const CapsuleSlider = React.memo(({
   onWheel, 
   min = 0, 
   max = 100, 
-  accentGrad = "from-white to-white/95"
+  accentGrad = "from-white to-white"
 }) => {
   const trackRef = useRef(null);
   const [internalVal, setInternalVal] = useState(value);
@@ -110,29 +110,29 @@ export const CapsuleSlider = React.memo(({
         e.stopPropagation();
         if (onWheel) onWheel(e);
       }}
-      className="relative w-full h-11 rounded-2xl bg-white/[0.08] hover:bg-white/[0.12] cursor-pointer select-none overflow-hidden flex items-center justify-between px-3 border border-white/[0.09] shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)] no-drag"
+      className="relative w-full h-11 rounded-[14px] card-fill card-fill-hover cursor-pointer select-none overflow-hidden flex items-center justify-between px-3 no-drag"
       style={{ touchAction: 'none', WebkitAppRegion: 'no-drag' }}
     >
       {/* Liquid Fill Pill - zero transition during drag for 0ms visual tracking */}
       <div
         className={`absolute left-0 top-0 bottom-0 bg-gradient-to-r ${accentGrad} ${
           isDraggingRef.current ? 'transition-none' : 'transition-[width] duration-100 ease-out'
-        } shadow-[0_0_12px_rgba(255,255,255,0.15)] pointer-events-none`}
+        } pointer-events-none`}
         style={{ width: `${pct}%`, opacity: pct > 0 ? 1 : 0 }}
       />
 
       {/* Leading Icon & Label */}
-      <div className="relative z-10 flex items-center gap-2.5 pointer-events-none select-none">
-        <div className={`w-7 h-7 rounded-xl flex items-center justify-center transition-colors duration-150 ${pct > 18 ? 'text-black/80' : 'text-white/80'}`}>
-          <Icon size={16} strokeWidth={2.2} />
+      <div className="relative z-10 flex items-center gap-2 min-w-0 pr-2 pointer-events-none select-none">
+        <div className={`w-7 h-7 flex-shrink-0 rounded-xl flex items-center justify-center transition-colors duration-150 ${pct > 18 ? 'text-black/80' : 'text-white/80'}`}>
+          <Icon size={16} strokeWidth={2} />
         </div>
-        <span className={`text-xs font-semibold tracking-wide transition-colors duration-150 ${pct > 38 ? 'text-black/90 font-bold' : 'text-white/90'}`}>
+        <span className={`truncate text-[12px] font-medium transition-colors duration-150 ${pct > 38 ? 'text-black/85' : 'text-white/85'}`}>
           {label}
         </span>
       </div>
 
       {/* Percentage Indicator */}
-      <span className={`relative z-10 text-xs font-mono font-bold tracking-tight transition-colors duration-150 pointer-events-none select-none ${pct > 86 ? 'text-black/90' : 'text-white/70'}`}>
+      <span className={`relative z-10 tnum text-[12px] font-medium transition-colors duration-150 pointer-events-none select-none ${pct > 86 ? 'text-black/90' : 'text-white/70'}`}>
         {displayVal}%
       </span>
     </div>

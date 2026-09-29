@@ -1,175 +1,86 @@
-import React, { useMemo } from 'react';
-import { motion } from 'framer-motion';
+import React, { useRef } from 'react';
+import { useAudioReactive } from '../../utils/audioReactive';
 
 /**
- * Premium ambient glow — fully floods the bottom edge, corners, and sides
- * with rich, moving artwork-matched colors (inspired by Apple Dynamic Island).
+ * Artwork-matched ambient light behind the media card.
+ *
+ * Same layered look as the original (blurred cover + coloured light rising
+ * from the bottom edge and corners), but every layer animates only
+ * `transform`/`opacity` through CSS keyframes, so it runs on the compositor
+ * instead of re-rendering React/Framer every frame. Blur is applied once to
+ * static layers and the animations pause when playback pauses.
  *
  * Parent MUST have `position: relative; overflow: hidden;`.
  */
-export const AmbientGlow = ({ artUrl, colors = [], isPlaying = false }) => {
-  const [c1, c2, c3] = useMemo(() => {
-    const fallback = ['#10b981', '#06b6d4', '#6366f1'];
-    return [
-      colors[0] || fallback[0],
-      colors[1] || fallback[1],
-      colors[2] || fallback[2],
-    ];
-  }, [colors]);
-
-  const hasArt = !!artUrl;
-
-  // ─── Layered organic music motion ───
-  // Coprime durations (0.7s, 1.1s, 1.3s, 1.9s) for natural beat movement
-
-  // 1. Bottom flood breathing
-  const floodAnim = {
-    opacity: [0.85, 1, 0.88, 0.95, 0.85],
-    scaleY: [1, 1.08, 0.98, 1.05, 1],
-  };
-
-  // 2. Wide bass punch (0.75s)
-  const bassAnim = {
-    scale: [1, 1.25, 1.05, 1.18, 1],
-    opacity: [0.75, 1, 0.8, 0.95, 0.75],
-    y: ['0%', '-6%', '1%', '-4%', '0%'],
-  };
-
-  // 3. Left corner surge (1.3s)
-  const leftCornerAnim = {
-    scale: [1, 1.2, 0.95, 1.15, 1],
-    opacity: [0.7, 0.95, 0.75, 0.9, 0.7],
-    x: ['-5%', '5%', '-2%', '4%', '-5%'],
-  };
-
-  // 4. Right corner surge (1.1s)
-  const rightCornerAnim = {
-    scale: [1.05, 0.95, 1.2, 1, 1.05],
-    opacity: [0.65, 0.9, 0.7, 0.95, 0.65],
-    x: ['5%', '-4%', '6%', '-2%', '5%'],
-  };
-
-  // 5. Blurred cover art drift (2s)
-  const artDrift = {
-    scale: [1.1, 1.18, 1.08, 1.15, 1.1],
-    opacity: [0.65, 0.8, 0.68, 0.78, 0.65],
-  };
-
-  const makeTiming = (dur) => ({
-    duration: dur,
-    repeat: Infinity,
-    ease: 'easeInOut',
-    repeatType: 'loop',
+export const AmbientGlow = ({ artUrl, colors = [], isPlaying = false, intensity = 1 }) => {
+  const ref = useRef(null);
+  useAudioReactive(ref, isPlaying && !!artUrl);
+  // No artwork (e.g. nothing playing): no glow, rather than a generic colour blob
+  if (!artUrl) return null;
+  const c1 = colors[0] || '#10b981';
+  const c2 = colors[1] || colors[0] || '#06b6d4';
+  const state = isPlaying ? 'running' : 'paused';
+  const layer = (extra) => ({
+    position: 'absolute',
+    pointerEvents: 'none',
+    animationPlayState: state,
+    willChange: 'transform, opacity',
+    ...extra
   });
 
   return (
-    <div
-      className="absolute inset-0 pointer-events-none"
-      style={{ zIndex: 0, overflow: 'hidden' }}
-      aria-hidden="true"
-    >
-      {/* ─── Layer 1: Blurred Album Art Backdrop (Full coverage) ─── */}
-      {hasArt && (
-        <motion.div
-          animate={isPlaying ? artDrift : { opacity: 0.4, scale: 1.08 }}
-          transition={isPlaying ? makeTiming(2.0) : { duration: 0.6 }}
-          style={{
-            position: 'absolute',
-            inset: '-20%',
+    <div ref={ref} className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0, borderRadius: 'inherit', opacity: intensity }} aria-hidden="true">
+      {artUrl && (
+        <div
+          style={layer({
+            inset: '-25%',
             backgroundImage: `url(${artUrl})`,
             backgroundSize: 'cover',
-            backgroundPosition: 'center 80%',
-            filter: 'blur(28px) saturate(2.4)',
-            opacity: 0.7,
-            willChange: 'transform, opacity',
-          }}
+            backgroundPosition: 'center 70%',
+            filter: 'blur(26px) saturate(2)',
+            opacity: 0.55,
+            animation: 'ag-drift 9s ease-in-out infinite alternate'
+          })}
         />
       )}
 
-      {/* ─── Layer 2: Edge-to-Edge Bottom Linear Flood ───
-          Covers 100% of the bottom edge and corners without fading out at edges */}
-      <motion.div
-        animate={isPlaying ? floodAnim : { opacity: 0.55 }}
-        transition={isPlaying ? makeTiming(1.6) : { duration: 0.6 }}
-        style={{
-          position: 'absolute',
-          left: '-10%',
-          right: '-10%',
-          bottom: '-10%',
-          height: '85%',
-          transformOrigin: 'bottom center',
-          background: `linear-gradient(to top, ${c1} 0%, ${c1}ee 30%, ${c2}88 60%, transparent 95%)`,
-          filter: 'blur(16px)',
-          opacity: 0.9,
-          willChange: 'transform, opacity',
-        }}
-      />
-
-      {/* ─── Layer 3: Ultra-wide Bottom Elliptical Bass Pulse ───
-          150% width centered at bottom: guarantees zero dark edges on sides and corners */}
-      <motion.div
-        animate={isPlaying ? bassAnim : { opacity: 0.4 }}
-        transition={isPlaying ? makeTiming(0.75) : { duration: 0.6 }}
-        style={{
-          position: 'absolute',
-          bottom: '-30%',
-          left: '-25%',
-          width: '150%',
-          height: '115%',
-          borderRadius: '50%',
-          background: `radial-gradient(ellipse at 50% 90%, ${c1} 0%, ${c2}ee 40%, ${c1}77 75%, transparent 100%)`,
-          filter: 'blur(24px)',
-          opacity: 0.85,
-          willChange: 'transform, opacity',
-        }}
-      />
-
-      {/* ─── Layer 4: Bottom-Left Corner Flood Orb ─── */}
-      <motion.div
-        animate={isPlaying ? leftCornerAnim : { opacity: 0.35 }}
-        transition={isPlaying ? makeTiming(1.3) : { duration: 0.6 }}
-        style={{
-          position: 'absolute',
-          bottom: '-20%',
-          left: '-20%',
-          width: '85%',
-          height: '95%',
-          borderRadius: '50%',
-          background: `radial-gradient(circle at 40% 75%, ${c1} 0%, ${c2}cc 50%, transparent 85%)`,
-          filter: 'blur(20px)',
-          opacity: 0.8,
-          willChange: 'transform, opacity',
-        }}
-      />
-
-      {/* ─── Layer 5: Bottom-Right Corner Flood Orb ─── */}
-      <motion.div
-        animate={isPlaying ? rightCornerAnim : { opacity: 0.35 }}
-        transition={isPlaying ? makeTiming(1.1) : { duration: 0.6 }}
-        style={{
-          position: 'absolute',
-          bottom: '-20%',
-          right: '-20%',
-          width: '85%',
-          height: '95%',
-          borderRadius: '50%',
-          background: `radial-gradient(circle at 60% 75%, ${c2} 0%, ${c1}cc 50%, transparent 85%)`,
-          filter: 'blur(20px)',
-          opacity: 0.8,
-          willChange: 'transform, opacity',
-        }}
-      />
-
-      {/* ─── Layer 6: Apple-style Top Darkening Mask ───
-          Tapers off cleanly so text, controls, and notch header remain legible */}
+      {/* Light layers: with live audio they rise, brighten and swell on the beat */}
+      <div className="ag-react absolute inset-0">
+      {/* Bottom flood */}
       <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 28%, transparent 60%)',
-          pointerEvents: 'none',
-        }}
+        style={layer({
+          left: '-10%', right: '-10%', bottom: '-12%', height: '80%',
+          transformOrigin: 'bottom center',
+          background: `linear-gradient(to top, ${c1}f0 0%, ${c1}aa 35%, ${c2}55 65%, transparent 100%)`,
+          opacity: isPlaying ? 0.85 : 0.55,
+          animation: 'ag-breathe 3.2s ease-in-out infinite'
+        })}
       />
+
+      {/* Corner lights */}
+      <div
+        style={layer({
+          left: '-30%', bottom: '-35%', width: '95%', height: '100%', borderRadius: '50%',
+          background: `radial-gradient(circle at 50% 60%, ${c1} 0%, ${c2}99 45%, transparent 72%)`,
+          opacity: 0.75,
+          animation: 'ag-orb-a 4.3s ease-in-out infinite'
+        })}
+      />
+      <div
+        style={layer({
+          right: '-30%', bottom: '-35%', width: '95%', height: '100%', borderRadius: '50%',
+          background: `radial-gradient(circle at 50% 60%, ${c2} 0%, ${c1}99 45%, transparent 72%)`,
+          opacity: 0.7,
+          animation: 'ag-orb-b 3.7s ease-in-out infinite'
+        })}
+      />
+
+      </div>
+
+      {/* Keep the title and controls legible */}
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.35) 32%, transparent 62%)' }} />
     </div>
   );
 };
+
+export default AmbientGlow;

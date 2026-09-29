@@ -1,84 +1,46 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Sun, Volume2, VolumeX, Headphones, Bluetooth } from 'lucide-react';
+import { Sun, Volume1, Volume2, VolumeX, Headphones } from 'lucide-react';
+import { LevelTrack } from '../ui/Glyphs';
+
+const OsdIcon = ({ osdAlert, isBtAudio, size }) => {
+  const props = { size, strokeWidth: 2, className: 'text-white' };
+  if (osdAlert.type === 'brightness') return <Sun {...props} />;
+  if (osdAlert.isMuted || osdAlert.value === 0) return <VolumeX {...props} className="text-white/60" />;
+  if (isBtAudio) return <Headphones {...props} />;
+  return osdAlert.value < 50 ? <Volume1 {...props} /> : <Volume2 {...props} />;
+};
 
 export const OsdAlert = React.memo(React.forwardRef(({ osdAlert, isBtAudio, activeBtDevice, isSideNotch }, ref) => {
   if (!osdAlert) return null;
+
+  const muted = osdAlert.type === 'volume' && (osdAlert.isMuted || osdAlert.value === 0);
+  const trackColor = muted ? 'rgba(255,255,255,0.35)' : '#ffffff';
+  const deviceName = osdAlert.type === 'volume' && isBtAudio ? (activeBtDevice?.name || 'Headphones') : null;
+  const dataAttrs = {
+    'data-volume-slider': osdAlert.type === 'volume' ? 'true' : undefined,
+    'data-brightness-slider': osdAlert.type === 'brightness' ? 'true' : undefined,
+    'data-scroll-volume': osdAlert.type === 'volume' ? 'true' : undefined,
+    'data-scroll-brightness': osdAlert.type === 'brightness' ? 'true' : undefined
+  };
 
   if (isSideNotch) {
     return (
       <motion.div
         ref={ref}
         key="osd-hud-vertical"
-        data-volume-slider={osdAlert.type === 'volume' ? 'true' : undefined}
-        data-brightness-slider={osdAlert.type === 'brightness' ? 'true' : undefined}
-        data-scroll-volume={osdAlert.type === 'volume' ? 'true' : undefined}
-        data-scroll-brightness={osdAlert.type === 'brightness' ? 'true' : undefined}
-        className="w-full h-full flex flex-col items-center justify-between py-3 px-1.5 z-20 select-none overflow-hidden"
-        initial={{ opacity: 0, scale: 0.94 }}
+        {...dataAttrs}
+        className="w-full h-full flex flex-col items-center justify-between py-4 z-20 select-none overflow-hidden"
+        initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.94 }}
+        exit={{ opacity: 0, scale: 0.96 }}
         transition={{ duration: 0.15 }}
       >
-        {/* Top: Icon, Device Pill, Percentage */}
-        <div className="flex flex-col items-center gap-1 w-full">
-          <div className="flex items-center justify-center text-white">
-            {osdAlert.type === 'brightness' ? (
-              <Sun size={17} strokeWidth={2.4} className="text-amber-300" />
-            ) : osdAlert.isMuted || osdAlert.value === 0 ? (
-              <VolumeX size={17} strokeWidth={2.4} className="text-red-400" />
-            ) : isBtAudio ? (
-              <div className="flex items-center gap-1">
-                <Headphones size={15} strokeWidth={2.4} className="text-cyan-400" />
-                <Bluetooth size={11} className="text-cyan-300" />
-              </div>
-            ) : (
-              <Volume2 size={17} strokeWidth={2.4} className="text-white" />
-            )}
-          </div>
-
-          {osdAlert.type === 'volume' && isBtAudio && (
-            <span
-              className="text-[7.5px] font-medium text-white/45 tracking-tight truncate max-w-[48px] text-center select-none"
-              title={activeBtDevice?.name || 'BT Audio'}
-            >
-              {activeBtDevice?.name?.split(' ')[0] || 'BT'}
-            </span>
-          )}
-
-          <span className="text-[11px] font-bold tracking-tight text-white/95 font-mono mt-0.5">
-            {osdAlert.value}%
-          </span>
+        <OsdIcon osdAlert={osdAlert} isBtAudio={isBtAudio} size={16} />
+        <div className="flex-1 w-full flex justify-center py-3">
+          <LevelTrack value={osdAlert.value} vertical color={trackColor} />
         </div>
-
-        {/* Center: Vertical Segmented Meter (Bottom-to-Top Fill) */}
-        <div className="flex flex-col-reverse items-center justify-center w-full flex-1 my-1.5 gap-[3px]">
-          {Array.from({ length: 18 }).map((_, i) => {
-            const tickPercent = ((i + 1) / 18) * 100;
-            const isFilled = osdAlert.value >= tickPercent;
-            return (
-              <div
-                key={i}
-                className={`w-[26px] h-[3.5px] rounded-full transition-all duration-75 ${
-                  isFilled
-                    ? (osdAlert.type === 'brightness'
-                        ? 'bg-gradient-to-r from-amber-400 to-amber-200 shadow-[0_0_5px_rgba(251,191,36,0.7)]'
-                        : isBtAudio
-                        ? 'bg-gradient-to-r from-cyan-400 via-sky-300 to-white shadow-[0_0_5px_rgba(6,182,212,0.6)]'
-                        : 'bg-gradient-to-r from-amber-500 via-amber-300 to-white shadow-[0_0_5px_rgba(245,158,11,0.6)]')
-                    : 'bg-white/[0.12]'
-                }`}
-              />
-            );
-          })}
-        </div>
-
-        {/* Bottom: Type Label */}
-        <div className="flex items-center justify-center w-full pb-0.5">
-          <span className="text-[9px] font-extrabold uppercase tracking-widest text-white/40">
-            {osdAlert.type === 'brightness' ? 'BRT' : 'VOL'}
-          </span>
-        </div>
+        <span className="font-display text-[12px] font-semibold text-white/90">{osdAlert.value}</span>
       </motion.div>
     );
   }
@@ -87,70 +49,27 @@ export const OsdAlert = React.memo(React.forwardRef(({ osdAlert, isBtAudio, acti
     <motion.div
       ref={ref}
       key="osd-hud"
-      data-volume-slider={osdAlert.type === 'volume' ? 'true' : undefined}
-      data-brightness-slider={osdAlert.type === 'brightness' ? 'true' : undefined}
-      data-scroll-volume={osdAlert.type === 'volume' ? 'true' : undefined}
-      data-scroll-brightness={osdAlert.type === 'brightness' ? 'true' : undefined}
-      className="w-full h-full flex flex-col justify-between px-5 py-2.5 z-20 select-none overflow-hidden"
-      initial={{ opacity: 0, scale: 0.94 }}
+      {...dataAttrs}
+      className="w-full h-full flex items-center gap-3 px-5 z-20 select-none overflow-hidden"
+      initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.94 }}
+      exit={{ opacity: 0, scale: 0.96 }}
       transition={{ duration: 0.15 }}
     >
-      {/* Top Row: Leading Icon and Percentage */}
-      <div className="flex items-center justify-between w-full">
-        <div className="flex items-center gap-2 text-white">
-          {osdAlert.type === 'brightness' ? (
-            <Sun size={15} strokeWidth={2.4} className="text-amber-300" />
-          ) : osdAlert.isMuted || osdAlert.value === 0 ? (
-            <VolumeX size={15} strokeWidth={2.4} className="text-red-400" />
-          ) : isBtAudio ? (
-            <div className="flex items-center gap-1.5">
-              <Headphones size={15} strokeWidth={2.4} className="text-cyan-400" />
-              <Bluetooth size={12} className="text-cyan-300" />
-            </div>
-          ) : (
-            <Volume2 size={15} strokeWidth={2.4} className="text-white" />
-          )}
-          {osdAlert.type === 'volume' && isBtAudio && (
-            <span 
-              className="text-[8px] font-medium text-white/45 tracking-tight truncate max-w-[105px] select-none pl-0.5"
-              title={activeBtDevice?.name || 'BT Audio'}
-            >
-              {activeBtDevice?.name || 'BT Audio'}
-            </span>
-          )}
-        </div>
-
-        {/* Percentage */}
-        <div className="w-12 flex items-center justify-end">
-          <span className="text-xs font-bold tracking-tight text-white/95 font-mono">
-            {osdAlert.value}%
+      <div className="w-5 flex justify-center flex-shrink-0">
+        <OsdIcon osdAlert={osdAlert} isBtAudio={isBtAudio} size={16} />
+      </div>
+      <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5">
+        {deviceName && (
+          <span className="text-[10.5px] font-medium text-white/50 truncate leading-none" title={deviceName}>
+            {deviceName}
           </span>
-        </div>
+        )}
+        <LevelTrack value={osdAlert.value} color={trackColor} />
       </div>
-
-      {/* Bottom Row: 32-Segment Vertical Tick Meter */}
-      <div className="flex items-center justify-between w-full h-3.5 px-0.5 mt-0.5">
-        {Array.from({ length: 32 }).map((_, i) => {
-          const tickPercent = ((i + 1) / 32) * 100;
-          const isFilled = osdAlert.value >= tickPercent;
-          return (
-            <div
-              key={i}
-              className={`w-[3px] h-[13px] rounded-full transition-all duration-75 ${
-                isFilled
-                  ? (osdAlert.type === 'brightness'
-                      ? 'bg-gradient-to-t from-amber-400 to-amber-200 shadow-[0_0_5px_rgba(251,191,36,0.7)]'
-                      : isBtAudio
-                      ? 'bg-gradient-to-t from-cyan-400 via-sky-300 to-white shadow-[0_0_5px_rgba(6,182,212,0.6)]'
-                      : 'bg-gradient-to-t from-amber-500 via-amber-300 to-white shadow-[0_0_5px_rgba(245,158,11,0.6)]')
-                  : 'bg-white/[0.12]'
-              }`}
-            />
-          );
-        })}
-      </div>
+      <span className="font-display w-8 text-right text-[13px] font-semibold text-white/90 flex-shrink-0">
+        {osdAlert.value}
+      </span>
     </motion.div>
   );
 }));

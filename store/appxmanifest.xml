@@ -8,7 +8,7 @@
   <Identity Name="Devavinash.DynamicIslandWindows"
     ProcessorArchitecture="${arch}"
     Publisher='CN=AE5CAEC9-8659-4C4C-818A-0BB872795E9F'
-    Version="7.0.4.0" />
+    Version="7.0.5.0" />
 
   <Properties>
     <DisplayName>Smart Notch</DisplayName>
@@ -40,6 +40,7 @@
         <uap:DefaultTile
           Wide310x150Logo="assets\Wide310x150Logo.png"
           Square310x310Logo="assets\Square310x310Logo.png"
+          Square71x71Logo="assets\Square71x71Logo.png"
           ShortName="SmartNotch">
           <uap:ShowNameOnTiles>
             <uap:ShowOn Tile="square150x150Logo" />

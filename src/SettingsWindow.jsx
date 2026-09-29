@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  SlidersHorizontal, Palette, LayoutGrid, Info, BookOpen, 
-  X, Monitor, Sparkles, Check, RefreshCw, ExternalLink,
-  Volume2, Sun, Wifi, Cpu, Battery, Eye, Lock, Pin, Play, Music,
-  ChevronDown, Layers, Zap, Clock, Timer, Wrench, Minimize2, Image, Terminal, Activity,
-  Coffee
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  SlidersHorizontal, Palette, LayoutGrid, Info, BookOpen, X, Monitor, Check,
+  ExternalLink, Volume2, Sun, Wifi, Cpu, Eye, Lock, Pin, Music, ChevronDown,
+  Zap, Timer, Wrench, Minimize2, Coffee, Maximize2, MousePointer2, Keyboard,
+  Move, Pointer, SkipForward
 } from 'lucide-react';
 
-import appLogo from './assets/logo.png';
+import { BrandMark } from './components/ui/Glyphs';
+import { useAppUpdates, splitChangelog } from './utils/useAppUpdates';
+import { getMaterialSurface, applyCardStyle } from './utils/materials';
+import { BackgroundEffect, BACKGROUND_EFFECTS, normalizeBackgroundId } from './components/background';
 
 const ipcRenderer = typeof window !== 'undefined' ? window.electronAPI : null;
 
@@ -24,9 +26,10 @@ const DEFAULT_CONFIG = {
   accentColor: '#06b6d4',
   bgColor: '#000000',
   idleColor: '#000000',
-  panelStyle: 'glass',
-  cornerShape: 'pill',
-  glowIntensity: 'medium',
+  panelStyle: 'dark-glass',
+  cardStyle: 'dark',
+  cornerShape: 'rounded',
+  glowIntensity: 'none',
   selectedMonitor: 'primary',
   showWeather: true,
   showHardware: true,
@@ -39,74 +42,242 @@ const DEFAULT_CONFIG = {
   showAudioWaveform: true
 };
 
+const ACCENTS = ['#0a84ff', '#06b6d4', '#30d158', '#ffd60a', '#ff9f0a', '#ff453a', '#ff375f', '#bf5af2', '#ffffff'];
+const TINTS = ['#000000', '#0b0b0f', '#111827', '#1c1917', '#172554', '#1e1b4b', '#052e16', '#3b0764', '#ffffff'];
+
+const openExternal = (url) => {
+  if (ipcRenderer) ipcRenderer.send('open-url', url);
+  else window.open(url, '_blank');
+};
+
+/* ───────────────────────── primitives ───────────────────────── */
+
+const Section = ({ title, hint, children }) => (
+  <section className="flex flex-col gap-2 flex-shrink-0">
+    {(title || hint) && (
+      <div className="px-1 flex items-baseline justify-between">
+        {title && <h3 className="text-[12px] font-semibold text-white/55">{title}</h3>}
+        {hint && <span className="text-[11px] text-white/35">{hint}</span>}
+      </div>
+    )}
+    <div className="rounded-[14px] bg-white/[0.045] divide-y divide-white/[0.06] overflow-hidden">{children}</div>
+  </section>
+);
+
+const Row = ({ icon: Icon, title, desc, children, disabled }) => (
+  <div className={`flex items-center justify-between gap-4 px-4 py-3 min-h-[56px] ${disabled ? 'opacity-45' : ''}`}>
+    <div className="flex items-center gap-3 min-w-0">
+      {Icon && (
+        <span className="w-8 h-8 rounded-[9px] bg-white/[0.06] flex items-center justify-center text-white/75 flex-shrink-0">
+          <Icon size={16} strokeWidth={1.8} />
+        </span>
+      )}
+      <div className="min-w-0">
+        <div className="text-[13px] font-medium text-white/92">{title}</div>
+        {desc && <div className="text-[11.5px] text-white/45 leading-snug mt-0.5">{desc}</div>}
+      </div>
+    </div>
+    <div className="flex-shrink-0 flex items-center">{children}</div>
+  </div>
+);
+
+const Switch = ({ checked, onChange, accent, label }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={!!checked}
+    aria-label={label}
+    onClick={onChange}
+    className="relative w-[42px] h-[24px] rounded-full transition-colors duration-200 flex-shrink-0"
+    style={{ background: checked ? accent : 'rgba(255,255,255,0.16)' }}
+  >
+    <span
+      className="absolute top-[3px] left-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.35)] transition-transform duration-200"
+      style={{ transform: checked ? 'translateX(18px)' : 'translateX(0)' }}
+    />
+  </button>
+);
+
+const Segmented = ({ value, options, onChange }) => (
+  <div className="flex bg-black/40 rounded-[10px] p-[3px] gap-[2px]">
+    {options.map((o) => (
+      <button
+        key={o.id}
+        type="button"
+        onClick={() => onChange(o.id)}
+        className={`px-3 h-7 rounded-[7px] text-[12px] font-medium transition-colors whitespace-nowrap ${
+          value === o.id ? 'bg-white/[0.16] text-white shadow-[0_1px_2px_rgba(0,0,0,0.3)]' : 'text-white/55 hover:text-white'
+        }`}
+      >
+        {o.label}
+      </button>
+    ))}
+  </div>
+);
+
+const Swatches = ({ colors, value, onChange, extra, fallback }) => (
+  <div className="flex items-center gap-2 flex-wrap justify-end">
+    {colors.map((c) => {
+      const selected = (value || fallback) === c;
+      return (
+        <button
+          key={c}
+          type="button"
+          title={c}
+          onClick={() => onChange(c)}
+          className="w-[22px] h-[22px] rounded-full flex items-center justify-center transition-transform hover:scale-110"
+          style={{
+            background: c,
+            boxShadow: selected ? `0 0 0 2px #151517, 0 0 0 3.5px ${c === '#000000' || c === '#0b0b0f' ? '#fff' : c}` : 'inset 0 0 0 1px rgba(255,255,255,0.14)'
+          }}
+        >
+          {selected && <Check size={11} strokeWidth={3} className={c === '#ffffff' || c === '#ffd60a' ? 'text-black' : 'text-white'} />}
+        </button>
+      );
+    })}
+    {extra}
+    <label
+      className="w-[22px] h-[22px] rounded-full relative cursor-pointer overflow-hidden hover:scale-110 transition-transform"
+      title="Custom colour"
+      style={{ background: 'conic-gradient(#ff453a, #ffd60a, #30d158, #0a84ff, #bf5af2, #ff453a)' }}
+    >
+      <input
+        type="color"
+        value={/^#([0-9a-f]{6})$/i.test(value || '') ? value : fallback}
+        onChange={(e) => onChange(e.target.value)}
+        className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+      />
+    </label>
+  </div>
+);
+
+/* ───────────────────────── previews ───────────────────────── */
+
+const EffectTile = ({ effect, selected, accent, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="group flex flex-col gap-1.5 text-left"
+  >
+    <div
+      className="relative w-full aspect-[16/9] rounded-[10px] overflow-hidden bg-black transition-shadow"
+      style={{ boxShadow: selected ? `0 0 0 2px ${accent}` : '0 0 0 1px rgba(255,255,255,0.08)' }}
+    >
+      <div className="absolute inset-0" style={{ mixBlendMode: 'screen' }}>
+        <BackgroundEffect id={effect.id} accent={accent} isPlaying />
+      </div>
+      {effect.reactive && (
+        <span className="absolute bottom-1.5 left-1.5 h-4 px-1.5 rounded-full bg-black/55 text-[9.5px] font-medium text-white/80 flex items-center gap-1" title="Reacts to music">
+          ♪ Music
+        </span>
+      )}
+      {selected && (
+        <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: accent }}>
+          <Check size={10} strokeWidth={3} className="text-white" />
+        </span>
+      )}
+    </div>
+    <div className="px-0.5">
+      <div className={`text-[12px] font-medium ${selected ? 'text-white' : 'text-white/80'}`}>{effect.label}</div>
+      <div className="text-[10.5px] text-white/40">{effect.desc}</div>
+    </div>
+  </button>
+);
+
+const NotchPreview = ({ config, accent }) => {
+  const radius = config.cornerShape === 'rounded' ? 14 : 26;
+  const idle = config.idleColor || '#000000';
+  const idleText = idle.toLowerCase() === '#ffffff' ? '#000' : '#fff';
+  return (
+    <div className="relative flex-shrink-0 h-[168px] rounded-[14px] overflow-hidden bg-gradient-to-br from-[#2b3550] via-[#4b5a7d] to-[#8f8277] flex flex-col items-center gap-3">
+      {/* collapsed */}
+      <div
+        className="mt-0 px-4 h-[26px] flex items-center gap-3"
+        style={{ background: idle, color: idleText, borderBottomLeftRadius: radius * 0.55, borderBottomRightRadius: radius * 0.55 }}
+      >
+        <span className="text-[10px] opacity-55">Tue</span>
+        <span className="font-display text-[11.5px] font-semibold">9:41</span>
+        <span className="flex gap-[2px] items-end h-2.5">
+          {[6, 10, 7, 9].map((h, i) => <span key={i} className="w-[2px] rounded-full" style={{ height: h, background: accent }} />)}
+        </span>
+      </div>
+      {/* expanded */}
+      <div
+        className="relative w-[70%] flex-1 mb-4 overflow-hidden"
+        style={{
+          background: getMaterialSurface(config.panelStyle, config.bgColor),
+          borderRadius: radius,
+          boxShadow: `0 10px 30px -8px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)${config.panelStyle === 'glass' ? ', inset 0 1px 0 rgba(255,255,255,0.12)' : ''}`
+        }}
+      >
+        <div className="absolute inset-0" style={{ mixBlendMode: 'screen' }}>
+          <BackgroundEffect id={config.bgAnimation} accent={accent} isPlaying />
+        </div>
+        <div className="relative p-2.5 flex gap-2 h-full">
+          <div className="w-[42%] rounded-[8px] surface" />
+          <div className="flex-1 flex flex-col gap-1.5">
+            <div className="h-3 rounded-[5px] surface" />
+            <div className="h-3 rounded-[5px] surface" />
+            <div className="flex-1 rounded-[6px] surface relative overflow-hidden">
+              <div className="absolute left-2 right-2 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-white/15">
+                <div className="h-full w-[60%] rounded-full bg-white" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ChangeList = ({ items, max }) => {
+  const list = (items || []).slice(0, max || undefined);
+  if (list.length === 0) return <p className="text-[12px] text-white/50">Performance improvements and fixes.</p>;
+  return (
+    <ul className="flex flex-col gap-2">
+      {list.map((entry, i) => {
+        const { title, body } = splitChangelog(entry);
+        return (
+          <li key={i} className="flex gap-2.5 text-[12.5px] leading-relaxed">
+            <span className="w-1 h-1 rounded-full bg-white/40 mt-[9px] flex-shrink-0" />
+            <span className="text-white/65">{title && <span className="text-white/90 font-medium">{title}. </span>}{body}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
+const timeAgo = (iso) => {
+  if (!iso) return '';
+  const mins = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const h = Math.round(mins / 60);
+  return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+};
+
+/* ───────────────────────── window ───────────────────────── */
+
 export default function SettingsWindow() {
-  const [activeTab, setActiveTab] = useState('general');
+  // Opened as "#settings/<tab>" when the notch links to a specific page (e.g. What's new)
+  const [activeTab, setActiveTab] = useState(() => {
+    const m = (typeof window !== 'undefined' ? window.location.hash : '').match(/settings\/(\w+)/);
+    return m ? m[1] : 'general';
+  });
   const [monitors, setMonitors] = useState([]);
   const [autostartEnabled, setAutostartEnabled] = useState(true);
-  const [version, setVersion] = useState('7.0.4');
 
-  // Update & Changelog State
-  const CURRENT_VERSION = '7.0.4';
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
+  const updates = useAppUpdates();
+  const version = updates.currentVersion || '';
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
-  const [whatsNewAvailable, setWhatsNewAvailable] = useState(false);
-  const [changelog, setChangelog] = useState([]);
 
   useEffect(() => {
-    const compareVersions = (v1, v2) => {
-      const parts1 = v1.split('.').map(Number);
-      const parts2 = v2.split('.').map(Number);
-      for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-        const p1 = parts1[i] || 0;
-        const p2 = parts2[i] || 0;
-        if (p1 > p2) return 1;
-        if (p1 < p2) return -1;
-      }
-      return 0;
-    };
-
-    const checkUpdate = async () => {
-      try {
-        const res = await fetch(`https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/package.json?t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.version) {
-            setLatestVersion(data.version);
-            if (data.changelog) setChangelog(data.changelog);
-            if (compareVersions(data.version, CURRENT_VERSION) > 0 || window.location.search.includes('simulate-update')) {
-              setUpdateAvailable(true);
-            } else {
-              setUpdateAvailable(false);
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to check updates in SettingsWindow:', e);
-      }
-    };
-
-    checkUpdate();
-    const lastSeen = localStorage.getItem('lastSeenVersion');
-    const hasConfig = localStorage.getItem('smart-notch-config') !== null;
-
-    if (lastSeen) {
-      if (compareVersions(CURRENT_VERSION, lastSeen) > 0 || window.location.search.includes('simulate-whats-new')) {
-        setWhatsNewAvailable(true);
-      } else {
-        setWhatsNewAvailable(false);
-      }
-    } else {
-      localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
-      if (window.location.search.includes('simulate-whats-new')) {
-        setWhatsNewAvailable(true);
-      } else {
-        setWhatsNewAvailable(false);
-      }
-    }
+    if (!ipcRenderer?.on) return undefined;
+    ipcRenderer.on('settings-open-tab', (tab) => { if (tab) setActiveTab(tab); });
+    return () => ipcRenderer.removeAllListeners?.('settings-open-tab');
   }, []);
 
-  // Load config from localStorage
   const [config, setConfig] = useState(() => {
     try {
       const saved = localStorage.getItem('smart-notch-config');
@@ -122,1083 +293,474 @@ export default function SettingsWindow() {
     }
   });
 
-  // Sync config with main window & localStorage
   const updateConfig = useCallback((patch) => {
     setConfig(prev => {
       const copy = { ...patch };
-      if ('showWeatherWidget' in copy) {
-        copy.showWeather = copy.showWeatherWidget;
-      }
-      if ('showHardwareWidget' in copy) {
-        copy.showHardware = copy.showHardwareWidget;
-      }
-      const updated = { ...prev, ...copy };
-      try {
-        localStorage.setItem('smart-notch-config', JSON.stringify(updated));
-      } catch (_) {}
-      if (ipcRenderer) {
-        ipcRenderer.send('sync-config', updated);
-      }
+      if ('showWeatherWidget' in copy) copy.showWeather = copy.showWeatherWidget;
+      if ('showHardwareWidget' in copy) copy.showHardware = copy.showHardwareWidget;
+      // Merge into the latest saved config, not just this window's copy, so we never
+      // write back stale values (e.g. an old position after the notch was dragged).
+      let latest = {};
+      try { latest = JSON.parse(localStorage.getItem('smart-notch-config') || '{}'); } catch (_) {}
+      const updated = { ...prev, ...latest, ...copy };
+      try { localStorage.setItem('smart-notch-config', JSON.stringify(updated)); } catch (_) {}
+      if (ipcRenderer) ipcRenderer.send('sync-config', updated);
       return updated;
     });
   }, []);
 
-  // Listen for external config updates
   useEffect(() => {
     if (!ipcRenderer) return;
-    const handleSync = (remoteConfig) => {
-      if (remoteConfig) {
-        setConfig(prev => ({ ...prev, ...remoteConfig }));
-      }
-    };
-    ipcRenderer.on('config-updated', handleSync);
-
+    ipcRenderer.on('config-updated', (remoteConfig) => {
+      if (remoteConfig) setConfig(prev => ({ ...prev, ...remoteConfig }));
+    });
     ipcRenderer.invoke('get-monitors').then(res => {
       if (Array.isArray(res) && res.length > 0) setMonitors(res);
     }).catch(() => {});
-
     ipcRenderer.invoke('get-autostart-status').then(status => {
       setAutostartEnabled(!!status);
     }).catch(() => {});
+    return () => { ipcRenderer.removeAllListeners?.('config-updated'); };
+  }, []);
 
-    return () => {
-      ipcRenderer.removeAllListeners?.('config-updated');
+  // Stay in sync with changes made by the notch window (drag position, pin, etc.)
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== 'smart-notch-config' || !e.newValue) return;
+      try {
+        const next = JSON.parse(e.newValue);
+        setConfig(prev => ({ ...prev, ...next, hoverToShow: prev.hoverToShow }));
+      } catch (_) {}
     };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   const handleClose = useCallback(() => {
-    if (ipcRenderer) {
-      ipcRenderer.send('close-settings-window');
-    } else {
-      window.close();
-    }
+    if (ipcRenderer) ipcRenderer.send('close-settings-window');
+    else window.close();
   }, []);
 
   const toggleAutostart = useCallback(() => {
     const next = !autostartEnabled;
     setAutostartEnabled(next);
     updateConfig({ runOnStartup: next });
-    if (ipcRenderer) {
-      ipcRenderer.send('set-autostart', next);
-    }
+    if (ipcRenderer) ipcRenderer.send('set-autostart', next);
   }, [autostartEnabled, updateConfig]);
 
-  // Tab definitions with bespoke Apple-style gradient icon badges
+  const setMode = (mode) => {
+    if (mode === config.mode) return;
+    if (mode === 'bar') {
+      updateConfig({ mode: 'bar', hoverToShow: config.barHoverToShow !== undefined ? config.barHoverToShow : true });
+      ipcRenderer?.send('set-window-mode', 'shelf', config.screenPosition);
+    } else {
+      updateConfig({ mode: 'notch', hoverToShow: config.notchHoverToShow !== undefined ? config.notchHoverToShow : false });
+      ipcRenderer?.send('set-window-mode', 'notch', config.screenPosition);
+    }
+  };
+
+  const accent = /^#([0-9a-f]{6})$/i.test(config.accentColor || '') && config.accentColor.toLowerCase() !== '#ffffff'
+    ? config.accentColor
+    : '#0a84ff';
+  const selectedEffect = normalizeBackgroundId(config.bgAnimation);
+  useEffect(() => { applyCardStyle(config.cardStyle); }, [config.cardStyle]);
+
   const navTabs = [
-    { 
-      id: 'general', 
-      label: 'General', 
-      icon: SlidersHorizontal, 
-      gradient: 'from-blue-500 to-indigo-600',
-      shadow: 'shadow-[0_2px_10px_rgba(59,130,246,0.35)]'
-    },
-    { 
-      id: 'appearance', 
-      label: 'Appearance', 
-      icon: Palette, 
-      gradient: 'from-purple-500 to-pink-600',
-      shadow: 'shadow-[0_2px_10px_rgba(168,85,247,0.35)]'
-    },
-    { 
-      id: 'widgets', 
-      label: 'Widgets', 
-      icon: LayoutGrid, 
-      gradient: 'from-emerald-500 to-teal-600',
-      shadow: 'shadow-[0_2px_10px_rgba(16,185,129,0.35)]'
-    },
-    { 
-      id: 'about', 
-      label: 'About', 
-      icon: Info, 
-      gradient: 'from-sky-400 to-blue-600',
-      shadow: 'shadow-[0_2px_10px_rgba(14,165,233,0.35)]'
-    },
-    { 
-      id: 'howtouse', 
-      label: 'How to Use', 
-      icon: BookOpen, 
-      gradient: 'from-amber-400 to-orange-500',
-      shadow: 'shadow-[0_2px_10px_rgba(245,158,11,0.35)]'
-    },
+    { id: 'general', label: 'General', icon: SlidersHorizontal },
+    { id: 'appearance', label: 'Appearance', icon: Palette },
+    { id: 'widgets', label: 'Widgets', icon: LayoutGrid },
+    { id: 'howtouse', label: 'Tips', icon: BookOpen },
+    { id: 'about', label: 'About', icon: Info }
   ];
+  const aboutBadge = updates.updateAvailable ? '#ff9f0a' : (updates.whatsNew ? accent : null);
 
   return (
-    <div className="w-screen h-screen p-4 flex items-center justify-center select-none font-sans overflow-hidden bg-transparent">
-      {/* Main Glass Modal Window */}
-      <div className="w-full h-full max-w-[880px] max-h-[630px] rounded-3xl bg-[#090d16]/95 backdrop-blur-2xl border border-white/15 shadow-[0_25px_80px_rgba(0,0,0,0.85)] flex overflow-hidden text-white relative">
-        
-        {/* Left Sidebar */}
-        <aside className="w-[230px] flex-shrink-0 bg-black/30 border-r border-white/[0.08] flex flex-col p-4 z-10">
-          {/* Draggable Title Header with Hardware Logo Mark */}
-          <div className="pb-5 pt-1 px-2 flex items-center gap-3" style={{ WebkitAppRegion: 'drag' }}>
-            <img 
-              src={appLogo} 
-              alt="Smart Notch" 
-              className="w-9 h-9 rounded-xl object-cover shadow-md border border-white/20 drop-shadow-[0_2px_10px_rgba(56,189,248,0.3)] flex-shrink-0" 
-            />
-            <div>
-              <h1 className="text-sm font-bold tracking-tight text-white leading-tight">
-                Smart Notch
-              </h1>
-              <p className="text-[10px] text-white/40 font-semibold tracking-wider uppercase">Settings</p>
+    <div className="w-screen h-screen p-4 flex items-center justify-center select-none overflow-hidden bg-transparent">
+      <div className="w-full h-full max-w-[880px] max-h-[630px] rounded-[18px] bg-[#151517]/[0.97] backdrop-blur-2xl shadow-[0_24px_70px_rgba(0,0,0,0.75),0_0_0_1px_rgba(255,255,255,0.08)] flex overflow-hidden text-white relative">
+
+        {/* Sidebar */}
+        <aside className="w-[216px] flex-shrink-0 bg-black/25 flex flex-col px-3 pt-4 pb-3">
+          <div className="px-2 pb-5 flex items-center gap-2.5" style={{ WebkitAppRegion: 'drag' }}>
+            <BrandMark size={30} />
+            <div className="leading-tight">
+              <div className="text-[13px] font-semibold text-white">Smart Notch</div>
+              <div className="text-[11px] text-white/45">Settings</div>
             </div>
           </div>
 
-          {/* Navigation List */}
-          <nav className="flex flex-col gap-1.5 flex-1 overflow-y-auto no-scrollbar" style={{ WebkitAppRegion: 'no-drag' }}>
+          <nav className="flex flex-col gap-0.5 flex-1 overflow-y-auto no-scrollbar" style={{ WebkitAppRegion: 'no-drag' }}>
             {navTabs.map(tab => {
               const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              const hasBadge = tab.id === 'about' && (updateAvailable || whatsNewAvailable);
+              const active = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
-                    isActive 
-                      ? 'bg-white/[0.12] text-white shadow-sm ring-1 ring-white/15' 
-                      : 'text-white/60 hover:text-white hover:bg-white/[0.06]'
+                  className={`relative w-full flex items-center gap-3 h-9 px-3 rounded-[8px] text-[13px] transition-colors ${
+                    active ? 'bg-white/[0.09] text-white font-medium' : 'text-white/65 hover:text-white hover:bg-white/[0.05]'
                   }`}
                 >
-                  <div className="flex items-center gap-3 truncate">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-gradient-to-b ${tab.gradient} text-white ${tab.shadow}`}>
-                      <Icon size={14} strokeWidth={2.4} />
-                    </div>
-                    <span className="truncate">{tab.label}</span>
-                  </div>
-                  {hasBadge && (
-                    <span className={`w-2 h-2 rounded-full ${updateAvailable ? 'bg-red-500 shadow-[0_0_8px_#ef4444]' : 'bg-cyan-400 shadow-[0_0_8px_#22d3ee]'} animate-pulse flex-shrink-0`} />
-                  )}
+                  {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-full" style={{ background: accent }} />}
+                  <Icon size={16} strokeWidth={1.8} className={active ? 'text-white' : 'text-white/55'} />
+                  <span className="flex-1 text-left">{tab.label}</span>
+                  {tab.id === 'about' && aboutBadge && <span className="w-1.5 h-1.5 rounded-full" style={{ background: aboutBadge }} />}
                 </button>
               );
             })}
           </nav>
 
-          {/* Buy Me a Coffee Support Button */}
-          <div className="pt-2" style={{ WebkitAppRegion: 'no-drag' }}>
+          <div className="flex flex-col gap-2 pt-3" style={{ WebkitAppRegion: 'no-drag' }}>
             <button
               type="button"
-              onClick={() => {
-                if (ipcRenderer) {
-                  ipcRenderer.send('open-url', 'https://buymeacoffee.com/dev_avinash');
-                } else {
-                  window.open('https://buymeacoffee.com/dev_avinash', '_blank');
-                }
-              }}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 transition-all hover:scale-[1.02] active:scale-95 shadow-[0_0_15px_rgba(245,158,11,0.15)] cursor-pointer"
+              onClick={() => openExternal('https://buymeacoffee.com/dev_avinash')}
+              className="w-full flex items-center gap-2.5 h-9 px-3 rounded-[8px] text-[12.5px] text-white/60 hover:text-white hover:bg-white/[0.05] transition-colors"
             >
-              <Coffee size={14} className="text-amber-400" />
-              <span>Buy Me a Coffee ☕</span>
+              <Coffee size={15} strokeWidth={1.8} />
+              Support development
             </button>
-          </div>
-
-          {/* Bottom Version Tag */}
-          <div className="pt-2.5 border-t border-white/[0.08] px-2 flex items-center justify-between text-[11px] text-white/40">
-            <span>Version {version}</span>
-            <div className="flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full ${updateAvailable ? 'bg-red-400' : 'bg-emerald-400'} animate-pulse`} />
-              <span className={`text-[10px] font-medium ${updateAvailable ? 'text-red-400' : 'text-emerald-400/90'}`}>
-                {updateAvailable ? 'Update ready' : 'Up to date'}
-              </span>
+            <div className="px-3 flex items-center justify-between text-[11px] text-white/35">
+              <span>Version {version}</span>
+              <span className={updates.updateAvailable ? 'text-[#ff9f0a]' : ''}>{updates.updateAvailable ? 'Update available' : (updates.checking ? 'Checking…' : 'Up to date')}</span>
             </div>
           </div>
         </aside>
 
-        {/* Right Main Content Panel */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-white/[0.01]">
-          {/* Top Bar with draggable header & close button */}
-          <div 
-            className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-white/[0.06] flex-shrink-0"
-            style={{ WebkitAppRegion: 'drag' }}
-          >
-            <div className="flex items-center gap-2.5">
-              <h2 className="text-xl font-bold tracking-tight text-white capitalize">
-                {navTabs.find(t => t.id === activeTab)?.label}
-              </h2>
-            </div>
+        {/* Content */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <header className="flex items-center justify-between px-8 pt-6 pb-4 flex-shrink-0" style={{ WebkitAppRegion: 'drag' }}>
+            <h2 className="text-[22px] font-semibold tracking-[-0.01em]">{navTabs.find(t => t.id === activeTab)?.label}</h2>
             <button
               type="button"
               onClick={handleClose}
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-              title="Close Settings"
+              className="w-8 h-8 rounded-[8px] flex items-center justify-center text-white/50 hover:text-white hover:bg-white/[0.08] transition-colors"
+              title="Close"
+              aria-label="Close settings"
               style={{ WebkitAppRegion: 'no-drag' }}
             >
-              <X size={18} />
+              <X size={17} strokeWidth={1.8} />
             </button>
-          </div>
+          </header>
 
-          {/* Scrollable Settings View */}
-          <div className="flex-1 overflow-y-auto px-6 py-5 custom-scrollbar flex flex-col gap-5" style={{ WebkitAppRegion: 'no-drag' }}>
-            
-            {/* Update Available notification banner */}
-            {updateAvailable && (
-              <div 
-                className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex flex-col gap-2 cursor-pointer hover:bg-red-500/15 transition-all select-none shadow-[0_4px_20px_rgba(239,68,68,0.15)]"
-                onClick={() => setShowReleaseNotes(!showReleaseNotes)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse" />
+          <div className="flex-1 overflow-y-auto custom-scrollbar px-8 pb-8 flex flex-col gap-6" style={{ WebkitAppRegion: 'no-drag' }}>
+
+            {updates.updateAvailable && (
+              <div className="flex-shrink-0 rounded-[14px] bg-white/[0.045] px-4 py-3.5 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="w-2 h-2 rounded-full bg-[#ff9f0a]" />
                     <div>
-                      <span className="text-xs font-bold text-red-200">
-                        New Version Available (v{latestVersion})
-                      </span>
-                      <p className="text-[11px] text-red-300/70">Click to view release notes & download.</p>
+                      <div className="text-[13px] font-medium">Smart Notch {updates.latestVersion} is available</div>
+                      <div className="text-[11.5px] text-white/45">Install it from the Microsoft Store.</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <a
-                      href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS"
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-[11px] px-3 py-1 rounded-full bg-red-500/25 hover:bg-red-500/40 text-red-100 font-semibold border border-red-400/40 transition-colors flex items-center gap-1"
+                    <button type="button" onClick={() => setShowReleaseNotes(v => !v)} className="h-7 px-3 rounded-[7px] text-[12px] text-white/70 hover:text-white hover:bg-white/[0.08] transition-colors">
+                      {showReleaseNotes ? 'Hide notes' : 'What’s in it'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={updates.openUpdate}
+                      className="h-7 px-3 rounded-[7px] text-[12px] font-medium text-white flex items-center gap-1.5"
+                      style={{ background: accent }}
                     >
-                      Store <ExternalLink size={11} />
-                    </a>
-                    <span className="text-[11px] text-white/50 underline ml-1">
-                      {showReleaseNotes ? 'Hide details' : 'Changelog'}
-                    </span>
+                      Update <ExternalLink size={12} />
+                    </button>
                   </div>
                 </div>
-                {showReleaseNotes && (
-                  <div className="text-[11px] text-white/80 flex flex-col gap-1.5 pl-3 border-l-2 border-red-500/40 mt-1.5 leading-relaxed">
-                    {changelog && changelog.length > 0 ? (
-                      changelog.map((point, index) => {
-                        const colonIndex = point.indexOf(':');
-                        if (colonIndex !== -1) {
-                          const title = point.substring(0, colonIndex);
-                          const desc = point.substring(colonIndex + 1);
-                          return (
-                            <div key={index} className="flex items-start gap-1.5">
-                              <span className="text-red-400">•</span>
-                              <span><b className="text-white">{title}:</b>{desc}</span>
-                            </div>
-                          );
-                        }
-                        return <div key={index} className="flex items-start gap-1.5"><span className="text-red-400">•</span><span>{point}</span></div>;
-                      })
-                    ) : (
-                      <p className="text-white/60">New performance improvements and features available in Microsoft Store.</p>
-                    )}
-                  </div>
-                )}
+                {showReleaseNotes && <div className="pl-5"><ChangeList items={updates.latestChangelog} /></div>}
               </div>
             )}
 
-            {/* What's New in Current Version Banner */}
-            {whatsNewAvailable && (
-              <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-2 select-none shadow-[0_4px_20px_rgba(34,211,238,0.12)]">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee] animate-pulse" />
-                    <div>
-                      <span className="text-xs font-bold text-cyan-200">
-                        What's New in v{CURRENT_VERSION}!
-                      </span>
-                      <p className="text-[11px] text-cyan-300/70">Welcome to your updated Smart Notch experience.</p>
-                    </div>
+            {updates.whatsNew && (
+              <div className="flex-shrink-0 rounded-[14px] bg-white/[0.045] px-4 py-3.5 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-[13px] font-medium">You’re now on Smart Notch {version}</div>
+                    <div className="text-[11.5px] text-white/45">Here’s what changed in this update.</div>
                   </div>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
-                      setWhatsNewAvailable(false);
-                      if (ipcRenderer) {
-                        ipcRenderer.send('dismiss-whats-new');
-                      }
-                    }}
-                    className="text-[11px] px-3 py-1 rounded-full bg-cyan-500/25 hover:bg-cyan-500/40 text-cyan-100 font-semibold border border-cyan-400/40 transition-colors cursor-pointer"
+                    onClick={updates.dismissWhatsNew}
+                    className="h-7 px-3 rounded-[7px] text-[12px] font-medium bg-white/[0.1] hover:bg-white/[0.16] transition-colors"
                   >
                     Got it
                   </button>
                 </div>
-                <div className="text-[11px] text-white/80 flex flex-col gap-1.5 pl-3 border-l-2 border-cyan-500/40 mt-1.5 leading-relaxed">
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-cyan-400">•</span>
-                    <span><b className="text-white">Floating Settings Window:</b> Real-time live customization preview window with persistent controls.</span>
-                  </div>
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-cyan-400">•</span>
-                    <span><b className="text-white">Authentic Apple Silicon Badges:</b> Bespoke CPU microchip, DRAM memory, and acoustic headphone icons.</span>
-                  </div>
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-cyan-400">•</span>
-                    <span><b className="text-white">Island Mode Hover Auto-Hide:</b> 2-second graceful dismiss for Bar mode; persistent 5-second mode for Notch.</span>
-                  </div>
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-cyan-400">•</span>
-                    <span><b className="text-white">GPU Hardware Acceleration:</b> Zero-copy rasterization for seamless 60/120Hz liquid animations.</span>
-                  </div>
-                </div>
+                <ChangeList items={updates.changelog} />
               </div>
             )}
 
-            
-            {/* ────────────────── GENERAL TAB ────────────────── */}
+            {/* ─────────── General ─────────── */}
             {activeTab === 'general' && (
               <>
-                {/* Section 1: Island Shape & Mode */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-sky-400 to-blue-600 shadow-[0_2px_8px_rgba(14,165,233,0.35)] text-white flex items-center justify-center">
-                      <Monitor size={16} strokeWidth={2.3} />
+                <Section title="Display">
+                  <Row icon={Monitor} title="Style" desc="A floating notch, or a full-width bar along the screen edge.">
+                    <Segmented value={config.mode} onChange={setMode} options={[{ id: 'notch', label: 'Notch' }, { id: 'bar', label: 'Bar' }]} />
+                  </Row>
+                  <Row icon={Maximize2} title="Notch size" desc={config.mode === 'notch' ? 'Scale the notch to match your screen.' : 'Available in notch style.'} disabled={config.mode !== 'notch'}>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min="0.70"
+                        max="1.30"
+                        step="0.05"
+                        disabled={config.mode !== 'notch'}
+                        value={config.islandScale || 1.0}
+                        onChange={(e) => updateConfig({ islandScale: parseFloat(e.target.value) })}
+                        className="w-[150px] cursor-pointer"
+                        style={{ accentColor: accent }}
+                      />
+                      <span className="tnum text-[12px] text-white/70 w-9 text-right">{Math.round((config.islandScale || 1.0) * 100)}%</span>
                     </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">Island & Display</h3>
-                      <p className="text-xs text-white/40">Choose mode, scale sizing, and anchor display monitor.</p>
+                  </Row>
+                  <Row icon={Monitor} title="Show on" desc="Choose which display the notch appears on.">
+                    <div className="relative">
+                      <select
+                        value={config.selectedMonitor || 'primary'}
+                        onChange={(e) => updateConfig({ selectedMonitor: e.target.value })}
+                        className="bg-black/40 text-[12.5px] text-white/90 rounded-[8px] h-8 pl-3 pr-8 appearance-none focus:outline-none cursor-pointer shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)]"
+                      >
+                        <option value="primary">Primary display</option>
+                        {monitors.filter(m => !m.isPrimary).map(m => (
+                          <option key={m.id} value={m.id.toString()}>{m.label}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
                     </div>
-                  </div>
+                  </Row>
+                </Section>
 
-                  <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4 flex flex-col gap-4 divide-y divide-white/[0.06]">
-                    {/* Island Mode */}
-                    <div className="flex items-center justify-between pt-1">
-                      <div>
-                        <span className="text-sm font-semibold text-white/90">Island Mode</span>
-                        <p className="text-xs text-white/40">Switch between floating Dynamic Island and bezel-anchored Notch.</p>
-                      </div>
-                      <div className="bg-black/60 border border-white/10 p-1 rounded-xl flex gap-1 shadow-inner">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newHover = config.barHoverToShow !== undefined ? config.barHoverToShow : true;
-                            updateConfig({ mode: 'bar', hoverToShow: newHover });
-                            if (ipcRenderer) ipcRenderer.send('set-window-mode', 'shelf', config.screenPosition);
-                          }}
-                          className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                            config.mode === 'bar' 
-                              ? 'bg-white text-zinc-900 shadow-md' 
-                              : 'text-white/60 hover:text-white'
-                          }`}
-                        >
-                          Island
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newHover = config.notchHoverToShow !== undefined ? config.notchHoverToShow : false;
-                            updateConfig({ mode: 'notch', hoverToShow: newHover });
-                            if (ipcRenderer) ipcRenderer.send('set-window-mode', 'notch', config.screenPosition);
-                          }}
-                          className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                            config.mode === 'notch' 
-                              ? 'bg-white text-zinc-900 shadow-md' 
-                              : 'text-white/60 hover:text-white'
-                          }`}
-                        >
-                          Notch
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Notch Scale / Size - Only valid for Notch Mode */}
-                    {config.mode === 'notch' ? (
-                      <div className="flex flex-col gap-2.5 pt-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <span className="text-sm font-semibold text-white/90">Notch Size</span>
-                            <p className="text-xs text-white/40">Scale the Notch dimensions smoothly to match your camera bezel.</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                              {Math.round((config.islandScale || 1.0) * 100)}%
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Slider Bar */}
-                        <div className="flex items-center gap-3 pt-1">
-                          <span className="text-[10px] font-semibold text-white/40">70%</span>
-                          <input
-                            type="range"
-                            min="0.70"
-                            max="1.30"
-                            step="0.05"
-                            value={config.islandScale || 1.0}
-                            onChange={(e) => updateConfig({ islandScale: parseFloat(e.target.value) })}
-                            className="flex-1 accent-white cursor-pointer h-1.5 bg-white/20 rounded-full"
-                          />
-                          <span className="text-[10px] font-semibold text-white/40">130%</span>
-                        </div>
-
-                        {/* Quick Size Presets */}
-                        <div className="flex items-center gap-1.5 pt-1">
-                          {[
-                            { label: 'Compact', scale: 0.80 },
-                            { label: 'Small', scale: 0.90 },
-                            { label: 'Default', scale: 1.00 },
-                            { label: 'Large', scale: 1.15 },
-                            { label: 'Extra', scale: 1.25 }
-                          ].map(preset => {
-                            const isSelected = Math.abs((config.islandScale || 1.0) - preset.scale) < 0.03;
-                            return (
-                              <button
-                                key={preset.label}
-                                type="button"
-                                onClick={() => updateConfig({ islandScale: preset.scale })}
-                                className={`flex-1 py-1.5 text-[11px] font-semibold rounded-lg transition-all border ${
-                                  isSelected
-                                    ? 'bg-white text-black border-white shadow-sm'
-                                    : 'bg-white/[0.04] text-white/60 hover:text-white hover:bg-white/[0.08] border-white/5'
-                                }`}
-                              >
-                                {preset.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between pt-4 opacity-50">
-                        <div>
-                          <span className="text-sm font-semibold text-white/90">Notch Size</span>
-                          <p className="text-xs text-white/40">Size scaling is only applicable in Notch mode.</p>
-                        </div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-white/10 text-white/60">
-                          Notch Only
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Selected Monitor */}
-                    <div className="flex items-center justify-between pt-4">
-                      <div>
-                        <span className="text-sm font-semibold text-white/90">Selected Monitor</span>
-                        <p className="text-xs text-white/40">Anchor the dynamic island to a specific screen display.</p>
-                      </div>
-                      <div className="relative">
-                        <select
-                          value={config.selectedMonitor || 'primary'}
-                          onChange={(e) => updateConfig({ selectedMonitor: e.target.value })}
-                          className="bg-black/60 border border-white/15 text-xs font-semibold text-white/90 rounded-xl px-3 py-2 pr-8 appearance-none focus:outline-none focus:border-white/40 cursor-pointer shadow-sm"
-                        >
-                          <option value="primary">Primary Display</option>
-                          {monitors.filter(m => !m.isPrimary).map(m => (
-                            <option key={m.id} value={m.id.toString()}>{m.label}</option>
-                          ))}
-                        </select>
-                        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 2: Behaviour */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-indigo-500 to-purple-600 shadow-[0_2px_8px_rgba(99,102,241,0.35)] text-white flex items-center justify-center">
-                      <Zap size={16} strokeWidth={2.3} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">System Behaviour</h3>
-                      <p className="text-xs text-white/40">Manage window positioning, auto-launch, and hover gestures.</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4 flex flex-col gap-4 divide-y divide-white/[0.06]">
-                    {[
-                      {
-                        title: 'Run App on System Startup',
-                        desc: 'Smart Notch starts automatically when your PC turns on.',
-                        icon: Zap,
-                        badgeColor: 'from-amber-400 to-orange-500',
-                        checked: autostartEnabled,
-                        onToggle: toggleAutostart
-                      },
-                      {
-                        title: 'Hover to Show',
-                        desc: config.mode === 'bar' ? 'Bar hides off-screen and reveals on top edge hover (2s leave timer).' : 'Notch hides off-screen and reveals on edge hover (5s leave timer).',
-                        icon: Eye,
-                        badgeColor: 'from-sky-400 to-blue-500',
-                        checked: !!config.hoverToShow,
-                        onToggle: () => {
-                          const nextVal = !config.hoverToShow;
-                          if (config.mode === 'bar') {
-                            updateConfig({ hoverToShow: nextVal, barHoverToShow: nextVal });
-                          } else {
-                            updateConfig({ hoverToShow: nextVal, notchHoverToShow: nextVal });
-                          }
-                        }
-                      },
-                      {
-                        title: 'Hide behind maximized windows',
-                        desc: 'When a window is maximized (not fullscreen), island drops behind it.',
-                        icon: Minimize2,
-                        badgeColor: 'from-indigo-500 to-violet-600',
-                        checked: !!config.hideBehindMaximized,
-                        onToggle: () => updateConfig({ hideBehindMaximized: !config.hideBehindMaximized })
-                      },
-                      {
-                        title: 'Persistent Pin Mode',
-                        desc: 'Keep dynamic notch pinned open without accidental closing.',
-                        icon: Pin,
-                        badgeColor: 'from-rose-500 to-pink-600',
-                        checked: !!config.pinMode,
-                        onToggle: () => updateConfig({ pinMode: !config.pinMode })
-                      },
-                      {
-                        title: 'Lock Position',
-                        desc: 'Prevent accidental dragging or repositioning on the desktop.',
-                        icon: Lock,
-                        badgeColor: 'from-slate-500 to-zinc-700',
-                        checked: !!config.lockDrag,
-                        onToggle: () => updateConfig({ lockDrag: !config.lockDrag })
-                      }
-                    ].map((item, idx) => {
-                      const ItemIcon = item.icon;
-                      return (
-                        <div key={item.title} className={`flex items-center justify-between ${idx === 0 ? 'pt-1' : 'pt-3.5'}`}>
-                          <div className="flex items-center gap-3 pr-4">
-                            <div className={`w-7 h-7 rounded-lg bg-gradient-to-b ${item.badgeColor} flex items-center justify-center text-white shadow-sm flex-shrink-0`}>
-                              <ItemIcon size={14} strokeWidth={2.4} />
-                            </div>
-                            <div>
-                              <span className="text-sm font-semibold text-white/90">{item.title}</span>
-                              <p className="text-xs text-white/40">{item.desc}</p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={item.onToggle}
-                            className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${
-                              item.checked ? 'bg-[#34c759]' : 'bg-white/20'
-                            }`}
-                          >
-                            <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-150 absolute top-0.5 ${
-                              item.checked ? 'left-5' : 'left-0.5'
-                            }`} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <Section title="Behaviour">
+                  <Row icon={Zap} title="Open at sign-in" desc="Start Smart Notch when Windows starts.">
+                    <Switch checked={autostartEnabled} onChange={toggleAutostart} accent={accent} label="Open at sign-in" />
+                  </Row>
+                  <Row
+                    icon={Eye}
+                    title="Hide until hovered"
+                    desc={config.mode === 'bar' ? 'The bar slides away and returns when you point at the edge.' : 'The notch slides away and returns when you point at the edge.'}
+                  >
+                    <Switch
+                      checked={!!config.hoverToShow}
+                      accent={accent}
+                      label="Hide until hovered"
+                      onChange={() => {
+                        const next = !config.hoverToShow;
+                        updateConfig(config.mode === 'bar' ? { hoverToShow: next, barHoverToShow: next } : { hoverToShow: next, notchHoverToShow: next });
+                      }}
+                    />
+                  </Row>
+                  <Row icon={Minimize2} title="Hide behind maximised windows" desc="Step out of the way when a window fills the screen.">
+                    <Switch checked={!!config.hideBehindMaximized} onChange={() => updateConfig({ hideBehindMaximized: !config.hideBehindMaximized })} accent={accent} label="Hide behind maximised windows" />
+                  </Row>
+                  <Row icon={Pin} title="Keep open" desc="Don’t collapse the expanded notch when the pointer leaves.">
+                    <Switch checked={!!config.pinMode} onChange={() => updateConfig({ pinMode: !config.pinMode })} accent={accent} label="Keep open" />
+                  </Row>
+                  <Row icon={Lock} title="Lock position" desc="Prevent the notch from being dragged.">
+                    <Switch checked={!!config.lockDrag} onChange={() => updateConfig({ lockDrag: !config.lockDrag })} accent={accent} label="Lock position" />
+                  </Row>
+                </Section>
               </>
             )}
 
-            {/* ────────────────── APPEARANCE TAB ────────────────── */}
+            {/* ─────────── Appearance ─────────── */}
             {activeTab === 'appearance' && (
               <>
-                {/* Panel Material Style */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-purple-500 to-pink-600 shadow-[0_2px_8px_rgba(168,85,247,0.35)] text-white flex items-center justify-center">
-                      <Layers size={16} strokeWidth={2.3} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">Panel Material Style</h3>
-                      <p className="text-xs text-white/40">Glass blur and transparency texture for the island body.</p>
-                    </div>
-                  </div>
+                <NotchPreview config={config} accent={accent} />
 
-                  <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4">
-                    <div className="grid grid-cols-3 gap-2.5">
-                      {[
-                        { id: 'glass', label: 'Frosted Glass', desc: 'Sleek frosted blur' },
-                        { id: 'dark-glass', label: 'Dark Glass', desc: 'Deeper obsidian tint' },
-                        { id: 'solid', label: 'Solid Black', desc: 'Opaque contrast' }
-                      ].map(mat => (
-                        <button
-                          key={mat.id}
-                          type="button"
-                          onClick={() => updateConfig({ panelStyle: mat.id })}
-                          className={`py-3 px-3 rounded-xl text-left transition-all border ${
-                            (config.panelStyle || 'glass') === mat.id
-                              ? 'bg-white text-zinc-900 border-white shadow-md'
-                              : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white/70'
-                          }`}
-                        >
-                          <div className="text-xs font-bold">{mat.label}</div>
-                          <div className={`text-[10px] mt-0.5 ${(config.panelStyle || 'glass') === mat.id ? 'text-zinc-600' : 'text-white/40'}`}>{mat.desc}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Corner Shape */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-blue-500 to-cyan-500 shadow-[0_2px_8px_rgba(6,182,212,0.35)] text-white flex items-center justify-center">
-                      <Monitor size={16} strokeWidth={2.3} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">Corner Geometry</h3>
-                      <p className="text-xs text-white/40">Choose capsule curvature for notch and widgets.</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {[
-                        { id: 'pill', label: 'Pill (Smooth Curved)', desc: 'Organic curved Apple Dynamic Island style' },
-                        { id: 'rounded', label: 'Modern Rounded', desc: 'Contemporary crisp 18px rounded rectangle' }
-                      ].map(shape => (
-                        <button
-                          key={shape.id}
-                          type="button"
-                          onClick={() => updateConfig({ cornerShape: shape.id })}
-                          className={`py-3 px-3.5 rounded-xl text-left transition-all border ${
-                            (config.cornerShape || 'pill') === shape.id
-                              ? 'bg-white text-zinc-900 border-white shadow-md'
-                              : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white/70'
-                          }`}
-                        >
-                          <div className="text-xs font-bold">{shape.label}</div>
-                          <div className={`text-[10px] mt-0.5 ${(config.cornerShape || 'pill') === shape.id ? 'text-zinc-600' : 'text-white/40'}`}>{shape.desc}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Neon Glow Intensity */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-amber-400 to-orange-500 shadow-[0_2px_8px_rgba(245,158,11,0.35)] text-white flex items-center justify-center">
-                      <Sun size={16} strokeWidth={2.3} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">Neon Glow Halo</h3>
-                      <p className="text-xs text-white/40">Peripheral neon halo emitted around the notch perimeter.</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4">
-                    <div className="grid grid-cols-4 gap-2">
-                      {[
-                        { id: 'none', label: 'Off' },
-                        { id: 'low', label: 'Subtle' },
-                        { id: 'medium', label: 'Balanced' },
-                        { id: 'high', label: 'Vibrant' }
-                      ].map(glow => (
-                        <button
-                          key={glow.id}
-                          type="button"
-                          onClick={() => updateConfig({ glowIntensity: glow.id })}
-                          className={`py-2 px-2.5 rounded-xl text-xs font-bold text-center transition-all border ${
-                            (config.glowIntensity || 'medium') === glow.id
-                              ? 'bg-white text-zinc-900 border-white shadow-md'
-                              : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white/70'
-                          }`}
-                        >
-                          {glow.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Accent Color Palette */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-rose-500 to-pink-600 shadow-[0_2px_8px_rgba(244,63,94,0.35)] text-white flex items-center justify-center">
-                      <Palette size={16} strokeWidth={2.3} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">Accent Theme Color</h3>
-                      <p className="text-xs text-white/40">Highlights sliders, active badges, and waveforms.</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4 flex items-center gap-3 flex-wrap">
-                    {['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#06b6d4', '#007aff', '#af52de', '#ff2d55', '#ffffff'].map(color => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => updateConfig({ accentColor: color })}
-                        className={`w-8 h-8 rounded-full border-2 transition-all hover:scale-110 flex items-center justify-center shadow-md ${
-                          config.accentColor === color ? 'border-white scale-110 ring-2 ring-white/30' : 'border-black/40'
-                        }`}
-                        style={{ backgroundColor: color }}
-                      >
-                        {config.accentColor === color && (
-                          <Check size={14} strokeWidth={3} className={color === '#ffffff' ? 'text-black' : 'text-white'} />
-                        )}
-                      </button>
+                <Section title="Background effect" hint="♪ effects move with your music">
+                  <div className="p-4 grid grid-cols-3 gap-3">
+                    {BACKGROUND_EFFECTS.map((effect) => (
+                      <EffectTile
+                        key={effect.id}
+                        effect={effect}
+                        accent={accent}
+                        selected={selectedEffect === effect.id}
+                        onClick={() => updateConfig({ bgAnimation: effect.id })}
+                      />
                     ))}
+                  </div>
+                </Section>
+
+                <Section title="Colour">
+                  <Row title="Accent" desc="Switches, highlights and effects.">
+                    <Swatches
+                      colors={ACCENTS}
+                      value={config.accentColor}
+                      fallback="#0a84ff"
+                      onChange={(c) => updateConfig({ accentColor: c })}
+                      extra={
+                        <button
+                          type="button"
+                          title="Cycle colours"
+                          onClick={() => updateConfig({ accentColor: 'rgb' })}
+                          className="h-[22px] px-2 rounded-full text-[10.5px] font-medium transition-colors"
+                          style={config.accentColor === 'rgb'
+                            ? { background: 'linear-gradient(90deg,#ff453a,#30d158,#0a84ff)', color: '#fff' }
+                            : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)' }}
+                        >
+                          Cycle
+                        </button>
+                      }
+                    />
+                  </Row>
+                  <Row title="Resting notch" desc="Colour of the collapsed notch.">
+                    <Swatches colors={TINTS} value={config.idleColor} fallback="#000000" onChange={(c) => updateConfig({ idleColor: c })} />
+                  </Row>
+                  <Row title="Expanded notch" desc="Used when the material is set to Solid.">
+                    <Swatches colors={TINTS} value={config.bgColor} fallback="#000000" onChange={(c) => updateConfig({ bgColor: c })} />
+                  </Row>
+                </Section>
+
+                <Section title="Shape & material">
+                  <Row title="Corners">
+                    <Segmented value={config.cornerShape || 'rounded'} onChange={(id) => updateConfig({ cornerShape: id })} options={[{ id: 'pill', label: 'Rounded' }, { id: 'rounded', label: 'Squared' }]} />
+                  </Row>
+                  <Row title="Material" desc="Glass is lighter and see-through; Solid uses the Expanded notch colour.">
+                    <Segmented
+                      value={config.panelStyle || 'dark-glass'}
+                      onChange={(id) => updateConfig({ panelStyle: id })}
+                      options={[{ id: 'glass', label: 'Glass' }, { id: 'dark-glass', label: 'Dark glass' }, { id: 'solid', label: 'Solid' }]}
+                    />
+                  </Row>
+                  <Row title="Cards" desc="Darker cards keep text readable over background effects.">
+                    <Segmented
+                      value={config.cardStyle || 'dark'}
+                      onChange={(id) => updateConfig({ cardStyle: id })}
+                      options={[{ id: 'light', label: 'Light' }, { id: 'dark', label: 'Dark' }, { id: 'darker', label: 'Darker' }]}
+                    />
+                  </Row>
+                  <Row title="Edge glow" desc="A soft accent-coloured halo around the notch.">
+                    <Segmented
+                      value={config.glowIntensity || 'none'}
+                      onChange={(id) => updateConfig({ glowIntensity: id })}
+                      options={[{ id: 'none', label: 'Off' }, { id: 'medium', label: 'Subtle' }, { id: 'high', label: 'Strong' }]}
+                    />
+                  </Row>
+                </Section>
+
+                <Section title="Custom wallpaper">
+                  <div className="p-4 flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Paste an image or GIF link"
+                      value={config.customBgUrl || ''}
+                      onChange={(e) => updateConfig({ customBgUrl: e.target.value })}
+                      className="flex-1 bg-black/40 rounded-[8px] h-8 px-3 text-[12.5px] text-white placeholder-white/30 focus:outline-none shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.25)]"
+                    />
+                    {config.customBgUrl && (
+                      <button type="button" onClick={() => updateConfig({ customBgUrl: '' })} className="h-8 px-3 rounded-[8px] text-[12px] text-white/75 bg-white/[0.08] hover:bg-white/[0.14] transition-colors">
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </Section>
+              </>
+            )}
+
+            {/* ─────────── Widgets ─────────── */}
+            {activeTab === 'widgets' && (
+              <Section title="Show in the notch">
+                {[
+                  { key: 'showMediaWidget', title: 'Now playing', desc: 'Artwork, progress and playback controls.', icon: Music },
+                  { key: 'showAudioWaveform', title: 'Music lights', desc: 'Animated bars while something is playing.', icon: Volume2 },
+                  { key: 'showHardwareWidget', title: 'System', desc: 'Processor and memory usage.', icon: Cpu },
+                  { key: 'showNetworkWidget', title: 'Network', desc: 'Download and upload speed.', icon: Wifi },
+                  { key: 'showWeatherWidget', title: 'Weather', desc: 'Current temperature and conditions.', icon: Sun },
+                  { key: 'showPomodoro', title: 'Focus timer', desc: 'Work and break sessions with a task list.', icon: Timer },
+                  { key: 'showQuickTools', title: 'Shortcuts', desc: 'Calculator, Snipping Tool and Task Manager.', icon: Wrench }
+                ].map((w) => {
+                  const on = config[w.key] !== false;
+                  return (
+                    <Row key={w.key} icon={w.icon} title={w.title} desc={w.desc}>
+                      <Switch checked={on} onChange={() => updateConfig({ [w.key]: !on })} accent={accent} label={w.title} />
+                    </Row>
+                  );
+                })}
+              </Section>
+            )}
+
+            {/* ─────────── Tips ─────────── */}
+            {activeTab === 'howtouse' && (
+              <Section>
+                {[
+                  { icon: MousePointer2, title: 'Open the notch', desc: 'Click the notch, or hover it, to see media, controls and widgets.' },
+                  { icon: Keyboard, title: 'Volume and brightness', desc: 'Use your keyboard keys; the notch shows the level as you change it.' },
+                  { icon: Pointer, title: 'Scroll to adjust', desc: 'Scroll over the volume or brightness popup to fine-tune it.' },
+                  { icon: Pin, title: 'Keep it open', desc: 'Use the pin in the notch header while you work.' },
+                  { icon: Move, title: 'Move it', desc: 'Drag the notch to the top, left or right edge of the screen.' },
+                  { icon: SkipForward, title: 'Seek a song', desc: 'Click anywhere on the progress bar to jump to that point.' }
+                ].map((tip) => (
+                  <Row key={tip.title} icon={tip.icon} title={tip.title} desc={tip.desc} />
+                ))}
+              </Section>
+            )}
+
+            {/* ─────────── About ─────────── */}
+            {activeTab === 'about' && (
+              <>
+                <div className="flex-shrink-0 rounded-[14px] bg-white/[0.045] px-6 py-7 flex flex-col items-center text-center gap-3">
+                  <BrandMark size={64} />
+                  <div>
+                    <div className="text-[17px] font-semibold">Smart Notch</div>
+                    <div className="text-[12px] text-white/45 mt-0.5">Version {version} · Dynamic Island for Windows</div>
+                  </div>
+                  <p className="text-[12.5px] text-white/60 max-w-[420px] leading-relaxed">
+                    Media, system stats, Bluetooth and quick controls in a notch at the top of your screen.
+                  </p>
+                </div>
+                <Section>
+                  <Row title="Developer" desc="Avinash">
+                    <span />
+                  </Row>
+                  <Row title="Support development" desc="If Smart Notch is useful to you, you can buy me a coffee.">
                     <button
                       type="button"
-                      onClick={() => updateConfig({ accentColor: 'rgb' })}
-                      className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all border ${
-                        config.accentColor === 'rgb' 
-                          ? 'border-white scale-105 bg-gradient-to-r from-red-500 via-green-500 to-blue-500 text-white shadow-lg ring-2 ring-white/30' 
-                          : 'border-white/10 text-white/70 bg-white/5 hover:bg-white/10'
-                      }`}
+                      onClick={() => openExternal('https://buymeacoffee.com/dev_avinash')}
+                      className="h-7 px-3 rounded-[7px] text-[12px] font-medium bg-white/[0.1] hover:bg-white/[0.16] transition-colors flex items-center gap-1.5"
                     >
-                      RGB Cycle
+                      <Coffee size={13} strokeWidth={1.8} /> Buy me a coffee
                     </button>
-                    <div
-                      className="w-8 h-8 rounded-full border-2 border-dashed border-white/40 overflow-hidden flex-shrink-0 cursor-pointer hover:scale-110 transition-transform relative flex items-center justify-center bg-white/5"
-                      title="Custom color picker"
-                    >
-                      <input
-                        type="color"
-                        value={config.accentColor?.startsWith('#') ? config.accentColor : '#06b6d4'}
-                        onChange={(e) => updateConfig({ accentColor: e.target.value })}
-                        className="opacity-0 w-full h-full cursor-pointer absolute inset-0"
-                      />
-                      <Palette size={13} className="text-white/70 pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Island Background Color */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-slate-600 to-zinc-800 shadow-[0_2px_8px_rgba(71,85,105,0.35)] text-white flex items-center justify-center">
-                      <Layers size={16} strokeWidth={2.3} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">Expanded Notch Background</h3>
-                      <p className="text-xs text-white/40">Custom background tint when the notch expands.</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4 flex items-center gap-3 flex-wrap">
-                    {['#000000', '#0a0f1d', '#131b2e', '#1e1b4b', '#064e3b', '#1e3a8a', '#4c1d95', '#701a75', '#ffffff'].map(color => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => updateConfig({ bgColor: color })}
-                        className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 flex items-center justify-center shadow-md ${
-                          (config.bgColor || '#000000') === color ? 'border-white scale-110 ring-2 ring-white/30' : 'border-black/40'
-                        }`}
-                        style={{ backgroundColor: color }}
-                      >
-                        {(config.bgColor || '#000000') === color && (
-                          <Check size={14} strokeWidth={3} className={color === '#ffffff' ? 'text-black' : 'text-white'} />
-                        )}
-                      </button>
-                    ))}
-                    <div
-                      className="w-8 h-8 rounded-full border-2 border-dashed border-white/40 overflow-hidden flex-shrink-0 cursor-pointer hover:scale-110 transition-transform relative flex items-center justify-center bg-white/5"
-                      title="Custom color picker"
-                    >
-                      <input
-                        type="color"
-                        value={config.bgColor || '#000000'}
-                        onChange={(e) => updateConfig({ bgColor: e.target.value })}
-                        className="opacity-0 w-full h-full cursor-pointer absolute inset-0"
-                      />
-                      <Palette size={13} className="text-white/70 pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Idle / Collapsed Notch Color */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-teal-500 to-emerald-600 shadow-[0_2px_8px_rgba(20,184,166,0.35)] text-white flex items-center justify-center">
-                      <Eye size={16} strokeWidth={2.3} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">Idle Notch Capsule Color</h3>
-                      <p className="text-xs text-white/40">Capsule pill color when resting quietly at the top screen edge.</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4 flex items-center gap-3 flex-wrap">
-                    {['#000000', '#0a0f1d', '#131b2e', '#1e1b4b', '#064e3b', '#1e3a8a', '#4c1d95', '#701a75', '#ffffff'].map(color => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => updateConfig({ idleColor: color })}
-                        className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 flex items-center justify-center shadow-md ${
-                          (config.idleColor || '#000000') === color ? 'border-white scale-110 ring-2 ring-white/30' : 'border-black/40'
-                        }`}
-                        style={{ backgroundColor: color }}
-                      >
-                        {(config.idleColor || '#000000') === color && (
-                          <Check size={14} strokeWidth={3} className={color === '#ffffff' ? 'text-black' : 'text-white'} />
-                        )}
-                      </button>
-                    ))}
-                    <div
-                      className="w-8 h-8 rounded-full border-2 border-dashed border-white/40 overflow-hidden flex-shrink-0 cursor-pointer hover:scale-110 transition-transform relative flex items-center justify-center bg-white/5"
-                      title="Custom color picker"
-                    >
-                      <input
-                        type="color"
-                        value={config.idleColor || '#000000'}
-                        onChange={(e) => updateConfig({ idleColor: e.target.value })}
-                        className="opacity-0 w-full h-full cursor-pointer absolute inset-0"
-                      />
-                      <Palette size={13} className="text-white/70 pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Background Visual Animations */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-fuchsia-500 to-indigo-600 shadow-[0_2px_8px_rgba(217,70,239,0.35)] text-white flex items-center justify-center">
-                      <Sparkles size={16} strokeWidth={2.3} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">Visual Background Effects</h3>
-                      <p className="text-xs text-white/40">Dynamic particle animations rendered inside the expanded notch.</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4">
-                    <div className="grid grid-cols-3 gap-2.5">
-                      {[
-                        { id: 'off', label: 'Off (Clean)', desc: 'Pure dark aesthetic' },
-                        { id: 'liquid', label: 'Liquid Glow', desc: 'Organic pulsating light' },
-                        { id: 'cosmic', label: 'Cosmic Orbits', desc: 'Gentle particle field' },
-                        { id: 'aurora', label: 'Aurora Wave', desc: 'Northern lights ribbon' },
-                        { id: 'matrix', label: 'Matrix Digital', desc: 'Falling cipher streams' },
-                        { id: 'hyperspace', label: 'Starfield Warp', desc: 'Deep space speed warp' },
-                        { id: 'rain', label: 'Raindrops', desc: 'Subtle water ripples' }
-                      ].map(anim => (
+                  </Row>
+                  <Row
+                    title="Updates"
+                    desc={
+                      updates.checking ? 'Checking for updates…'
+                        : updates.updateAvailable ? `Version ${updates.latestVersion} is available.`
+                        : updates.checkError ? 'Couldn’t check for updates. Try again later.'
+                        : `You’re up to date${updates.checkedAt ? ` · checked ${timeAgo(updates.checkedAt)}` : ''}.`
+                    }
+                  >
+                    <div className="flex items-center gap-2">
+                      {!updates.updateAvailable && (
                         <button
-                          key={anim.id}
                           type="button"
-                          onClick={() => updateConfig({ bgAnimation: anim.id })}
-                          className={`py-2.5 px-3 rounded-xl text-left transition-all border ${
-                            config.bgAnimation === anim.id
-                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 shadow-md ring-1 ring-cyan-400/30'
-                              : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white/70'
-                          }`}
+                          disabled={updates.checking}
+                          onClick={updates.checkNow}
+                          className="h-7 px-3 rounded-[7px] text-[12px] font-medium bg-white/[0.1] hover:bg-white/[0.16] transition-colors disabled:opacity-50"
                         >
-                          <div className="text-xs font-bold">{anim.label}</div>
-                          <div className="text-[10px] text-white/40 mt-0.5">{anim.desc}</div>
+                          {updates.checking ? 'Checking…' : 'Check now'}
                         </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Custom GIF Background */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-cyan-500 to-blue-600 shadow-[0_2px_8px_rgba(6,182,212,0.35)] text-white flex items-center justify-center">
-                      <Image size={16} strokeWidth={2.3} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">Custom GIF / Wallpaper URL</h3>
-                      <p className="text-xs text-white/40">Display an animated GIF or background image inside the expanded notch.</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4 flex flex-col gap-2.5">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Paste image or GIF direct URL here..."
-                        value={config.customBgUrl || ''}
-                        onChange={(e) => updateConfig({ customBgUrl: e.target.value })}
-                        className="flex-1 bg-black/60 border border-white/15 rounded-xl px-3.5 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-white/40"
-                      />
-                      {config.customBgUrl && (
+                      )}
+                      {updates.updateAvailable && (
                         <button
                           type="button"
-                          onClick={() => updateConfig({ customBgUrl: '' })}
-                          className="bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors border border-red-500/30"
+                          onClick={updates.openUpdate}
+                          className="h-7 px-3 rounded-[7px] text-[12px] font-medium text-white flex items-center gap-1.5"
+                          style={{ background: accent }}
                         >
-                          Reset
+                          Update <ExternalLink size={12} />
                         </button>
                       )}
                     </div>
-                  </div>
-                </div>
+                  </Row>
+                </Section>
+
+                <Section title={`What’s new in ${version}`}>
+                  <div className="px-4 py-3.5"><ChangeList items={updates.changelog} /></div>
+                </Section>
               </>
             )}
-
-            {/* ────────────────── WIDGETS TAB ────────────────── */}
-            {activeTab === 'widgets' && (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-emerald-500 to-teal-600 shadow-[0_2px_8px_rgba(16,185,129,0.35)] text-white flex items-center justify-center">
-                    <LayoutGrid size={16} strokeWidth={2.3} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white tracking-tight">Enabled Modules</h3>
-                    <p className="text-xs text-white/40">Toggle which cards and controls appear in the island.</p>
-                  </div>
-                </div>
-
-                <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4 flex flex-col gap-4 divide-y divide-white/[0.06]">
-                  {[
-                    { 
-                      key: 'showMediaWidget', 
-                      title: 'Media & Spotify Player', 
-                      desc: 'Display album art, seekable progress bar, and playback controls.',
-                      icon: Music,
-                      badgeColor: 'from-emerald-400 to-green-600'
-                    },
-                    { 
-                      key: 'showHardwareWidget', 
-                      title: 'Hardware Diagnostics', 
-                      desc: 'Real-time CPU load, RAM usage, and battery statistics.',
-                      icon: Cpu,
-                      badgeColor: 'from-blue-500 to-indigo-600'
-                    },
-                    { 
-                      key: 'showWeatherWidget', 
-                      title: 'Weather & Forecast', 
-                      desc: 'Live temperature, conditions, and weather alerts.',
-                      icon: Sun,
-                      badgeColor: 'from-amber-400 to-orange-500'
-                    },
-                    { 
-                      key: 'showNetworkWidget', 
-                      title: 'Network Speed Monitor', 
-                      desc: 'Live download and upload transfer rate meters.',
-                      icon: Wifi,
-                      badgeColor: 'from-violet-500 to-purple-600'
-                    },
-                    { 
-                      key: 'showPomodoro', 
-                      title: 'Focus & Pomodoro Timer', 
-                      desc: 'Customizable work/break timer directly on your screen.',
-                      icon: Timer,
-                      badgeColor: 'from-rose-500 to-red-600'
-                    },
-                    { 
-                      key: 'showQuickTools', 
-                      title: 'Quick Utilities Bar', 
-                      desc: 'One-click shortcuts to Calculator, Screen Snip, and Task Manager.',
-                      icon: Wrench,
-                      badgeColor: 'from-slate-500 to-zinc-700'
-                    },
-                    { 
-                      key: 'showAudioWaveform', 
-                      title: 'Dynamic Audio Waveform', 
-                      desc: 'Sculpted audio visualizer waves during active song playback.',
-                      icon: Volume2,
-                      badgeColor: 'from-fuchsia-500 to-pink-600'
-                    }
-                  ].map((w, idx) => {
-                    const isEnabled = config[w.key] !== false;
-                    const ModuleIcon = w.icon;
-                    return (
-                      <div key={w.key} className={`flex items-center justify-between ${idx === 0 ? 'pt-1' : 'pt-3.5'}`}>
-                        <div className="flex items-center gap-3 pr-4">
-                          <div className={`w-7 h-7 rounded-lg bg-gradient-to-b ${w.badgeColor} flex items-center justify-center text-white shadow-sm flex-shrink-0`}>
-                            <ModuleIcon size={14} strokeWidth={2.4} />
-                          </div>
-                          <div>
-                            <span className="text-sm font-semibold text-white/90">{w.title}</span>
-                            <p className="text-xs text-white/40">{w.desc}</p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => updateConfig({ [w.key]: !isEnabled })}
-                          className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${
-                            isEnabled ? 'bg-[#34c759]' : 'bg-white/20'
-                          }`}
-                        >
-                          <div className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-150 absolute top-0.5 ${
-                            isEnabled ? 'left-5' : 'left-0.5'
-                          }`} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ────────────────── ABOUT TAB ────────────────── */}
-            {activeTab === 'about' && (
-              <div className="flex flex-col gap-4">
-                <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-6 flex flex-col items-center text-center gap-3">
-                  <img 
-                    src={appLogo} 
-                    alt="Smart Notch App Logo" 
-                    className="w-16 h-16 rounded-2xl object-cover shadow-2xl border border-white/20 drop-shadow-[0_4px_24px_rgba(56,189,248,0.4)] hover:scale-105 transition-transform" 
-                  />
-                  <div>
-                    <h3 className="text-base font-bold text-white tracking-tight">Smart Notch</h3>
-                    <p className="text-xs text-white/50">Version {version} • Dynamic Island for Windows</p>
-                  </div>
-                  <p className="text-xs text-white/60 max-w-md leading-relaxed">
-                    A beautiful, intelligent dynamic notch and island experience for Windows 10 & 11 with live hardware telemetry, media controls, and instant HUD alerts.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2 pt-2">
-                    <span className="text-[11px] px-3 py-1 rounded-full bg-white/10 text-white/80 font-semibold border border-white/10">
-                      Author: Avinash
-                    </span>
-                    <span className="text-[11px] px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
-                      Store Edition v{version}
-                    </span>
-                    <button
-                      onClick={() => {
-                        if (ipcRenderer) {
-                          ipcRenderer.send('open-url', 'https://buymeacoffee.com/dev_avinash');
-                        } else {
-                          window.open('https://buymeacoffee.com/dev_avinash', '_blank');
-                        }
-                      }}
-                      className="text-[11px] px-3 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-semibold border border-amber-500/30 flex items-center gap-1.5 transition-all hover:scale-[1.03] active:scale-95 cursor-pointer shadow-[0_0_12px_rgba(245,158,11,0.2)]"
-                      title="Support the development of Smart Notch"
-                    >
-                      <Coffee size={12} className="text-amber-400" />
-                      <span>Support Smart Notch ☕</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4 flex flex-col gap-2">
-                  <span className="text-xs font-bold text-white/50 uppercase tracking-wider px-1">Changelog Highlights</span>
-                  <div className="text-xs text-white/70 flex flex-col gap-2 p-2 leading-relaxed">
-                    <div className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 flex-shrink-0" />
-                      <span><b>Separated Floating Settings:</b> Real-time live customization preview window with persistent controls.</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 flex-shrink-0" />
-                      <span><b>Zero-Overhead HUD:</b> Native background audio & brightness notification notch popups.</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 flex-shrink-0" />
-                      <span><b>Bluetooth System:</b> Instant battery telemetry and device connection alerts.</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
-                      <span><b>Auto Start Architecture:</b> Seamless launch on system startup.</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ────────────────── HOW TO USE TAB ────────────────── */}
-            {activeTab === 'howtouse' && (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-amber-400 to-orange-500 shadow-[0_2px_8px_rgba(245,158,11,0.35)] text-white flex items-center justify-center">
-                    <BookOpen size={16} strokeWidth={2.3} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white tracking-tight">Quick Start Guide</h3>
-                    <p className="text-xs text-white/40">Tips and gestures to get the most out of Smart Notch.</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { title: 'Hover or Click to Expand', desc: 'Move your mouse to the top notch or click it to reveal media playback and quick controls.' },
-                    { title: 'Live Settings Preview', desc: 'Drag the Island Size slider or switch between Island & Notch mode to see changes immediately.' },
-                    { title: 'Persistent Pin Mode', desc: 'Click the Pin icon in the top header to lock the expanded island open during multitasking.' },
-                    { title: 'Keyboard HUD Alerts', desc: 'Press your volume or brightness keys to see the seamless floating island notch bar.' },
-                    { title: 'Drag & Dock to Edges', desc: 'Drag the handle to snap the island to Top, Left, or Right screen edges.' },
-                    { title: 'Media Timeline Seeking', desc: 'Click directly on the song timeline bar to scrub playback position in Spotify or Media Player.' }
-                  ].map((tip, idx) => (
-                    <div key={idx} className="bg-white/[0.035] border border-white/[0.08] rounded-2xl p-4 flex flex-col gap-1.5">
-                      <span className="text-xs font-bold text-white/90">{tip.title}</span>
-                      <p className="text-xs text-white/50 leading-relaxed">{tip.desc}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
           </div>
         </main>
       </div>

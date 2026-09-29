@@ -1,11 +1,11 @@
 const koffi = require('koffi');
 const ntdll = koffi.load('ntdll.dll');
 const NtQueryWnfStateData = ntdll.stdcall('NtQueryWnfStateData', 'int', ['uint64*', 'void*', 'void*', 'int*', 'void*', 'int*']);
-const { app, BrowserWindow, screen, ipcMain, shell, clipboard, Menu, Notification } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, shell, clipboard, Menu, Notification, powerMonitor } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
-const SpotifyWebApi = require('spotify-web-api-node');
+const os = require('os');
 
 // ── Single-instance lock ──────────────────────────────────────────────────────
 // Must be the very first logic that runs so a duplicate process exits before
@@ -25,12 +25,21 @@ app.on('second-instance', () => {
 });
 
 // Hardware acceleration & GPU rendering flags for smooth 60/120Hz transitions
-app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('ignore-gpu-blocklist');
+// GPU features are left to Chromium: forcing them (ignore-gpu-blocklist, zero-copy)
+// on drivers Chromium has blocklisted caused rendering stalls that only a restart fixed.
 
+// Debug log in userData, capped at ~1 MB (one previous file is kept as .old.log)
+const LOG_MAX_BYTES = 1024 * 1024;
+let logPath = null;
+let logWrites = 0;
 function logg(msg) {
-  try { fs.appendFileSync(path.join(app.getPath('userData'), 'app-debug.log'), new Date().toISOString() + ': ' + msg + '\n'); } catch(e){}
+  try {
+    if (!logPath) logPath = path.join(app.getPath('userData'), 'app-debug.log');
+    if (logWrites++ % 200 === 0 && fs.existsSync(logPath) && fs.statSync(logPath).size > LOG_MAX_BYTES) {
+      fs.renameSync(logPath, logPath.replace(/\.log$/, '.old.log'));
+    }
+    fs.appendFileSync(logPath, new Date().toISOString() + ': ' + msg + '\n');
+  } catch (e) {}
 }
 
 process.on('uncaughtException', (err) => {
@@ -103,6 +112,8 @@ async function fetchLyrics(item) {
 
 const { fork } = require('child_process');
 let smtcWorker = null;
+let smtcLastMessage = 0;
+let appQuitting = false;
 
 function startSpotifyPolling() {
   const spawnWorker = () => {
@@ -115,7 +126,10 @@ function startSpotifyPolling() {
 
       let currentTrackThumbnail = '';
       let currentTrackThumbnailMime = 'image/png';
+      smtcLastMessage = Date.now();
+      let lastSentThumbnail = null;
       smtcWorker.on('message', (msg) => {
+        smtcLastMessage = Date.now();
         if (!mainWindow || mainWindow.isDestroyed()) return;
         if (msg) {
           const trackId = msg.title + '-' + msg.artist;
@@ -132,11 +146,14 @@ function startSpotifyPolling() {
 
           const fallbackArtist = msg.artist || (msg.is_spotify ? 'Spotify' : ((msg.appId && (msg.appId.includes('Zune') || msg.appId.includes('Media.Player'))) ? 'Media Player' : (msg.appId && msg.appId.toLowerCase().includes('brave') ? 'Brave' : (msg.appId && msg.appId.toLowerCase().includes('chrome') ? 'Chrome' : 'Playing'))));
 
+          // Artwork is a large base64 string: only send it when it changes
+          const artChanged = currentTrackThumbnail !== lastSentThumbnail;
+          lastSentThumbnail = currentTrackThumbnail;
           const item = {
             id: trackId,
             name: msg.title,
             artists: [{ name: fallbackArtist }],
-            album: { images: [{ url: currentTrackThumbnail ? `data:${currentTrackThumbnailMime};base64,` + currentTrackThumbnail : '' }] },
+            album: artChanged ? { images: [{ url: currentTrackThumbnail ? `data:${currentTrackThumbnailMime};base64,` + currentTrackThumbnail : '' }] } : null,
             duration_ms: msg.duration_ms || 0,
             progress_ms: msg.progress_ms || 0
           };
@@ -148,28 +165,59 @@ function startSpotifyPolling() {
             duration_ms: msg.duration_ms || 0,
             lyrics: currentLyrics,
             sourceAppId: msg.appId,
-            isSpotify: msg.is_spotify
+            isSpotify: msg.is_spotify,
+            artUnchanged: !artChanged
           };
 
           mainWindow.webContents.send('spotify-state', body);
         } else {
+          lastSentThumbnail = null;
           mainWindow.webContents.send('spotify-state', null);
         }
       });
 
-      smtcWorker.on('exit', () => setTimeout(spawnWorker, 5000));
+      const proc = smtcWorker;
+      smtcWorker.on('exit', () => {
+        if (smtcWorker !== proc || appQuitting) return;
+        smtcWorker = null;
+        setTimeout(spawnWorker, 3000);
+      });
     } catch(e) {
       logg('Worker spawn error: ' + e.message);
     }
   };
   
   spawnWorker();
+
+  // The worker reports every ~0.8s; if the native media API hangs, restart it
+  setInterval(() => {
+    if (appQuitting || !smtcWorker) return;
+    if (Date.now() - smtcLastMessage > 12000) {
+      logg('Media worker stopped responding, restarting');
+      const old = smtcWorker;
+      smtcWorker = null;
+      try { old.kill(); } catch (_) {}
+      spawnWorker();
+    }
+  }, 5000);
 }
 
 let lastCopiedText = '';
+let getClipboardSequence = null;
+try {
+  getClipboardSequence = koffi.load('user32.dll').func('uint32 __stdcall GetClipboardSequenceNumber()');
+} catch (_) {}
+let lastClipboardSeq = -1;
+
 function startClipboardPolling() {
   setInterval(() => {
     try {
+      // Reading the clipboard copies its whole content; skip it unless it changed
+      if (getClipboardSequence) {
+        const seq = getClipboardSequence();
+        if (seq === lastClipboardSeq) return;
+        lastClipboardSeq = seq;
+      }
       const text = clipboard.readText();
       if (text && text !== lastCopiedText) {
         lastCopiedText = text;
@@ -184,7 +232,6 @@ function startClipboardPolling() {
   }, 1000);
 }
 
-const os = require('os');
 function getCpuUsage() {
   let idle = 0, total = 0;
   const cpus = os.cpus();
@@ -787,6 +834,9 @@ function startCombinedBackgroundMonitor() {
 
   ps.on('close', (code) => {
     logg('Combined background monitor exited with code ' + code);
+    if (combinedPs !== ps || appQuitting) return;
+    combinedPs = null;
+    setTimeout(() => { if (!appQuitting && !combinedPs) startCombinedBackgroundMonitor(); }, 3000);
   });
 
   ps.on('error', (err) => {
@@ -832,30 +882,51 @@ let lastSentMute = null;
 let lastSentBright = -1;
 let lastUserVolTime = 0;
 let lastUserBrightTime = 0;
+let currentBtDevice = null;
+// name -> battery for every BT device the worker has reported, so restarts don't re-pop alerts
+const knownBtDevices = new Map();
+// Devices re-announced by a freshly (re)started worker before READY
+let pendingBtPresent = null;
+let sysWorkerQuitting = false;
+let audioMeterWanted = false;
+let systemToggles = null;
+let sysWorkerRestartTimer = null;
+let sysWorkerWatchdog = null;
+let lastHbLevels = 0;
+let lastHbBt = 0;
 
 function getExecutableScriptPath(scriptName) {
-  const directPath = path.join(__dirname, scriptName);
-  if (!app.isPackaged && fs.existsSync(directPath)) {
-    return directPath;
+  // 1. In development, use direct file in project root
+  if (!app.isPackaged) {
+    const directPath = path.join(__dirname, scriptName);
+    if (fs.existsSync(directPath)) return directPath;
   }
 
+  // 2. In packaged app, electron-builder unpacks *.ps1 to app.asar.unpacked
+  if (process.resourcesPath) {
+    const unpackedPath = path.join(process.resourcesPath, 'app.asar.unpacked', scriptName);
+    if (fs.existsSync(unpackedPath)) return unpackedPath;
+  }
+
+  const asarUnpackedDir = __dirname.replace(/app\.asar[/\\]?$/i, 'app.asar.unpacked');
+  const asarUnpackedPath = path.join(asarUnpackedDir, scriptName);
+  if (fs.existsSync(asarUnpackedPath)) return asarUnpackedPath;
+
+  if (app.getAppPath) {
+    const appUnpacked = path.join(app.getAppPath().replace(/app\.asar[/\\]?$/i, 'app.asar.unpacked'), scriptName);
+    if (fs.existsSync(appUnpacked)) return appUnpacked;
+  }
+
+  // 3. Fallback: extract to temp directory (safe across all AppX sandboxes)
   try {
-    const scriptsDir = path.join(app.getPath('userData'), 'scripts');
-    if (!fs.existsSync(scriptsDir)) {
-      fs.mkdirSync(scriptsDir, { recursive: true });
-    }
-    const targetPath = path.join(scriptsDir, scriptName);
+    const tempDir = path.join(os.tmpdir(), 'smart-notch-scripts');
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+    const targetPath = path.join(tempDir, scriptName);
 
     const candidates = [
-      directPath,
-      path.join(__dirname.replace(/app\.asar[/\\]?$/i, 'app.asar.unpacked'), scriptName),
-      process.resourcesPath ? path.join(process.resourcesPath, 'app.asar.unpacked', scriptName) : null,
-      process.resourcesPath ? path.join(process.resourcesPath, scriptName) : null,
-      app.getAppPath ? path.join(app.getAppPath(), scriptName) : null,
-      app.getAppPath ? path.join(app.getAppPath().replace(/app\.asar[/\\]?$/i, 'app.asar.unpacked'), scriptName) : null,
+      path.join(__dirname, scriptName),
       path.join(process.cwd(), scriptName)
-    ].filter(Boolean);
-
+    ];
     let sourceContent = null;
     for (const cand of candidates) {
       try {
@@ -865,43 +936,46 @@ function getExecutableScriptPath(scriptName) {
         }
       } catch (_) {}
     }
-
     if (sourceContent && sourceContent.length > 0) {
       let needsWrite = true;
       if (fs.existsSync(targetPath)) {
         try {
-          const currentContent = fs.readFileSync(targetPath);
-          if (sourceContent.equals(currentContent)) {
-            needsWrite = false;
-          }
+          const cur = fs.readFileSync(targetPath);
+          if (sourceContent.equals(cur)) needsWrite = false;
         } catch (_) {}
       }
-      if (needsWrite) {
-        fs.writeFileSync(targetPath, sourceContent);
-      }
-      return targetPath;
-    }
-
-    if (fs.existsSync(targetPath)) {
+      if (needsWrite) fs.writeFileSync(targetPath, sourceContent);
       return targetPath;
     }
   } catch (err) {
-    logg(`getExecutableScriptPath error for ${scriptName}: ${err.message}`);
+    logg(`getExecutableScriptPath fallback error for ${scriptName}: ${err.message}`);
   }
 
-  return directPath;
+  return path.join(__dirname, scriptName);
 }
 
 function startSystemControlWorker() {
   const scriptPath = getExecutableScriptPath('system_control.ps1');
   if (!fs.existsSync(scriptPath)) { logg('system_control.ps1 not found at: ' + scriptPath); return; }
-  
-  sysWorker = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
-    stdio: ['pipe', 'pipe', 'pipe']
+  logg('Starting system control worker with script: ' + scriptPath);
+
+  if (sysWorkerRestartTimer) { clearTimeout(sysWorkerRestartTimer); sysWorkerRestartTimer = null; }
+  sysWorkerReady = false;
+  // Treat the first levels from a new worker as initial state (no OSD popup)
+  lastSentVol = -1;
+  lastSentBright = -1;
+  pendingBtPresent = new Set();
+  lastHbLevels = lastHbBt = Date.now();
+
+  const proc = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true
   });
-  
+  sysWorker = proc;
+
   let buffer = '';
-  sysWorker.stdout.on('data', (data) => {
+  proc.stdout.on('data', (data) => {
+    if (sysWorker !== proc) return;
     buffer += data.toString();
     const lines = buffer.split(/\r?\n/);
     buffer = lines.pop();
@@ -910,8 +984,45 @@ function startSystemControlWorker() {
       if (!t) continue;
       if (t === 'READY') {
         sysWorkerReady = true;
+        logg('sysWorker reported READY');
+        if (audioMeterWanted) sysWorkerSend('meter on');
+        // Anything we thought was connected but the new worker didn't report is gone
+        if (pendingBtPresent) {
+          for (const name of [...knownBtDevices.keys()]) {
+            if (!pendingBtPresent.has(name)) btDeviceDisconnected(name);
+          }
+          pendingBtPresent = null;
+        }
         continue;
       }
+      if (t.startsWith('PK:')) {
+        // Output peak levels for beat-synced lights; drop them if nothing is listening
+        if (audioMeterWanted && mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+          const [l, r] = t.substring(3).split(',').map(Number);
+          mainWindow.webContents.send('audio-level', [l / 1000, r / 1000]);
+        }
+        continue;
+      }
+      if (t.startsWith('BOOST_STEP:')) {
+        const [name, mb] = t.substring(11).split('|');
+        if (boostWaiter && !boostWaiter.sender.isDestroyed()) boostWaiter.sender.send('boost-progress', { name, mb: parseFloat(mb) || 0 });
+        continue;
+      }
+      if (t.startsWith('BOOST_DONE:')) {
+        const [mb, apps] = t.substring(11).split('|');
+        finishBoost({ success: true, freedMB: parseFloat(mb) || 0, apps: parseInt(apps, 10) || 0 });
+        continue;
+      }
+      if (t.startsWith('TOGGLES:')) {
+        // Night light / Do not disturb state (1 on, 0 off, -1 unknown)
+        const kv = Object.fromEntries(t.substring(8).split('|').map((p) => p.split('=')));
+        systemToggles = { nightLight: kv.NL === '1', dnd: kv.DND === '1', nightLightKnown: kv.NL !== '-1', dndKnown: kv.DND !== '-1' };
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('system-toggles', systemToggles);
+        if (kv.OK === 'False') logg('Toggle change was not applied: ' + t);
+        continue;
+      }
+      if (t === 'HB:LEVELS') { lastHbLevels = Date.now(); continue; }
+      if (t === 'HB:BT') { lastHbBt = Date.now(); continue; }
       if (t.startsWith('VOL:')) {
         const parts = t.split('|');
         const v = Math.round(parseFloat(parts[0].substring(4)));
@@ -926,12 +1037,14 @@ function startSystemControlWorker() {
         lastSentVol = v;
         lastSentMute = m;
         if (!isInitial) {
-          if (changed && Date.now() - lastUserVolTime >= 800) {
+          if (changed && Date.now() - lastUserVolTime >= 500) {
+            logg(`VOL changed via external/keyboard: ${v}, muted: ${m}`);
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('osd-level', { type: 'volume', value: v, isMuted: m });
             }
           }
         } else {
+          logg(`Initial VOL received: ${v}, muted: ${m}`);
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('init-levels', { volume: v, isMuted: m, isBtAudio: currentIsBtAudio });
           }
@@ -954,45 +1067,40 @@ function startSystemControlWorker() {
         const b = parseInt(t.substring(11));
         if (!isNaN(b)) {
           const isInitial = (lastSentBright === -1);
+          const changed = (b !== currentBrightnessVal);
           currentBrightnessVal = b;
+          lastSentBright = b;
           if (!isInitial) {
-            if (Date.now() - lastUserBrightTime >= 2500) {
-              if (b !== lastSentBright) {
-                lastSentBright = b;
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                  mainWindow.webContents.send('osd-level', { type: 'brightness', value: b });
-                }
+            if (changed && Date.now() - lastUserBrightTime >= 600) {
+              logg(`BRIGHTNESS changed via external/keyboard: ${b}`);
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('osd-level', { type: 'brightness', value: b });
               }
             }
           } else {
-            lastSentBright = b;
+            logg(`Initial BRIGHTNESS received: ${b}`);
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('init-levels', { brightness: b });
             }
           }
         }
       } else if (t.startsWith('BT_CONNECTED:')) {
-        const parts = t.substring(13).split('|BATTERY:');
-        const name = parts[0];
-        const battery = parts.length > 1 ? parseInt(parts[1]) : -1;
+        const { name, battery } = parseBtLine(t.substring(13));
         logg(`BT_CONNECTED event: name=${name}, battery=${battery}`);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('bt-device-event', { type: 'connected', name, battery });
-        }
+        btDeviceConnected(name, battery, true);
+      } else if (t.startsWith('BT_PRESENT:')) {
+        const { name, battery } = parseBtLine(t.substring(11));
+        logg(`BT_PRESENT event: name=${name}, battery=${battery}`);
+        if (pendingBtPresent) pendingBtPresent.add(name);
+        // Only alert if this device is new to us (e.g. connected while worker was down)
+        btDeviceConnected(name, battery, !knownBtDevices.has(name));
+      } else if (t.startsWith('BT_BATTERY:')) {
+        const { name, battery } = parseBtLine(t.substring(11));
+        btDeviceConnected(name, battery, false);
       } else if (t.startsWith('BT_DISCONNECTED:')) {
         const name = t.substring(16);
         logg(`BT_DISCONNECTED event: name=${name}`);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('bt-device-event', { type: 'disconnected', name });
-        }
-      } else if (t.startsWith('BT_PRESENT:')) {
-        const parts = t.substring(11).split('|BATTERY:');
-        const name = parts[0];
-        const battery = parts.length > 1 ? parseInt(parts[1]) : -1;
-        logg(`BT_PRESENT event: name=${name}, battery=${battery}`);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('bt-device-event', { type: 'present', name, battery });
-        }
+        btDeviceDisconnected(name);
       } else if (t.startsWith('BT_AUDIO:')) {
         const isBt = t.substring(9).trim() === 'True';
         currentIsBtAudio = isBt;
@@ -1003,12 +1111,68 @@ function startSystemControlWorker() {
     }
   });
 
-  sysWorker.stderr.on('data', (d) => logg('sysWorker stderr: ' + d.toString().trim()));
-  sysWorker.on('close', () => {
+  proc.stderr.on('data', (d) => logg('sysWorker stderr: ' + d.toString().trim()));
+  proc.on('close', (code) => {
+    if (sysWorker !== proc) return; // replaced by a restart
     sysWorkerReady = false;
-    setTimeout(startSystemControlWorker, 3000);
+    sysWorker = null;
+    if (sysWorkerQuitting) return;
+    logg(`sysWorker exited (code ${code}), restarting`);
+    sysWorkerRestartTimer = setTimeout(startSystemControlWorker, 2000);
   });
-  sysWorker.on('error', (e) => logg('sysWorker error: ' + e.message));
+  proc.on('error', (e) => logg('sysWorker error: ' + e.message));
+
+  if (!sysWorkerWatchdog) {
+    // The worker emits heartbeats from its volume/brightness and Bluetooth loops.
+    // If either loop stalls (COM/WMI hang, sleep/resume), restart it instead of
+    // leaving the OSD and Bluetooth alerts dead until the app is relaunched.
+    sysWorkerWatchdog = setInterval(() => {
+      if (!sysWorker || !sysWorkerReady || sysWorkerQuitting) return;
+      const now = Date.now();
+      if (now - lastHbLevels > 10000 || now - lastHbBt > 15000) {
+        logg(`sysWorker heartbeat stale (levels ${now - lastHbLevels}ms, bt ${now - lastHbBt}ms), restarting`);
+        restartSystemControlWorker();
+      }
+    }, 3000);
+  }
+}
+
+function restartSystemControlWorker() {
+  const old = sysWorker;
+  sysWorker = null;
+  sysWorkerReady = false;
+  if (old) { try { old.kill(); } catch (_) {} }
+  startSystemControlWorker();
+}
+
+function parseBtLine(rest) {
+  const parts = rest.split('|BATTERY:');
+  const battery = parts.length > 1 ? parseInt(parts[1]) : -1;
+  return { name: parts[0], battery: isNaN(battery) ? -1 : battery };
+}
+
+function btDeviceConnected(name, battery, alert) {
+  const prev = knownBtDevices.get(name);
+  knownBtDevices.set(name, battery);
+  currentBtDevice = { name, battery };
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (alert) {
+    mainWindow.webContents.send('bt-device-event', { type: 'connected', name, battery });
+  } else if (prev !== battery) {
+    mainWindow.webContents.send('bt-device-event', { type: 'battery', name, battery });
+  }
+}
+
+function btDeviceDisconnected(name) {
+  if (!knownBtDevices.has(name)) return;
+  knownBtDevices.delete(name);
+  if (currentBtDevice && currentBtDevice.name === name) {
+    const rest = [...knownBtDevices.entries()].pop();
+    currentBtDevice = rest ? { name: rest[0], battery: rest[1] } : null;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('bt-device-event', { type: 'disconnected', name });
+  }
 }
 
 function sysWorkerSend(cmd) {
@@ -1044,6 +1208,14 @@ ipcMain.on('adjust-volume', (e, delta) => {
     mainWindow.webContents.send('osd-level', { type: 'volume', value: newVol, isMuted: currentMuteVal });
   }
   sysWorkerSend(`v ${newVol}`);
+});
+
+// The renderer asks for peak levels only while music is playing and lights are on screen
+ipcMain.on('audio-meter', (e, on) => {
+  const want = !!on;
+  if (want === audioMeterWanted) return;
+  audioMeterWanted = want;
+  sysWorkerSend(want ? 'meter on' : 'meter off');
 });
 
 ipcMain.on('toggle-mute', () => {
@@ -1092,6 +1264,10 @@ ipcMain.on('open-file', (e, filePath) => {
 ipcMain.on('open-url', (e, link) => shell.openExternal(link));
 ipcMain.on('open-weather', () => shell.openExternal('bingweather:'));
 ipcMain.on('open-nightlight', () => shell.openExternal('ms-settings:nightlight'));
+// Night light / Do not disturb are switched directly by the system worker
+ipcMain.on('set-night-light', (e, on) => sysWorkerSend(on ? 'nightlight on' : 'nightlight off'));
+ipcMain.on('set-dnd', (e, on) => sysWorkerSend(on ? 'dnd on' : 'dnd off'));
+ipcMain.handle('get-system-toggles', () => systemToggles);
 ipcMain.on('open-focus', () => shell.openExternal('ms-settings:quiethours'));
 ipcMain.on('open-taskmgr', () => exec('taskmgr'));
 ipcMain.on('open-snip', () => shell.openExternal('ms-screenclip:'));
@@ -1277,8 +1453,12 @@ function animateWindowBounds(target, duration = 250) {
 
 let dragStartMousePos = null;
 let dragStartWindowPos = null;
+let dragFollowTimer = null;
+let dragLastDirection = null;
+let dragLastDisplayId = null;
+let dragOverlay = null;
 
-function getSnapDirection(cursor) {
+function getSnapDirection(cursor, previous) {
   const display = screen.getDisplayNearestPoint(cursor) || screen.getPrimaryDisplay();
   const { width: sw, height: sh } = display.bounds;
   const dx0 = display.bounds.x;
@@ -1287,74 +1467,187 @@ function getSnapDirection(cursor) {
   const curX = cursor.x - dx0;
   const curY = cursor.y - dy0;
 
-  // Generous snap thresholds: 25% of screen width or at least 250px
-  const sideThreshold = Math.max(250, Math.floor(sw * 0.25));
+  // Side zones cover the outer ~22% of the screen (min 220px). A 40px band of
+  // hysteresis stops the target flickering when hovering on a boundary.
+  const base = Math.max(220, Math.floor(sw * 0.22));
+  const pad = 40;
+  const leftEdge = previous === 'left' ? base + pad : base;
+  const rightEdge = previous === 'right' ? sw - base - pad : sw - base;
+  const topBand = previous === 'top' ? 120 : 80;
 
   let direction = 'top';
-  if (curX < sideThreshold) {
-    if (curY < 80 && curX > 120) {
-      direction = 'top';
-    } else {
-      direction = 'left';
-    }
-  } else if (curX > sw - sideThreshold) {
-    if (curY < 80 && curX < sw - 120) {
-      direction = 'top';
-    } else {
-      direction = 'right';
-    }
-  } else {
-    direction = 'top';
-  }
+  if (curX < leftEdge && !(curY < topBand && curX > 140)) direction = 'left';
+  else if (curX > rightEdge && !(curY < topBand && curX < sw - 140)) direction = 'right';
   return { direction, display, curX, curY, sw, sh, dx0, dy0 };
 }
 
-ipcMain.on('custom-drag-start', (event) => {
+// ── Drop-zone overlay: a transparent click-through window under the notch ──
+const DRAG_OVERLAY_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;height:100%;background:transparent;overflow:hidden;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
+  .dim{position:fixed;inset:0;background:rgba(0,0,0,.14);opacity:0;transition:opacity .2s}
+  body.on .dim{opacity:1}
+  .z{position:fixed;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);
+     transition:background .18s,box-shadow .18s,transform .22s cubic-bezier(.2,.8,.2,1),opacity .18s;opacity:.75;
+     backdrop-filter:blur(6px)}
+  .z.active{background:rgba(255,255,255,.2);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.85),0 10px 40px rgba(0,0,0,.35);opacity:1}
+  .z span{position:absolute;font-size:12px;font-weight:600;color:#fff;opacity:0;transition:opacity .18s;white-space:nowrap;
+          text-shadow:0 1px 6px rgba(0,0,0,.6)}
+  .z.active span{opacity:.95}
+  /* notch ghosts */
+  .notch #top{left:50%;top:0;width:360px;height:44px;margin-left:-180px;border-radius:0 0 22px 22px}
+  .notch #top span{left:50%;top:56px;transform:translateX(-50%)}
+  .notch #left{left:0;top:50%;width:46px;height:220px;margin-top:-110px;border-radius:0 23px 23px 0}
+  .notch #left span{left:58px;top:50%;transform:translateY(-50%)}
+  .notch #right{right:0;top:50%;width:46px;height:220px;margin-top:-110px;border-radius:23px 0 0 23px}
+  .notch #right span{right:58px;top:50%;transform:translateY(-50%)}
+  .notch .z.active#top{transform:scale(1.04)}
+  .notch .z.active#left,.notch .z.active#right{transform:scale(1.05)}
+  /* bar ghosts */
+  .bar #top{left:0;right:0;top:0;height:56px;border-radius:0 0 18px 18px}
+  .bar #top span{left:50%;top:68px;transform:translateX(-50%)}
+  .bar #left{left:0;top:0;bottom:0;width:160px;border-radius:0 22px 22px 0}
+  .bar #left span{left:172px;top:50%;transform:translateY(-50%)}
+  .bar #right{right:0;top:0;bottom:0;width:160px;border-radius:22px 0 0 22px}
+  .bar #right span{right:172px;top:50%;transform:translateY(-50%)}
+</style></head><body class="notch">
+  <div class="dim"></div>
+  <div class="z" id="top"><span>Top</span></div>
+  <div class="z" id="left"><span>Left edge</span></div>
+  <div class="z" id="right"><span>Right edge</span></div>
+  <script>
+    window.setZone = function (zone, mode) {
+      document.body.className = (mode === 'shelf' ? 'bar' : 'notch') + ' on';
+      ['top','left','right'].forEach(function (id) {
+        document.getElementById(id).classList.toggle('active', id === zone);
+      });
+    };
+    window.clearZones = function () { document.body.classList.remove('on'); };
+  </script>
+</body></html>`;
+
+function ensureDragOverlay() {
+  if (dragOverlay && !dragOverlay.isDestroyed()) return dragOverlay;
+  dragOverlay = new BrowserWindow({
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    focusable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    alwaysOnTop: true,
+    backgroundColor: '#00000000',
+    webPreferences: { contextIsolation: true, sandbox: true }
+  });
+  dragOverlay.setIgnoreMouseEvents(true);
+  dragOverlay.setAlwaysOnTop(true, 'pop-up-menu');
+  dragOverlay.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(DRAG_OVERLAY_HTML));
+  dragOverlay.on('closed', () => { dragOverlay = null; });
+  return dragOverlay;
+}
+
+function updateDragOverlay(display, direction) {
+  try {
+    const overlay = ensureDragOverlay();
+    if (dragLastDisplayId !== display.id) {
+      dragLastDisplayId = display.id;
+      overlay.setBounds(display.bounds);
+    }
+    if (!overlay.isVisible()) overlay.showInactive();
+    const run = () => overlay.webContents.executeJavaScript(`window.setZone && setZone(${JSON.stringify(direction)}, ${JSON.stringify(currentWindowMode)})`).catch(() => {});
+    if (overlay.webContents.isLoading()) overlay.webContents.once('did-finish-load', run);
+    else run();
+    // Keep the dragged notch above the overlay
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.moveTop();
+  } catch (e) {
+    logg('drag overlay error: ' + e.message);
+  }
+}
+
+function hideDragOverlay() {
+  dragLastDisplayId = null;
+  if (!dragOverlay || dragOverlay.isDestroyed()) return;
+  dragOverlay.webContents.executeJavaScript('window.clearZones && clearZones()').catch(() => {});
+  // Let the fade-out play before hiding
+  setTimeout(() => { if (dragOverlay && !dragOverlay.isDestroyed() && !isWindowBeingDragged) dragOverlay.hide(); }, 180);
+}
+
+function stopDragFollow() {
+  if (dragFollowTimer) {
+    clearInterval(dragFollowTimer);
+    dragFollowTimer = null;
+  }
+}
+
+ipcMain.on('custom-drag-start', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   isWindowBeingDragged = true;
   mainWindow.setIgnoreMouseEvents(false);
-  
+  if (boundsAnimationInterval) {
+    clearInterval(boundsAnimationInterval);
+    boundsAnimationInterval = null;
+    isWindowAnimating = false;
+  }
+
   const cursor = screen.getCursorScreenPoint();
-  const w = 140;
+  const w = 150;
   const h = 64;
   const x = cursor.x - Math.floor(w / 2);
   const y = cursor.y - Math.floor(h / 2);
-  
   mainWindow.setBounds({ x, y, width: w, height: h });
-  
+
   dragStartMousePos = { x: cursor.x, y: cursor.y };
   dragStartWindowPos = { x, y, width: w, height: h };
+  dragLastDirection = null;
+
+  // Follow the cursor from the main process (~120 fps). This keeps up with fast
+  // flicks even when the pointer leaves the small drag window, which renderer
+  // pointermove events alone could not.
+  stopDragFollow();
+  let lastX = null, lastY = null;
+  dragFollowTimer = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed() || !isWindowBeingDragged || !dragStartMousePos) {
+      stopDragFollow();
+      return;
+    }
+    const c = screen.getCursorScreenPoint();
+    if (c.x !== lastX || c.y !== lastY) {
+      lastX = c.x; lastY = c.y;
+      // Follow the cursor, but keep the drag card fully on the current display
+      const db = (screen.getDisplayNearestPoint(c) || screen.getPrimaryDisplay()).bounds;
+      const w = dragStartWindowPos.width, h = dragStartWindowPos.height;
+      const nx = dragStartWindowPos.x + (c.x - dragStartMousePos.x);
+      const ny = dragStartWindowPos.y + (c.y - dragStartMousePos.y);
+      mainWindow.setBounds({
+        x: Math.round(Math.max(db.x, Math.min(db.x + db.width - w, nx))),
+        y: Math.round(Math.max(db.y, Math.min(db.y + db.height - h, ny))),
+        width: w,
+        height: h
+      });
+    }
+    const snap = getSnapDirection(c, dragLastDirection);
+    if (snap.direction !== dragLastDirection || snap.display.id !== dragLastDisplayId) {
+      dragLastDirection = snap.direction;
+      mainWindow.webContents.send('drag-snap-preview', snap.direction);
+      updateDragOverlay(snap.display, snap.direction);
+    }
+  }, 8);
 });
 
-ipcMain.on('custom-drag-move', (event) => {
-  if (!mainWindow || mainWindow.isDestroyed() || !isWindowBeingDragged || !dragStartMousePos || !dragStartWindowPos) return;
-  
-  const cursor = screen.getCursorScreenPoint();
-  const dX = cursor.x - dragStartMousePos.x;
-  const dY = cursor.y - dragStartMousePos.y;
-  
-  const newX = dragStartWindowPos.x + dX;
-  const newY = dragStartWindowPos.y + dY;
-  
-  mainWindow.setBounds({
-    x: Math.round(newX),
-    y: Math.round(newY),
-    width: dragStartWindowPos.width,
-    height: dragStartWindowPos.height
-  });
+// Kept for compatibility with older renderers; movement is driven by the main process.
+ipcMain.on('custom-drag-move', () => {});
 
-  const { direction } = getSnapDirection(cursor);
-  mainWindow.webContents.send('drag-snap-preview', direction);
-});
-
-ipcMain.on('custom-drag-end', (event) => {
+ipcMain.on('custom-drag-end', () => {
   if (!mainWindow || mainWindow.isDestroyed() || !isWindowBeingDragged) return;
   isWindowBeingDragged = false;
-  
+  stopDragFollow();
+  hideDragOverlay();
+
   const startPos = dragStartWindowPos;
   dragStartMousePos = null;
   dragStartWindowPos = null;
-  
+
   if (boundsAnimationInterval) {
     clearInterval(boundsAnimationInterval);
     boundsAnimationInterval = null;
@@ -1362,14 +1655,13 @@ ipcMain.on('custom-drag-end', (event) => {
   isWindowAnimating = false;
 
   const cursor = screen.getCursorScreenPoint();
-  const { direction: newPos, curX, curY, sw, sh, dx0, dy0 } = getSnapDirection(cursor);
+  const { direction: newPos, curX, curY, sw, sh, dx0, dy0 } = getSnapDirection(cursor, dragLastDirection);
+  dragLastDirection = null;
 
   logg(`SNAP: cursor=(${curX}, ${curY}) screen=(${sw}x${sh}) decided newPos=${newPos}`);
 
-  // Calculate final target window size
   let ww = 600;
   let wh = 450;
-
   if (currentWindowMode === 'shelf') {
     if (newPos === 'left' || newPos === 'right') {
       ww = 160;
@@ -1392,35 +1684,22 @@ ipcMain.on('custom-drag-end', (event) => {
     finalY = dy0;
   }
 
-  logg(`SNAP: target position x=${finalX} y=${finalY} ww=${ww} wh=${wh}`);
-
   const bounds = mainWindow.getBounds();
   const hasMoved = startPos && (Math.abs(bounds.x - startPos.x) > 5 || Math.abs(bounds.y - startPos.y) > 5);
 
   if (!hasMoved) {
-    mainWindow.setBounds({
-      x: Math.round(finalX),
-      y: Math.round(finalY),
-      width: ww,
-      height: wh
-    });
+    mainWindow.setBounds({ x: Math.round(finalX), y: Math.round(finalY), width: ww, height: wh });
     mainWindow.webContents.send('drag-snap-end', currentScreenPosition);
     return;
   }
 
-  // Instantly resize the window to target size before animating position
+  // Resize around the current centre, then glide into place
   const startX = Math.round(bounds.x - (ww - bounds.width) / 2);
   const startY = Math.round(bounds.y - (wh - bounds.height) / 2);
-  
-  mainWindow.setBounds({
-    x: startX,
-    y: startY,
-    width: ww,
-    height: wh
-  });
+  mainWindow.setBounds({ x: startX, y: startY, width: ww, height: wh });
 
   currentScreenPosition = newPos;
-  animateWindowBounds({ x: Math.round(finalX), y: Math.round(finalY), width: ww, height: wh });
+  animateWindowBounds({ x: Math.round(finalX), y: Math.round(finalY), width: ww, height: wh }, 320);
   mainWindow.webContents.send('window-dragged-to', newPos);
   mainWindow.webContents.send('drag-snap-end', newPos);
 });
@@ -1632,99 +1911,35 @@ ipcMain.on('kill-task', (e, id) => {
   exec(`taskkill /F /PID ${id}`);
 });
 
+// "Optimize memory": the system worker trims background apps' working sets
+// (nothing is closed) and reports progress as BOOST_STEP / BOOST_DONE lines.
+let boostWaiter = null;
 ipcMain.handle('boost-system', async (event) => {
-  return new Promise((resolve) => {
-    const ps = `
-      $targets = @('chrome', 'msedge', 'brave', 'firefox', 'opera', 'spotify', 'discord', 'steamwebhelper', 'epicgameslauncher', 'Battle.net', 'LeagueClientUx', 'RiotClientServices', 'slack', 'Teams', 'Zoom', 'WhatsApp', 'WhatsApp.Root', 'Telegram', 'EADesktop', 'EAConnect_Service', 'GalaxyClient', 'upc', 'Dropbox', 'GoogleDrive', 'OneDrive', 'vlc', 'qbittorrent', 'uTorrent')
-      $cores = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
-      $procs = Get-Process | Where-Object { $targets -contains $_.Name }
-      if ($procs) {
-          $cpu1 = @{}
-          $procs | ForEach-Object { $cpu1[$_.Id] = $_.CPU }
-          $t1 = Get-Date
-          Start-Sleep -Milliseconds 200
-          $t2 = Get-Date
-          $cpu2 = @{}
-          $procs | ForEach-Object {
-              $p2 = Get-Process -Id $_.Id -ErrorAction SilentlyContinue
-              if ($p2) { $cpu2[$_.Id] = $p2.CPU }
-          }
-          $elapsed = ($t2 - $t1).TotalSeconds
-          
-          $freed = 0
-          $totalCpu = 0
-          $killed = @()
-          
-          $procs | ForEach-Object {
-              $id = $_.Id
-              $name = $_.Name
-              $mb = [math]::Round($_.WorkingSet64 / 1MB, 1)
-              $freed += $_.WorkingSet64
-              
-              $cpuPercent = 0
-              if ($cpu1.ContainsKey($id) -and $cpu2.ContainsKey($id) -and ($null -ne $cpu1[$id]) -and ($null -ne $cpu2[$id])) {
-                  if ($elapsed -gt 0) {
-                      $cpuPercent = [math]::Round((($cpu2[$id] - $cpu1[$id]) / $elapsed) * 100 / $cores, 1)
-                      if ($cpuPercent -lt 0) { $cpuPercent = 0 }
-                  }
-              }
-              $totalCpu += $cpuPercent
-
-              if ($killed -notcontains $name) {
-                  $killed += $name
-                  Write-Output "KILL:$name|$mb|$cpuPercent"
-                  Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
-                  Start-Sleep -Milliseconds 300
-              } else {
-                  Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
-              }
-          }
-          $totalMb = [math]::Round($freed / 1MB, 1)
-          $names = $killed -join ", "
-          $roundedCpu = [math]::Round($totalCpu, 1)
-          Write-Output "DONE:$names|$totalMb|$roundedCpu"
-      } else {
-          Write-Output "DONE:none|0|0"
-      }
-    `.trim();
-    const psProc = spawn('powershell.exe', ['-NoProfile', '-Command', ps]);
-    
-    let totalFreed = 0;
-    let totalCpu = 0;
-    let finalKilled = "none";
-    
-    psProc.stdout.on('data', (data) => {
-      const lines = data.toString().trim().split('\n');
-      for (const line of lines) {
-        const t = line.trim();
-        if (t.startsWith('KILL:')) {
-          const parts = t.substring(5).split('|');
-          event.sender.send('boost-progress', { 
-            name: parts[0], 
-            mb: parseFloat(parts[1] || 0),
-            cpu: parseFloat(parts[2] || 0)
-          });
-        } else if (t.startsWith('DONE:')) {
-          const parts = t.substring(5).split('|');
-          finalKilled = parts[0];
-          totalFreed = parseFloat(parts[1] || 0);
-          totalCpu = parseFloat(parts[2] || 0);
-        }
-      }
-    });
-
-    psProc.on('close', () => {
-      resolve({ success: true, killed: finalKilled, freedMB: totalFreed, freedCPU: totalCpu });
-    });
-  });
+  if (boostWaiter) return boostWaiter.promise;
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  const timer = setTimeout(() => finishBoost({ success: false, freedMB: 0, apps: 0 }), 20000);
+  boostWaiter = { promise, resolve, timer, sender: event.sender };
+  sysWorkerSend('boost');
+  return promise;
 });
 
-
+function finishBoost(result) {
+  if (!boostWaiter) return;
+  clearTimeout(boostWaiter.timer);
+  const { resolve } = boostWaiter;
+  boostWaiter = null;
+  logg(`Optimize memory: freed ${result.freedMB} MB across ${result.apps} apps`);
+  resolve({ freedCPU: 0, killed: 'none', ...result });
+}
 
 let settingsWindow = null;
 
-function openSettingsWindow() {
+let pendingSettingsTab = null;
+function openSettingsWindow(tab) {
+  pendingSettingsTab = tab || null;
   if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (tab) settingsWindow.webContents.send('settings-open-tab', tab);
     settingsWindow.setAlwaysOnTop(true, 'screen-saver');
     settingsWindow.show();
     settingsWindow.focus();
@@ -1765,9 +1980,9 @@ function openSettingsWindow() {
 
   const distIndex = path.join(__dirname, 'build_dist', 'index.html');
   if (fs.existsSync(distIndex)) {
-    settingsWindow.loadFile(distIndex, { hash: 'settings' });
+    settingsWindow.loadFile(distIndex, { hash: pendingSettingsTab ? `settings/${pendingSettingsTab}` : 'settings' });
   } else {
-    settingsWindow.loadURL('http://127.0.0.1:5173/#settings');
+    settingsWindow.loadURL(`http://127.0.0.1:5173/#settings${pendingSettingsTab ? '/' + pendingSettingsTab : ''}`);
   }
 
   settingsWindow.once('ready-to-show', () => {
@@ -1788,11 +2003,11 @@ function openSettingsWindow() {
   });
 }
 
-ipcMain.on('open-settings-window', () => {
+ipcMain.on('open-settings-window', (e, tab) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('settings-window-opened');
   }
-  openSettingsWindow();
+  openSettingsWindow(typeof tab === 'string' ? tab : null);
 });
 
 ipcMain.on('close-settings-window', () => {
@@ -1800,6 +2015,20 @@ ipcMain.on('close-settings-window', () => {
     settingsWindow.close();
   }
 });
+
+// ── Updates ──────────────────────────────────────────────────────────────────
+const { createUpdater } = require('./updater');
+const updater = createUpdater({
+  log: logg,
+  broadcast: (channel, payload) => {
+    [mainWindow, settingsWindow].forEach((w) => {
+      if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+    });
+  }
+});
+ipcMain.handle('get-app-info', () => updater.getState());
+ipcMain.handle('check-for-updates', () => updater.check());
+ipcMain.on('open-update', () => updater.openUpdate());
 
 ipcMain.on('dismiss-whats-new', () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1957,6 +2186,29 @@ function createWindow() {
   });
   mainWindow.webContents.on('render-process-gone', (e, details) => {
     logg('Renderer process gone: ' + JSON.stringify(details));
+    if (appQuitting || details.reason === 'clean-exit') return;
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        logg('Reloading notch after renderer exit');
+        mainWindow.webContents.reload();
+      }
+    }, 1000);
+  });
+  let unresponsiveTimer = null;
+  mainWindow.on('unresponsive', () => {
+    logg('Notch window unresponsive');
+    if (unresponsiveTimer) return;
+    unresponsiveTimer = setTimeout(() => {
+      unresponsiveTimer = null;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        logg('Notch still unresponsive, restarting its renderer');
+        try { mainWindow.webContents.forcefullyCrashRenderer(); } catch (_) {}
+        mainWindow.webContents.reload();
+      }
+    }, 8000);
+  });
+  mainWindow.on('responsive', () => {
+    if (unresponsiveTimer) { clearTimeout(unresponsiveTimer); unresponsiveTimer = null; }
   });
   mainWindow.webContents.on('crashed', (e) => {
     logg('Renderer Crashed!');
@@ -1966,6 +2218,21 @@ function createWindow() {
   });
   mainWindow.webContents.on('did-finish-load', () => {
     logg('webContents did-finish-load fired');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('init-levels', {
+        volume: currentVolumeVal,
+        isMuted: currentMuteVal,
+        brightness: currentBrightnessVal,
+        isBtAudio: currentIsBtAudio
+      });
+      if (currentBtDevice) {
+        mainWindow.webContents.send('bt-device-event', {
+          type: 'battery',
+          name: currentBtDevice.name,
+          battery: currentBtDevice.battery
+        });
+      }
+    }
     setTimeout(() => {
       if (!mainWindow || mainWindow.isDestroyed()) return;
       mainWindow.show();
@@ -2070,6 +2337,18 @@ app.whenReady().then(() => {
   startHardwarePolling();
   startCombinedBackgroundMonitor();
   startSystemControlWorker();
+  updater.start();
+
+  // COM audio endpoints, WMI and WinRT handles often go stale across sleep/hibernate
+  powerMonitor.on('resume', () => {
+    logg('System resumed, restarting background workers');
+    setTimeout(() => {
+      if (appQuitting) return;
+      restartSystemControlWorker();
+      if (smtcWorker) { try { smtcWorker.kill(); } catch (_) {} }   // respawns via its exit handler
+      if (combinedPs) { try { combinedPs.kill(); } catch (_) {} }   // restarts via its close handler
+    }, 2000);
+  });
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -2082,6 +2361,13 @@ app.on('before-quit', () => {
   }
   if (combinedPs) {
     try { combinedPs.kill(); } catch(e){}
+  }
+  sysWorkerQuitting = true;
+  appQuitting = true;
+  if (dragOverlay && !dragOverlay.isDestroyed()) { try { dragOverlay.destroy(); } catch (e) {} }
+  if (sysWorkerWatchdog) clearInterval(sysWorkerWatchdog);
+  if (sysWorker) {
+    try { sysWorker.kill(); } catch(e){}
   }
 });
 

@@ -9,7 +9,6 @@ import {
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import WeatherIcon from './WeatherIcon';
 import AudioWaveform from './AudioWaveform';
-import appLogo from './assets/logo.png';
 
 import { 
   DashboardView, 
@@ -28,15 +27,12 @@ import {
   BluetoothAlert, 
   NotificationBanners 
 } from './components/alerts';
-import { 
-  MatrixBackground, 
-  HyperspaceBackground, 
-  RainBackground,
-  LiquidGlowBackground,
-  CosmicOrbitsBackground,
-  AuroraWaveBackground
-} from './components/background';
-import { SourceAppIcon } from './components/ui';
+import { BackgroundEffect } from './components/background';
+import { getMaterialSurface, applyCardStyle } from './utils/materials';
+import { useAlbumColors } from './utils/useAlbumColors';
+import { setAudioMeter } from './utils/audioReactive';
+import { useAppUpdates, splitChangelog } from './utils/useAppUpdates';
+import { SourceAppIcon, BrandMark, BatteryRing } from './components/ui';
 import { formatTime, formatSpeed } from './utils/formatters';
 const ipcRenderer = window.electronAPI || null;
 
@@ -76,6 +72,15 @@ export default function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [isNightLight, setIsNightLight] = useState(false);
   const [isDnd, setIsDnd] = useState(false);
+
+  // Real Night light / Do not disturb state from Windows (kept in sync by the system worker)
+  useEffect(() => {
+    if (!ipcRenderer) return undefined;
+    const apply = (t) => { if (!t) return; setIsNightLight(!!t.nightLight); setIsDnd(!!t.dnd); };
+    ipcRenderer.invoke?.('get-system-toggles').then(apply).catch(() => {});
+    ipcRenderer.on('system-toggles', apply);
+    return () => ipcRenderer.removeAllListeners?.('system-toggles');
+  }, []);
   const [osdAlert, setOsdAlert] = useState(null);
   const [sysAlert, setSysAlert] = useState(null);
   const [btAlert, setBtAlert] = useState(null);
@@ -137,13 +142,18 @@ export default function App() {
         setBtAlert({ name: e.name, battery: e.battery, type: 'connected' });
         if (btTimeoutRef.current) clearTimeout(btTimeoutRef.current);
         btTimeoutRef.current = setTimeout(() => setBtAlert(null), 5000);
+      } else if (e.type === 'battery') {
+        setActiveBtDevice({ name: e.name, battery: e.battery });
       } else if (e.type === 'disconnected') {
-        setActiveBtDevice(null);
+        setActiveBtDevice(prev => (prev && prev.name !== e.name ? prev : null));
         setBtAlert({ name: e.name, type: 'disconnected' });
         if (btTimeoutRef.current) clearTimeout(btTimeoutRef.current);
         btTimeoutRef.current = setTimeout(() => setBtAlert(null), 4000);
       } else if (e.type === 'present') {
         setActiveBtDevice({ name: e.name, battery: e.battery });
+        setBtAlert({ name: e.name, battery: e.battery, type: 'connected' });
+        if (btTimeoutRef.current) clearTimeout(btTimeoutRef.current);
+        btTimeoutRef.current = setTimeout(() => setBtAlert(null), 4000);
       }
     });
     ipcRenderer.on('bt-audio-status', (status) => {
@@ -184,10 +194,11 @@ export default function App() {
     bgAnimation: 'off',
     bgColor: '#000000',
     idleColor: '#000000',
-    panelStyle: 'glass',
+    panelStyle: 'dark-glass',
+    cardStyle: 'dark',
     accentColor: 'cyan',
-    glowIntensity: 'medium',
-    cornerShape: 'pill',
+    glowIntensity: 'none',
+    cornerShape: 'rounded',
     showWeather: true,
     showHardware: true,
     showPomodoro: true,
@@ -252,26 +263,17 @@ export default function App() {
     };
     ipcRenderer.on('config-updated', handleConfigSync);
 
-    const handleWhatsNewDismissed = () => {
-      setWhatsNewAvailable(false);
-    };
-    ipcRenderer.on('whats-new-dismissed', handleWhatsNewDismissed);
-
     const handleStorage = (e) => {
       if (e.key === 'smart-notch-config' && e.newValue) {
         try {
           setConfig(JSON.parse(e.newValue));
         } catch (_) {}
       }
-      if (e.key === 'lastSeenVersion') {
-        setWhatsNewAvailable(false);
-      }
     };
     window.addEventListener('storage', handleStorage);
 
     return () => {
       ipcRenderer.removeAllListeners?.('config-updated');
-      ipcRenderer.removeAllListeners?.('whats-new-dismissed');
       window.removeEventListener('storage', handleStorage);
     };
   }, []);
@@ -298,6 +300,13 @@ export default function App() {
   }, [config.customBgUrl]);
 
   const activeAccentHex = config.accentColor !== 'rgb' && config.accentColor?.startsWith('#') ? config.accentColor : '#06b6d4';
+  const albumColors = useAlbumColors(spotifyState?.item?.album?.images?.[0]?.url || '');
+  // Stream output levels for the beat-synced lights only while something is playing
+  const isMediaPlaying = !!spotifyState?.is_playing;
+  useEffect(() => {
+    setAudioMeter(isMediaPlaying);
+  }, [isMediaPlaying]);
+  useEffect(() => () => setAudioMeter(false), []);
 
   useEffect(() => {
     if (ipcRenderer && config.screenPosition) {
@@ -366,32 +375,20 @@ export default function App() {
 
   const getNotchGlowStyle = () => {
     const baseShadows = [
-      '0 18px 44px -8px rgba(0, 0, 0, 0.85)',
-      '0 6px 16px -3px rgba(0, 0, 0, 0.60)'
+      '0 12px 32px -10px rgba(0, 0, 0, 0.7)',
+      '0 4px 12px -4px rgba(0, 0, 0, 0.5)'
     ];
-    if (isDragging) {
-      return { boxShadow: ['0 0 0 1px rgba(255, 255, 255, 0.12)', ...baseShadows].join(', ') };
+    if (isDragging) return { boxShadow: 'none' };
+    // Hairline keeps the black notch legible on dark wallpapers
+    baseShadows.unshift(`0 0 0 1px rgba(255, 255, 255, ${isExpanded ? 0.08 : 0.05})`);
+    if ((isExpanded || isNotification) && config.panelStyle === 'glass') {
+      baseShadows.unshift('inset 0 1px 0 rgba(255, 255, 255, 0.12)');
     }
-    if (config.accentColor === 'rgb') return { boxShadow: baseShadows.join(', ') };
-    const hex = config.accentColor?.startsWith('#') ? config.accentColor : '#06b6d4';
-    const hexToRgba = (h, a) => {
-      try {
-        return `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${a})`;
-      } catch {
-        return `rgba(6,182,212,${a})`;
-      }
-    };
-    if (config.glowIntensity !== 'none') {
-      const glowMap = {
-        low: { size: '16px', alpha: 0.2 },
-        medium: { size: '32px', alpha: 0.32 },
-        high: { size: '54px', alpha: 0.5 }
-      };
-      const { size, alpha } = glowMap[config.glowIntensity] || glowMap.medium;
-      baseShadows.push(`0 0 ${size} ${hexToRgba(hex, alpha)}`);
-      baseShadows.unshift(`0 0 0 1px ${hexToRgba(hex, isExpanded ? 0.35 : 0.18)}`);
-    } else {
-      baseShadows.unshift('0 0 0 1px rgba(255, 255, 255, 0.08)');
+    const glow = { low: [14, 0.12], medium: [14, 0.12], high: [28, 0.24] }[config.glowIntensity];
+    if (config.accentColor !== 'rgb' && glow) {
+      const hex = config.accentColor?.startsWith('#') ? config.accentColor : '#06b6d4';
+      const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+      baseShadows.push(`0 0 ${glow[0]}px rgba(${r},${g},${b},${glow[1]})`);
     }
     return { boxShadow: baseShadows.join(', ') };
   };
@@ -435,33 +432,15 @@ export default function App() {
     return style;
   };
 
-  const getPanelBorderStyle = () => {
-    if (config.panelStyle === 'solid') {
-      return 'bg-[#121216] border border-white/[0.08] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08),0_12px_24px_rgba(0,0,0,0.5)]';
-    }
-    if (config.panelStyle === 'glass') {
-      return 'bg-white/[0.04] backdrop-blur-2xl border border-white/[0.09] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15),0_12px_24px_rgba(0,0,0,0.4)]';
-    }
-    if (config.accentColor === 'rgb') {
-      return 'bg-black/50 backdrop-blur-2xl border rgb-border shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_12px_28px_rgba(0,0,0,0.45)]';
-    }
-    return 'bg-black/50 backdrop-blur-2xl border border-white/[0.08] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_12px_28px_rgba(0,0,0,0.45)]';
-  };
+  // Views sit directly on the notch surface; cards inside provide their own subtle fills.
+  const getPanelBorderStyle = () => '';
+  const getPanelBorderStyleInline = () => ({});
 
-  const getPanelBorderStyleInline = () => {
-    if (config.panelStyle === 'solid' || config.accentColor === 'rgb') return {};
-    const hex = config.accentColor.startsWith('#') ? config.accentColor : '#06b6d4';
-    const hexToRgba = (hex, a) => {
-      try {
-        return `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
-      } catch {
-        return `rgba(255,255,255,${a})`;
-      }
-    };
-    return {
-      borderColor: hexToRgba(hex, config.panelStyle === 'glass' ? 0.08 : 0.15)
-    };
-  };
+  // Widget card darkness (Settings → Appearance → Cards)
+  useEffect(() => { applyCardStyle(config.cardStyle); }, [config.cardStyle]);
+
+  // Expanded-notch material (Settings → Appearance → Material)
+  const expandedSurface = getMaterialSurface(config.panelStyle, config.bgColor);
 
   const getRadius = (type) => {
     if (config.cornerShape === 'rounded') {
@@ -561,70 +540,64 @@ export default function App() {
     }
   };
 
-  const CURRENT_VERSION = '7.0.4';
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
+  // Version, update status and "what's new" come from the main process (updater.js)
+  const updates = useAppUpdates();
+  const CURRENT_VERSION = updates.currentVersion || '';
+  const updateAvailable = updates.updateAvailable;
+  const latestVersion = updates.latestVersion;
+  const whatsNewAvailable = updates.whatsNew;
+  const changelog = updates.changelog;
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
-  const [whatsNewAvailable, setWhatsNewAvailable] = useState(false);
-  const [changelog, setChangelog] = useState([]);
+  const setWhatsNewAvailable = (v) => { if (!v) updates.dismissWhatsNew(); };
 
-  useEffect(() => {
-    const compareVersions = (v1, v2) => {
-      const parts1 = v1.split('.').map(Number);
-      const parts2 = v2.split('.').map(Number);
-      for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-        const p1 = parts1[i] || 0;
-        const p2 = parts2[i] || 0;
-        if (p1 > p2) return 1;
-        if (p1 < p2) return -1;
-      }
-      return 0;
-    };
+  // One-time notch notices: "What's new" after an update, "Update available" once per version
+  const [appNotice, setAppNotice] = useState(null);
+  const appNoticeTimerRef = useRef(null);
+  const whatsNewShownRef = useRef(false);
 
-    const checkUpdate = async () => {
-      try {
-        const res = await fetch(`https://raw.githubusercontent.com/Avenger11764/Dynamic_island/main/package.json?t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.version) {
-            setLatestVersion(data.version);
-            if (data.changelog) setChangelog(data.changelog);
-            if (compareVersions(data.version, CURRENT_VERSION) > 0 || window.location.search.includes('simulate-update')) {
-              setUpdateAvailable(true);
-            } else {
-              setUpdateAvailable(false);
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to check updates:', e);
-      }
-    };
+  const closeAppNotice = useCallback((kind) => {
+    if (appNoticeTimerRef.current) clearTimeout(appNoticeTimerRef.current);
+    appNoticeTimerRef.current = null;
+    setAppNotice(null);
+    if (kind === 'whatsnew') updates.dismissWhatsNew();
+  }, [updates.dismissWhatsNew]);
 
-    checkUpdate();
-    const interval = setInterval(checkUpdate, 720 * 60 * 1000);
-    const lastSeen = localStorage.getItem('lastSeenVersion');
-    const hasConfig = localStorage.getItem('smart-notch-config') !== null || localStorage.getItem('smart-notch-version') !== null;
-
-    if (lastSeen) {
-      if (compareVersions(CURRENT_VERSION, lastSeen) > 0 || window.location.search.includes('simulate-whats-new')) {
-        setWhatsNewAvailable(true);
-      } else {
-        setWhatsNewAvailable(false);
-      }
-    } else {
-      localStorage.setItem('lastSeenVersion', CURRENT_VERSION);
-      if (window.location.search.includes('simulate-whats-new')) {
-        setWhatsNewAvailable(true);
-      } else {
-        setWhatsNewAvailable(false);
-      }
+  const handleAppNoticeAction = useCallback((notice) => {
+    if (!notice) return;
+    if (notice.kind === 'update') updates.openUpdate();
+    else if (ipcRenderer) {
+      isSettingsWindowOpenRef.current = true;
+      setIsSettingsWindowOpen(true);
+      ipcRenderer.send('open-settings-window', 'about');
     }
-    return () => clearInterval(interval);
-  }, []);
+    closeAppNotice(notice.kind);
+  }, [closeAppNotice, updates.openUpdate]);
 
   const [activeCall, setActiveCall] = useState({ isActive: false, appName: '', title: '', handle: 0, isForeground: true });
-  const isNotification = !!(clipboardUrl || batteryEvent || meetingAlert || boostAlert || isBoosting || sysNotification || osdAlert || btAlert);
+  useEffect(() => {
+    if (appNotice || greeting) return undefined;
+    if (clipboardUrl || batteryEvent || meetingAlert || boostAlert || isBoosting || sysNotification || osdAlert || btAlert) return undefined;
+    let next = null;
+    if (updates.whatsNew && !whatsNewShownRef.current && updates.currentVersion) {
+      const first = splitChangelog(updates.changelog[0] || '');
+      next = { kind: 'whatsnew', version: updates.currentVersion, detail: first.title || first.body || 'See what changed' };
+    } else if (updates.updateNeedsNotice && updates.latestVersion) {
+      next = { kind: 'update', version: updates.latestVersion, detail: 'Update from the Microsoft Store' };
+    }
+    if (!next) return undefined;
+    const t = setTimeout(() => {
+      if (next.kind === 'whatsnew') whatsNewShownRef.current = true;
+      else updates.markUpdateNotified();
+      setAppNotice(next);
+      if (ipcRenderer) ipcRenderer.send('set-ignore-mouse-events', false);
+      appNoticeTimerRef.current = setTimeout(() => closeAppNotice(next.kind), 12000);
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [appNotice, greeting, clipboardUrl, batteryEvent, meetingAlert, boostAlert, isBoosting, sysNotification, osdAlert, btAlert,
+      updates.whatsNew, updates.updateNeedsNotice, updates.currentVersion, updates.latestVersion, updates.changelog, updates.isStore,
+      updates.markUpdateNotified, closeAppNotice]);
+
+  const isNotification = !!(clipboardUrl || batteryEvent || meetingAlert || boostAlert || isBoosting || sysNotification || appNotice || osdAlert || btAlert);
   const isNotificationRef = useRef(false);
   isNotificationRef.current = isNotification;
 
@@ -655,7 +628,7 @@ export default function App() {
           setBattery((b) => ({ ...b, charging: batt.charging }));
           if (batt.charging !== prevCharging) {
             prevCharging = batt.charging;
-            setBatteryEvent({ charging: batt.charging, level: Math.round(batt.level * 100) });
+            setBatteryEvent({ charging: batt.charging, level: Math.round(batt.level * 100), seconds: batt.charging ? batt.chargingTime : batt.dischargingTime });
             setTimeout(() => setBatteryEvent(null), 5000);
           }
         };
@@ -663,7 +636,7 @@ export default function App() {
         onLevelChange = () => {
           setBattery((b) => ({ ...b, level: Math.round(batt.level * 100) }));
           if (!batt.charging && Math.round(batt.level * 100) === 20 && Math.round(prevLevel * 100) > 20) {
-            setBatteryEvent({ charging: false, level: Math.round(batt.level * 100), low: true });
+            setBatteryEvent({ charging: false, level: Math.round(batt.level * 100), low: true, seconds: batt.dischargingTime });
             setTimeout(() => setBatteryEvent(null), 8000);
           }
           prevLevel = batt.level;
@@ -762,9 +735,26 @@ export default function App() {
   useEffect(() => {
     if (!ipcRenderer) return;
     ipcRenderer.on('spotify-state', (state) => {
-      setSpotifyState(state);
+      // Media updates arrive every ~0.8s. Only re-render when something visible changed
+      // (track, play state, artwork, lyrics); the position is tracked locally and only
+      // re-synced when it drifts.
+      setSpotifyState((prev) => {
+        if (!state) return prev === null ? prev : null;
+        const album = state.artUnchanged && state.item && !state.item.album
+          ? (prev?.item?.album || { images: [{ url: '' }] })
+          : state.item?.album;
+        const same = prev && prev.item && state.item &&
+          prev.item.id === state.item.id &&
+          prev.is_playing === state.is_playing &&
+          prev.duration_ms === state.duration_ms &&
+          prev.sourceAppId === state.sourceAppId &&
+          (prev.lyrics?.length || 0) === (state.lyrics?.length || 0) &&
+          prev.item.album === album;
+        if (same) return prev;
+        return { ...state, item: state.item ? { ...state.item, album } : state.item };
+      });
       if (state && typeof state.progress_ms === 'number') {
-        setLocalProgress(state.progress_ms);
+        setLocalProgress((p) => (Math.abs(p - state.progress_ms) > 1200 || !state.is_playing ? state.progress_ms : p));
       }
     });
     ipcRenderer.on('clipboard-url', (url) => {
@@ -772,10 +762,12 @@ export default function App() {
       ipcRenderer.send('set-ignore-mouse-events', false);
       setTimeout(() => setClipboardUrl(null), 6000);
     });
-    ipcRenderer.on('hardware-stats', (stats) => setHardware(stats));
-    ipcRenderer.on('privacy-dots', (p) => setPrivacy(p));
-    ipcRenderer.on('network-stats', (stats) => setNetwork(stats));
-    ipcRenderer.on('active-call-status', (call) => setActiveCall(call));
+    // Skip re-renders when the values didn't actually change
+    const shallowSame = (a, b) => a && b && Object.keys(b).every((k) => a[k] === b[k]);
+    ipcRenderer.on('hardware-stats', (stats) => setHardware((prev) => (shallowSame(prev, stats) ? prev : stats)));
+    ipcRenderer.on('privacy-dots', (p) => setPrivacy((prev) => (shallowSame(prev, p) ? prev : p)));
+    ipcRenderer.on('network-stats', (stats) => setNetwork((prev) => (shallowSame(prev, stats) ? prev : stats)));
+    ipcRenderer.on('active-call-status', (call) => setActiveCall((prev) => (shallowSame(prev, call) ? prev : call)));
     ipcRenderer.on('system-notification', (n) => {
       if (sysNotificationTimeoutRef.current) clearTimeout(sysNotificationTimeoutRef.current);
       setSysNotification(n);
@@ -805,13 +797,16 @@ export default function App() {
     return () => clearInterval(interval);
   }, [config.clockFormat]);
 
+  // Advance the song position locally. Fine-grained only when a progress bar or
+  // lyrics can be on screen (expanded notch or bar mode); once a second otherwise.
+  const progressStep = isExpanded || config.mode === 'bar' ? 250 : 1000;
   useEffect(() => {
     let interval;
     if (spotifyState?.is_playing) {
-      interval = setInterval(() => setLocalProgress((p) => p + 100), 100);
+      interval = setInterval(() => setLocalProgress((p) => p + progressStep), progressStep);
     }
     return () => clearInterval(interval);
-  }, [spotifyState?.is_playing]);
+  }, [spotifyState?.is_playing, progressStep]);
 
   const getCurrentLyric = useCallback(() => {
     if (!spotifyState?.lyrics || spotifyState.lyrics.length === 0) return null;
@@ -861,23 +856,20 @@ export default function App() {
     }
     const startX = e.clientX;
     const startY = e.clientY;
+    // Capture on <body>: it never unmounts (the bar is swapped for the drag card mid-drag)
+    const target = document.body;
+    const pointerId = e.pointerId;
     let hasStartedDrag = false;
-    let rafId = null;
 
     const handlePointerMove = (moveEvent) => {
-      if (hasStartedDrag) {
-        if (!rafId) {
-          rafId = requestAnimationFrame(() => {
-            if (ipcRenderer) ipcRenderer.send('custom-drag-move');
-            rafId = null;
-          });
-        }
-      } else {
-        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 6) {
-          hasStartedDrag = true;
-          setIsDragging(true);
-          if (ipcRenderer) ipcRenderer.send('custom-drag-start');
-        }
+      if (hasStartedDrag) return; // the main process follows the cursor once dragging
+      if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 6) {
+        hasStartedDrag = true;
+        // Keep receiving pointerup even if the cursor leaves the small drag window
+        try { target?.setPointerCapture?.(pointerId); } catch (_) {}
+        setDragPreviewPosition(config.screenPosition === 'left' || config.screenPosition === 'right' ? config.screenPosition : 'top');
+        setIsDragging(true);
+        if (ipcRenderer) ipcRenderer.send('custom-drag-start');
       }
     };
 
@@ -885,11 +877,10 @@ export default function App() {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUpOrCancel);
       window.removeEventListener('pointercancel', handlePointerUpOrCancel);
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
+      target?.removeEventListener?.('lostpointercapture', handlePointerUpOrCancel);
+      try { target?.releasePointerCapture?.(pointerId); } catch (_) {}
       if (hasStartedDrag) {
+        hasStartedDrag = false;
         setIsDragging(false);
         setIsExpanded(false);
         if (ipcRenderer) ipcRenderer.send('custom-drag-end');
@@ -899,11 +890,12 @@ export default function App() {
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUpOrCancel);
     window.addEventListener('pointercancel', handlePointerUpOrCancel);
+    target?.addEventListener?.('lostpointercapture', handlePointerUpOrCancel);
   };
 
   useEffect(() => {
     if (!ipcRenderer) return;
-    ipcRenderer.on('drag-snap-preview', (e, pos) => setDragPreviewPosition(pos));
+    ipcRenderer.on('drag-snap-preview', (pos) => { if (pos) setDragPreviewPosition(pos); });
     ipcRenderer.on('drag-snap-end', () => setIsDragging(false));
     return () => {
       ipcRenderer.removeAllListeners('drag-snap-preview');
@@ -1231,13 +1223,52 @@ export default function App() {
     if (ipcRenderer) ipcRenderer.on('boost-progress', (e, p) => setBoostProgress(p));
     try {
       const res = await ipcRenderer.invoke('boost-system');
-      setBoostAlert({ freedMB: res.freedMB, freedCPU: res.freedCPU, killed: res.killed });
+      setBoostAlert({ freedMB: res?.freedMB || 0, apps: res?.apps || 0 });
       setTimeout(() => setBoostAlert(null), 5000);
     } finally {
       if (ipcRenderer) ipcRenderer.removeAllListeners('boost-progress');
       setIsBoosting(false);
     }
   }, [isBoosting]);
+
+  const renderDragCard = () => (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+              >
+                <div
+                  className="h-[44px] pl-2 pr-4 rounded-full flex items-center gap-2.5"
+                  style={{
+                    backgroundColor: '#0b0b0d',
+                    boxShadow: '0 14px 32px -6px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.1)'
+                  }}
+                >
+                  <span className="w-7 h-7 rounded-full bg-white/[0.1] flex items-center justify-center text-white">
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.span
+                        key={dragPreviewPosition}
+                        initial={{ opacity: 0, scale: 0.6 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.6 }}
+                        transition={{ duration: 0.12 }}
+                        className="flex"
+                      >
+                        {dragPreviewPosition === 'left' ? <ArrowLeft size={14} strokeWidth={2.2} /> : dragPreviewPosition === 'right' ? <ArrowRight size={14} strokeWidth={2.2} /> : <ArrowUp size={14} strokeWidth={2.2} />}
+                      </motion.span>
+                    </AnimatePresence>
+                  </span>
+                  <span className="flex flex-col leading-tight">
+                    <span className="text-[10px] font-medium text-white/45">Drop to dock</span>
+                    <span className="text-[12.5px] font-semibold text-white">
+                      {dragPreviewPosition === 'left' ? 'Left edge' : dragPreviewPosition === 'right' ? 'Right edge' : 'Top'}
+                    </span>
+                  </span>
+                </div>
+              </motion.div>
+  );
 
   if (config.mode === 'bar') {
     return (
@@ -1253,8 +1284,11 @@ export default function App() {
           onMouseLeave={handleShelfMouseLeave}
           style={{ pointerEvents: shelfVisible ? 'auto' : 'none' }}
         >
+          {isDragging && (
+            <div className="fixed inset-0" style={{ pointerEvents: 'auto' }}>{renderDragCard()}</div>
+          )}
           <AnimatePresence>
-            {shelfVisible && (
+            {shelfVisible && !isDragging && (
               <ShelfBar
                 isVisible={shelfVisible}
                 time={time}
@@ -1291,6 +1325,9 @@ export default function App() {
                 activeCall={activeCall}
                 sysNotification={sysNotification}
                 setSysNotification={setSysNotification}
+                appNotice={appNotice}
+                onAppNoticeAction={handleAppNoticeAction}
+                onAppNoticeClose={closeAppNotice}
                 updateAvailable={updateAvailable}
                 whatsNewAvailable={whatsNewAvailable}
                 onSeek={handleProgressBarClick}
@@ -1395,11 +1432,14 @@ export default function App() {
               scale: config.islandScale || 1.0,
               width: (() => {
                 if (isDragging) return 140;
-                if (osdAlert) return isSideNotch ? 68 : 320;
-                if (btAlert) return isSideNotch ? 94 : 340;
-                if (isNotification) return isSideNotch ? 280 : 360;
+                if (osdAlert) return isSideNotch ? 46 : 300;
+                if (btAlert) return isSideNotch ? 104 : 340;
+                if (isNotification && isSideNotch) return 150; // side dock: popups grow vertically
+                if (batteryEvent && !osdAlert && !btAlert && !appNotice) return 340;
+                if (appNotice && !osdAlert && !btAlert) return 420;
+                if (isNotification) return 360;
                 if (isExpanded) {
-                  return isSideNotch ? (viewMode === 'settings' ? 380 : 340) : (viewMode === 'dashboard' ? 560 : 450);
+                  return isSideNotch ? (viewMode === 'settings' ? 380 : 340) : (viewMode === 'dashboard' ? 560 : 480);
                 }
                 if (isSideNotch) return 42;
                 if (greeting) return 240;
@@ -1421,26 +1461,34 @@ export default function App() {
               height: isDragging 
                 ? 64 
                 : (() => {
-                    if (osdAlert) return isSideNotch ? 240 : 58;
-                    if (btAlert) return isSideNotch ? 205 : 64;
-                    if (isNotification) return isSideNotch ? 90 : 80;
+                    if (osdAlert) return isSideNotch ? 200 : ((osdAlert.type === 'volume' && isBtAudio) ? 54 : 44);
+                    if (btAlert) return isSideNotch ? 210 : 60;
+                    if (isNotification && isSideNotch) {
+                      if (sysNotification || appNotice) return 250;
+                      if (meetingAlert) return 230;
+                      if (isBoosting) return 200;
+                      return 190;
+                    }
+                    if (batteryEvent && !osdAlert && !btAlert && !appNotice) return 70;
+                    if (appNotice && !osdAlert && !btAlert) return 72;
+                    if (isNotification) return 80;
                     if (isExpanded) {
                       if (isSideNotch && viewMode !== 'settings') {
-                        if (viewMode === 'control') return 370;
-                        if (viewMode === 'dashboard') return (effectivePrivacy.cam || effectivePrivacy.mic) ? 465 : 430;
+                        if (viewMode === 'control') return 350;
+                        if (viewMode === 'dashboard') return (effectivePrivacy.cam || effectivePrivacy.mic) ? 420 : 380;
                         if (viewMode === 'stats') return 275;
-                        if (viewMode === 'network') return 250;
+                        if (viewMode === 'network') return 200;
                         if (viewMode === 'stopwatch') return 260;
-                        if (viewMode === 'pomodoro') return 330;
-                        if (viewMode === 'media') return 350;
+                        if (viewMode === 'pomodoro') return 420;
+                        if (viewMode === 'media') return spotifyState?.lyrics?.length > 0 ? 400 : 350;
                         return 360;
                       }
                       if (viewMode === 'settings') return 320;
-                      if (viewMode === 'dashboard') return (effectivePrivacy.cam || effectivePrivacy.mic) ? 346 : 308;
-                      if (viewMode === 'control') return 300;
-                      if (viewMode === 'network') return 260;
-                      if (viewMode === 'stats') return 240;
-                      if (viewMode === 'pomodoro') return 360;
+                      if (viewMode === 'dashboard') return (effectivePrivacy.cam || effectivePrivacy.mic) ? 336 : 292;
+                      if (viewMode === 'control') return 236;
+                      if (viewMode === 'network') return 168;
+                      if (viewMode === 'stats') return 214;
+                      if (viewMode === 'pomodoro') return 282;
                       if (['volume', 'brightness'].includes(viewMode)) return 140;
                       return 220;
                     }
@@ -1463,7 +1511,7 @@ export default function App() {
                 ? 'rgba(0,0,0,0)' 
                 : (!isExpanded && !isNotification 
                   ? (config.idleColor || config.bgColor || '#000000') 
-                  : (config.panelStyle === 'solid' ? (config.bgColor || '#000000') : 'rgba(10, 10, 14, 0.94)'))
+                  : expandedSurface)
             }}
             style={{
               pointerEvents: isNotchHidden ? 'none' : 'auto',
@@ -1496,76 +1544,16 @@ export default function App() {
               <>
                 <div 
                   className="absolute top-0 -left-[14px] w-[14px] h-[14px] pointer-events-none transition-colors duration-500"
-                  style={{ backgroundImage: `radial-gradient(circle at 0% 100%, transparent 14px, ${!isExpanded && !isNotification ? (config.idleColor || config.bgColor || '#000000') : (config.panelStyle === 'solid' ? (config.bgColor || '#000000') : 'rgba(10, 10, 14, 0.94)')} 14px)` }}
+                  style={{ backgroundImage: `radial-gradient(circle at 0% 100%, transparent 14px, ${!isExpanded && !isNotification ? (config.idleColor || config.bgColor || '#000000') : expandedSurface} 14px)` }}
                 />
                 <div 
                   className="absolute top-0 -right-[14px] w-[14px] h-[14px] pointer-events-none transition-colors duration-500"
-                  style={{ backgroundImage: `radial-gradient(circle at 100% 100%, transparent 14px, ${!isExpanded && !isNotification ? (config.idleColor || config.bgColor || '#000000') : (config.panelStyle === 'solid' ? (config.bgColor || '#000000') : 'rgba(10, 10, 14, 0.94)')} 14px)` }}
+                  style={{ backgroundImage: `radial-gradient(circle at 100% 100%, transparent 14px, ${!isExpanded && !isNotification ? (config.idleColor || config.bgColor || '#000000') : expandedSurface} 14px)` }}
                 />
               </>
             )}
 
-            {isDragging && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.8, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.8, y: 10 }}
-                transition={{ type: 'spring', stiffness: 450, damping: 28 }}
-                className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
-              >
-                <motion.div 
-                  layout
-                  className="rounded-2xl flex flex-col items-center justify-center gap-1.5 p-3"
-                  style={{
-                    width: 140,
-                    height: 64,
-                    backgroundColor: 'rgba(10, 10, 12, 0.95)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    boxShadow: `0 12px 40px rgba(0,0,0,0.7), 0 0 20px ${activeAccentHex}22`
-                  }}
-                >
-                  <motion.div layout className="flex items-center gap-1">
-                    <GripHorizontal size={12} className="text-white/30 animate-pulse" />
-                    <span className="text-[8px] font-mono tracking-widest text-white/40 uppercase font-bold">DRAGGING</span>
-                  </motion.div>
-                  <AnimatePresence mode="wait">
-                    <motion.div 
-                      key={dragPreviewPosition}
-                      initial={{ opacity: 0, y: 5, scale: 0.9 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -5, scale: 0.9 }}
-                      transition={{ duration: 0.15, ease: 'easeOut' }}
-                      className="flex items-center gap-1.5 text-white/90"
-                    >
-                      {dragPreviewPosition === 'left' && (
-                        <>
-                          <motion.div animate={{ x: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 0.8 }}>
-                            <ArrowLeft size={12} className="text-cyan-400" />
-                          </motion.div>
-                          <span className="text-[9px] font-mono tracking-widest uppercase font-semibold">LEFT DOCK</span>
-                        </>
-                      )}
-                      {dragPreviewPosition === 'right' && (
-                        <>
-                          <span className="text-[9px] font-mono tracking-widest uppercase font-semibold">RIGHT DOCK</span>
-                          <motion.div animate={{ x: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 0.8 }}>
-                            <ArrowRight size={12} className="text-cyan-400" />
-                          </motion.div>
-                        </>
-                      )}
-                      {dragPreviewPosition === 'top' && (
-                        <>
-                          <motion.div animate={{ y: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 0.8 }}>
-                            <ArrowUp size={12} className="text-cyan-400" />
-                          </motion.div>
-                          <span className="text-[9px] font-mono tracking-widest uppercase font-semibold">TOP DOCK</span>
-                        </>
-                      )}
-                    </motion.div>
-                  </AnimatePresence>
-                </motion.div>
-              </motion.div>
-            )}
+            {isDragging && renderDragCard()}
 
             <div 
               className="w-full h-full flex flex-col overflow-hidden relative z-10"
@@ -1594,18 +1582,13 @@ export default function App() {
                     className="absolute inset-0 z-0 pointer-events-none overflow-hidden rounded-[32px]"
                     style={{ mixBlendMode: 'screen' }}
                   >
-                    <motion.div 
-                      animate={{ y: viewMode === 'media' && config.bgAnimation === 'liquid' ? 170 : 0 }}
-                      transition={{ duration: 2, ease: 'easeInOut' }}
-                      className="absolute inset-0 pointer-events-none"
-                    >
-                      {config.bgAnimation === 'rain' && <RainBackground accentColor={config.accentColor} />}
-                      {config.bgAnimation === 'matrix' && <MatrixBackground />}
-                      {config.bgAnimation === 'hyperspace' && <HyperspaceBackground isPlaying={spotifyState?.is_playing} />}
-                      {config.bgAnimation === 'liquid' && <LiquidGlowBackground accentColor={config.accentColor} />}
-                      {config.bgAnimation === 'cosmic' && <CosmicOrbitsBackground />}
-                      {config.bgAnimation === 'aurora' && <AuroraWaveBackground />}
-                    </motion.div>
+                    <BackgroundEffect
+                      className="opacity-[0.72]"
+                      id={config.bgAnimation}
+                      accent={activeAccentHex}
+                      colors={spotifyState?.item?.album?.images?.[0]?.url ? albumColors : null}
+                      isPlaying={!!spotifyState?.is_playing}
+                    />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1618,6 +1601,12 @@ export default function App() {
                     activeBtDevice={activeBtDevice}
                     isSideNotch={isSideNotch}
                   />
+                ) : btAlert ? (
+                  <BluetoothAlert 
+                    btDevice={btAlert} 
+                    isSideNotch={isSideNotch} 
+                    screenPosition={config.screenPosition} 
+                  />
                 ) : !isExpanded && !isNotification ? (
                   <motion.div
                     key="collapsed"
@@ -1628,18 +1617,8 @@ export default function App() {
                     exit={{ opacity: 0, transition: { duration: 0.1 } }}
                   >
                     <div className={`flex ${isSideNotch ? 'flex-col gap-3 items-center justify-start' : 'items-center gap-2 flex-1 justify-start'}`}>
-                      <div className="relative w-4 h-4 flex items-center justify-center" title={`Battery: ${battery.level}%`}>
-                        <svg className="w-full h-full -rotate-90 drop-shadow-md" viewBox="0 0 36 36">
-                          <circle cx="18" cy="18" r="16" fill="none" className={idleTextColor === 'black' ? 'stroke-black/10' : 'stroke-white/10'} strokeWidth="3.5" />
-                          <circle
-                            cx="18" cy="18" r="16" fill="none"
-                            className={battery.charging ? 'stroke-green-400' : (battery.level <= 20 ? 'stroke-red-400' : (idleTextColor === 'black' ? 'stroke-black/70' : 'stroke-white/80'))}
-                            strokeWidth="3.5"
-                            strokeDasharray="100"
-                            strokeDashoffset={100 - battery.level}
-                            strokeLinecap="round"
-                          />
-                        </svg>
+                      <div className="flex items-center justify-center" title={`Battery ${battery.level}%${battery.charging ? ', charging' : ''}`}>
+                        <BatteryRing level={battery.level} charging={battery.charging} size={isSideNotch ? 16 : 17} tone={idleTextColor === 'black' ? 'dark' : 'light'} />
                       </div>
                     </div>
 
@@ -1652,7 +1631,7 @@ export default function App() {
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
                             transition={{ duration: 0.25 }}
-                            className={`smart-notch-brand-text ${isSideNotch ? 'text-[12px] tracking-wider py-1 select-none text-center' : 'text-[13px] tracking-tight mx-2 select-none'}`}
+                            className={`smart-notch-brand-text ${isSideNotch ? 'text-[12px] py-1 select-none text-center' : 'text-[13px] mx-2 select-none'} ${idleTextColor === 'black' ? '!text-black' : ''}`}
                             style={{
                               writingMode: isSideNotch ? 'vertical-rl' : 'horizontal-tb',
                               textOrientation: isSideNotch ? 'mixed' : 'mixed',
@@ -1665,101 +1644,78 @@ export default function App() {
                         ) : isPomoRunning ? (
                           <motion.span
                             key="pomotimer"
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: -2 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className={`font-mono font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${config.glowIntensity === 'none' ? 'text-orange-400' : 'text-orange-300'}`}
-                            style={{
-                              ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}),
-                              ...(config.glowIntensity === 'none' ? {} : { textShadow: '0 0 8px rgba(253,186,116,0.8)' })
-                            }}
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -4 }}
+                            className="font-display flex items-center justify-center"
                           >
                             {isSideNotch ? (
-                              <div className="flex flex-col items-center justify-center py-2 px-1 rounded-2xl bg-orange-500/[0.14] border border-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.25)] w-[36px]">
-                                <span className="text-[7.5px] font-black tracking-widest uppercase text-orange-400 leading-none mb-1">POMO</span>
-                                <span className="text-[13px] font-black tracking-tight leading-none text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
-                                  {String(Math.floor(pomodoro / 60)).padStart(2, '0')}
-                                </span>
-                                <div className="w-3 h-[1px] my-[2.5px] rounded-full bg-gradient-to-r from-transparent via-orange-400/50 to-transparent" />
-                                <span className="text-[12px] font-extrabold tracking-tight leading-none text-orange-300 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
-                                  {String(pomodoro % 60).padStart(2, '0')}
-                                </span>
+                              <div className="flex flex-col items-center leading-none gap-1">
+                                <span className="text-[9.5px] font-medium" style={{ color: '#FF9F0A' }}>Focus</span>
+                                <span className="text-[14px] font-semibold">{String(Math.floor(pomodoro / 60)).padStart(2, '0')}</span>
+                                <span className="text-[14px] font-semibold opacity-60">{String(pomodoro % 60).padStart(2, '0')}</span>
                               </div>
                             ) : (
-                              `${String(Math.floor(pomodoro / 60)).padStart(2, '0')}:${String(pomodoro % 60).padStart(2, '0')}`
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#FF9F0A' }} />
+                                <span className="text-[14.5px] font-semibold">{String(Math.floor(pomodoro / 60)).padStart(2, '0')}:{String(pomodoro % 60).padStart(2, '0')}</span>
+                              </span>
                             )}
                           </motion.span>
                         ) : isSwRunning ? (
                           <motion.span
                             key="swtimer"
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: -2 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className={`font-mono font-bold text-[11px] ${isSideNotch ? 'tracking-normal' : 'tracking-widest'} ${config.glowIntensity === 'none' ? 'text-yellow-400' : 'text-yellow-300'}`}
-                            style={{
-                              ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {}),
-                              ...(config.glowIntensity === 'none' ? {} : { textShadow: '0 0 8px rgba(253,224,71,0.8)' })
-                            }}
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -4 }}
+                            className="font-display flex items-center justify-center"
                           >
                             {isSideNotch ? (
-                              <div className="flex flex-col items-center justify-center py-2 px-1 rounded-2xl bg-yellow-500/[0.14] border border-yellow-500/30 shadow-[0_0_10px_rgba(234,179,8,0.25)] w-[36px]">
-                                <span className="text-[7.5px] font-black tracking-widest uppercase text-yellow-400 leading-none mb-1">SW</span>
-                                <span className="text-[13px] font-black tracking-tight leading-none text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
-                                  {String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}
-                                </span>
-                                <div className="w-3 h-[1px] my-[2.5px] rounded-full bg-gradient-to-r from-transparent via-yellow-400/50 to-transparent" />
-                                <span className="text-[12px] font-extrabold tracking-tight leading-none text-yellow-300 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
-                                  {String(stopwatch % 60).padStart(2, '0')}
-                                </span>
+                              <div className="flex flex-col items-center leading-none gap-1">
+                                <span className="text-[9.5px] font-medium" style={{ color: '#FFD60A' }}>Timer</span>
+                                <span className="text-[14px] font-semibold">{String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}</span>
+                                <span className="text-[14px] font-semibold opacity-60">{String(stopwatch % 60).padStart(2, '0')}</span>
                               </div>
                             ) : (
-                              `${String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:${String(stopwatch % 60).padStart(2, '0')}`
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#FFD60A' }} />
+                                <span className="text-[14.5px] font-semibold">{String(Math.floor((stopwatch % 3600) / 60)).padStart(2, '0')}:{String(stopwatch % 60).padStart(2, '0')}</span>
+                              </span>
                             )}
                           </motion.span>
                         ) : (
                           <motion.span
                             key="time"
-                            initial={{ opacity: 0, y: 5 }}
+                            initial={{ opacity: 0, y: 4 }}
                             animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className={isSideNotch ? 'tracking-normal text-center' : ''}
-                            style={{
-                              ...(isSideNotch ? { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.1 } : {})
-                            }}
+                            exit={{ opacity: 0, y: -4 }}
+                            className="font-display flex items-center justify-center"
                           >
                             {isSideNotch ? (
-                              <div className="flex flex-col items-center justify-center py-2.5 px-1 rounded-2xl bg-white/[0.08] border border-white/[0.12] shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] group-hover:bg-white/[0.13] transition-all w-[36px]">
-                                <span className={`text-[8px] font-black tracking-widest uppercase leading-none mb-1 ${idleTextColor === 'black' ? 'text-black/50' : 'text-cyan-400'}`}>
-                                  {new Date().toLocaleDateString('en-US', { weekday: 'short' })}
-                                </span>
-                                <span className={`text-[14px] font-black tracking-tight leading-none ${idleTextColor === 'black' ? 'text-black' : 'text-white'} drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]`}>
+                              <div className="flex flex-col items-center leading-none gap-1">
+                                <span className={`text-[14px] font-semibold ${idleTextColor === 'black' ? 'text-black' : 'text-white'}`}>
                                   {time.split(':')[0] || '12'}
                                 </span>
-                                <div className={`w-3.5 h-[1px] my-[3px] rounded-full ${idleTextColor === 'black' ? 'bg-black/20' : 'bg-gradient-to-r from-transparent via-white/50 to-transparent'}`} />
-                                <span className={`text-[13px] font-extrabold tracking-tight leading-none ${idleTextColor === 'black' ? 'text-black/80' : 'text-white/80'} drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]`}>
+                                <span className={`text-[14px] font-semibold ${idleTextColor === 'black' ? 'text-black/55' : 'text-white/55'}`}>
                                   {time.split(':')[1] ? time.split(':')[1].replace(/[^0-9]/g, '') : '00'}
                                 </span>
-                                {time.match(/[AP]M/i)?.[0] && (
-                                  <span className={`text-[7px] font-black tracking-wider uppercase leading-none mt-1 ${idleTextColor === 'black' ? 'text-black/40' : 'text-white/45'}`}>
-                                    {time.match(/[AP]M/i)[0]}
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="flex items-baseline gap-2 mt-0.5 justify-center">
-                                <span className={`text-[11px] font-bold tracking-wider font-mono uppercase ${idleTextColor === 'black' ? 'text-black/50' : 'text-white/40'}`}>
+                                <span className={`text-[9.5px] font-medium mt-0.5 ${idleTextColor === 'black' ? 'text-black/45' : 'text-white/45'}`}>
                                   {new Date().toLocaleDateString('en-US', { weekday: 'short' })}
                                 </span>
-                                <div className="flex items-baseline gap-1">
-                                  <span className={`text-[17px] font-black tracking-tight leading-none ${idleTextColor === 'black' ? 'text-black' : getTextGlowStyle(false)}`} style={idleTextColor === 'black' ? {} : getTextShadowStyle(false)}>
-                                    {time.split(' ')[0]}
+                              </div>
+                            ) : (
+                              <div className="flex items-baseline gap-1.5 justify-center">
+                                <span className={`text-[12.5px] font-medium ${idleTextColor === 'black' ? 'text-black/50' : 'text-white/50'}`}>
+                                  {new Date().toLocaleDateString('en-US', { weekday: 'short' })}
+                                </span>
+                                <span className={`text-[14.5px] font-semibold ${idleTextColor === 'black' ? 'text-black' : 'text-white'}`}>
+                                  {time.split(' ')[0]}
+                                </span>
+                                {time.split(' ')[1] && (
+                                  <span className={`text-[11px] font-medium ${idleTextColor === 'black' ? 'text-black/50' : 'text-white/50'}`}>
+                                    {time.split(' ')[1]}
                                   </span>
-                                  {time.split(' ')[1] && (
-                                    <span className={`text-[10px] font-black uppercase tracking-wider leading-none ${idleTextColor === 'black' ? 'text-black/60' : 'text-white/50'}`}>
-                                      {time.split(' ')[1]}
-                                    </span>
-                                  )}
-                                </div>
+                                )}
                               </div>
                             )}
                           </motion.span>
@@ -1778,38 +1734,11 @@ export default function App() {
                           className={`relative flex items-center justify-center ${isSideNotch ? 'py-1' : 'pr-1.5'}`}
                           title="Smart Notch"
                         >
-                          {/* Ambient Pulsing Glow Halo */}
-                          <motion.div
-                            className="absolute -inset-1 rounded-xl bg-cyan-400/30 blur-md pointer-events-none"
-                            animate={{
-                              opacity: [0.3, 0.85, 0.3],
-                              scale: [0.9, 1.25, 0.9]
-                            }}
-                            transition={{
-                              repeat: Infinity,
-                              duration: 1.8,
-                              ease: 'easeInOut'
-                            }}
-                          />
-                          {/* Brand Logo with gentle breathing floating effect */}
-                          <motion.img
-                            src={appLogo}
-                            alt="Smart Notch"
-                            className="w-[18px] h-[18px] rounded-[5px] object-contain drop-shadow-[0_0_8px_rgba(56,189,248,0.7)] relative z-10"
-                            animate={{
-                              scale: [0.95, 1.08, 0.95],
-                              rotate: [0, 4, -4, 0]
-                            }}
-                            transition={{
-                              repeat: Infinity,
-                              duration: 2.2,
-                              ease: 'easeInOut'
-                            }}
-                          />
+                          <BrandMark size={18} />
                         </motion.div>
                       ) : spotifyState?.is_playing && spotifyState?.item && config.showAudioWaveform !== false ? (
                         <div className={isSideNotch ? 'h-[14px] overflow-hidden flex items-center' : 'h-[12px] overflow-hidden flex items-center'}>
-                          <AudioWaveform isPlaying={true} isSideNotch={isSideNotch} width={isSideNotch ? 14 : 24} height={isSideNotch ? 14 : 12} />
+                          <AudioWaveform isPlaying={true} colors={albumColors} isSideNotch={isSideNotch} width={isSideNotch ? 14 : 22} height={isSideNotch ? 14 : 13} />
                         </div>
                       ) : (
                         <div className={isSideNotch ? 'h-[14px]' : 'w-[10px]'} />
@@ -1826,8 +1755,7 @@ export default function App() {
                               className="relative flex items-center justify-center flex-shrink-0"
                               title="Camera in use"
                             >
-                              <div className="w-[8px] h-[8px] rounded-full bg-[#30D158]" style={{ boxShadow: '0 0 10px 2px rgba(48, 209, 88, 0.85), inset 0 1px 1px rgba(255, 255, 255, 0.7)' }} />
-                              <motion.div animate={{ opacity: [0.35, 0.75, 0.35], scale: [1, 1.7, 1] }} transition={{ repeat: Infinity, duration: 2.2, ease: 'easeInOut' }} className="absolute inset-0 rounded-full bg-[#30D158]/50 pointer-events-none" />
+                              <div className="w-[7px] h-[7px] rounded-full bg-[#30D158]" />
                             </motion.div>
                           )}
                           {effectivePrivacy.mic && (
@@ -1839,8 +1767,7 @@ export default function App() {
                               className="relative flex items-center justify-center flex-shrink-0"
                               title="Microphone in use"
                             >
-                              <div className="w-[8px] h-[8px] rounded-full bg-[#FF9F0A]" style={{ boxShadow: '0 0 10px 2px rgba(255, 159, 10, 0.85), inset 0 1px 1px rgba(255, 255, 255, 0.7)' }} />
-                              <motion.div animate={{ opacity: [0.35, 0.75, 0.35], scale: [1, 1.7, 1] }} transition={{ repeat: Infinity, duration: 2.2, ease: 'easeInOut', delay: 0.3 }} className="absolute inset-0 rounded-full bg-[#FF9F0A]/50 pointer-events-none" />
+                              <div className="w-[7px] h-[7px] rounded-full bg-[#FF9F0A]" />
                             </motion.div>
                           )}
                         </div>
@@ -1850,35 +1777,35 @@ export default function App() {
                 ) : clipboardUrl ? (
                   <motion.div
                     key="clipboard-state"
-                    className="w-full h-full p-4 flex flex-col justify-center gap-3 z-10"
+                    className={`w-full h-full flex flex-col justify-center z-10 ${isSideNotch ? 'px-2.5 py-4 gap-2.5 items-center text-center' : 'p-4 gap-3'}`}
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                        <LinkIcon size={20} className="text-blue-400" />
+                    <div className={`flex gap-3 ${isSideNotch ? 'flex-col items-center w-full' : 'items-center'}`}>
+                      <div className="w-9 h-9 rounded-full bg-white/[0.08] flex items-center justify-center flex-shrink-0">
+                        <LinkIcon size={17} strokeWidth={1.9} className="text-white" />
                       </div>
-                      <div className="flex flex-col flex-grow overflow-hidden">
-                        <span className="font-bold text-sm">Link Copied!</span>
-                        <span className="text-xs text-white/60 truncate">{clipboardUrl}</span>
+                      <div className={`flex flex-col overflow-hidden ${isSideNotch ? 'w-full items-center' : 'flex-grow'}`}>
+                        <span className="font-semibold text-[13px]">Link copied</span>
+                        <span className="text-[11.5px] text-white/50 truncate">{clipboardUrl}</span>
                       </div>
                     </div>
-                    <div className="flex gap-2 mt-1">
+                    <div className={`flex gap-2 mt-1 ${isSideNotch ? 'w-full' : ''}`}>
                       <button
-                        className="flex-grow bg-blue-500 hover:bg-blue-600 text-white py-1.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+                        className="flex-grow bg-white hover:bg-white/90 text-black py-1.5 rounded-full text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-colors"
                         onClick={() => {
                           if (ipcRenderer) ipcRenderer.send('open-url', clipboardUrl);
                           setClipboardUrl(null);
                         }}
                       >
-                        <ExternalLink size={16} /> Open in Browser
+                        <ExternalLink size={14} /> {isSideNotch ? 'Open' : 'Open in browser'}
                       </button>
                       <button
-                        className="w-8 flex-shrink-0 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors"
+                        className="w-8 h-8 flex-shrink-0 bg-white/[0.08] hover:bg-white/[0.14] rounded-full flex items-center justify-center transition-colors"
                         onClick={() => setClipboardUrl(null)}
                       >
-                        <X size={16} />
+                        <X size={14} />
                       </button>
                     </div>
                   </motion.div>
@@ -1890,7 +1817,7 @@ export default function App() {
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
                   >
-                    {batteryEvent || meetingAlert || isBoosting || boostAlert || sysNotification ? (
+                    {batteryEvent || meetingAlert || isBoosting || boostAlert || sysNotification || appNotice ? (
                       <NotificationBanners
                         batteryEvent={batteryEvent}
                         meetingAlert={meetingAlert}
@@ -1900,6 +1827,10 @@ export default function App() {
                         boostProgress={boostProgress}
                         sysNotification={sysNotification}
                         setSysNotification={setSysNotification}
+                        appNotice={appNotice}
+                        onAppNoticeAction={handleAppNoticeAction}
+                        onAppNoticeClose={closeAppNotice}
+                        vertical={isSideNotch}
                       />
                     ) : btAlert ? (
                       <BluetoothAlert 
@@ -1928,7 +1859,7 @@ export default function App() {
                         />
 
                         <AnimatePresence>
-                          {viewMode === 'media' && spotifyState?.lyrics?.length > 0 && (
+                          {viewMode === 'media' && !isSideNotch && spotifyState?.lyrics?.length > 0 && (
                             <motion.div
                               key="lyrics-container"
                               initial={{ opacity: 0 }}
@@ -1958,7 +1889,7 @@ export default function App() {
                         </AnimatePresence>
 
                         <div
-                          className={`flex flex-grow rounded-2xl relative transition-all duration-300 ${getPanelBorderStyle()} ${isSideNotch && viewMode !== 'settings' ? 'flex-col justify-center items-center overflow-y-auto no-scrollbar p-2 my-auto' : 'justify-between'} ${viewMode === 'settings' ? 'p-3.5 items-start flex-col overflow-y-auto custom-scrollbar overflow-hidden' : (viewMode === 'control' ? (isSideNotch && viewMode !== 'settings' ? 'p-2.5 justify-center' : 'p-3 h-[220px]') : (viewMode === 'pomodoro' ? (isSideNotch && viewMode !== 'settings' ? 'p-2.5 justify-center' : 'p-3.5 h-[290px]') : (viewMode === 'dashboard' ? 'p-3 items-center justify-center' : (viewMode === 'media' ? 'p-0 overflow-hidden items-center justify-center' : 'px-2.5 pb-2.5 pt-0.5 items-center justify-center'))))}`}
+                          className={`flex flex-grow rounded-2xl relative transition-all duration-300 ${getPanelBorderStyle()} ${isSideNotch && viewMode !== 'settings' ? 'flex-col justify-center items-center overflow-y-auto no-scrollbar p-2 my-auto' : 'justify-between'} ${viewMode === 'settings' ? 'p-3.5 items-start flex-col overflow-y-auto custom-scrollbar overflow-hidden' : (viewMode === 'control' ? (isSideNotch && viewMode !== 'settings' ? 'p-2.5 justify-center' : 'px-2.5 pb-2.5 pt-1') : (viewMode === 'pomodoro' ? (isSideNotch && viewMode !== 'settings' ? 'p-2.5' : 'px-3 pb-3 pt-1') : (viewMode === 'dashboard' ? 'px-2 pb-2 pt-1 items-stretch justify-center' : (viewMode === 'media' ? 'p-0 overflow-hidden items-center justify-center' : 'px-2.5 pb-2.5 pt-0.5 items-center justify-center'))))}`}
                           style={{ pointerEvents: 'auto', ...getPanelBorderStyleInline() }}
                         >
                           <AnimatePresence mode="wait">
@@ -1988,6 +1919,7 @@ export default function App() {
                                 setSpotifyState={setSpotifyState}
                                 localProgress={localProgress}
                                 handleProgressBarClick={handleProgressBarClick}
+                                lyric={spotifyState?.lyrics?.length > 0 ? (getCurrentLyric() || '') : null}
                               />
                             )}
 
@@ -2016,6 +1948,7 @@ export default function App() {
 
                             {viewMode === 'pomodoro' && (
                               <PomodoroView
+                                isSideNotch={isSideNotch && viewMode !== 'settings'}
                                 pomoMode={pomoMode}
                                 switchPomoMode={switchPomoMode}
                                 pomoWorkTime={pomoWorkTime}
@@ -2046,19 +1979,20 @@ export default function App() {
                                 exit={{ opacity: 0 }}
                               >
                                 {viewMode === 'volume' ? (
-                                  <Volume2 size={24} className="text-blue-400 animate-pulse" />
+                                  <Volume2 size={20} strokeWidth={1.9} className="text-white/80" />
                                 ) : (
-                                  <Sun size={24} className="text-yellow-400 animate-pulse" />
+                                  <Sun size={20} strokeWidth={1.9} className="text-white/80" />
                                 )}
                                 <div className="flex flex-col items-center">
-                                  <span className="text-base font-black uppercase tracking-wider">{viewMode}</span>
-                                  <span className="text-[10px] text-white/50 uppercase tracking-widest">Scroll to adjust</span>
+                                  <span className="text-[14px] font-semibold capitalize">{viewMode}</span>
+                                  <span className="text-[11px] text-white/50">Scroll to adjust</span>
                                 </div>
                               </motion.div>
                             )}
 
                             {viewMode === 'control' && (
                               <ControlCenterView
+                                compact={isSideNotch && viewMode !== 'settings'}
                                 ipcRenderer={ipcRenderer}
                                 isMuted={isMuted}
                                 setIsMuted={setIsMuted}
@@ -2098,22 +2032,6 @@ export default function App() {
                 )}
               </AnimatePresence>
 
-              {osdAlert && !isSideNotch && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.18 }}
-                  className="absolute -bottom-9 left-0 right-0 flex justify-center pointer-events-none select-none z-30"
-                >
-                  <span
-                    className={`text-[17px] font-extrabold tracking-tight ${osdAlert.type === 'brightness' ? 'text-amber-300' : 'text-amber-400'}`}
-                    style={{ textShadow: '0 2px 14px rgba(0,0,0,0.95)' }}
-                  >
-                    {osdAlert.type === 'brightness' ? 'Brightness.' : 'Volume.'}
-                  </span>
-                </motion.div>
-              )}
             </div>
           </motion.div>
         );

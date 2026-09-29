@@ -1,28 +1,25 @@
-@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Yellowtail&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer components {
   .smart-notch-brand-text {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+    font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     color: #ffffff;
     font-weight: 600;
-    letter-spacing: -0.02em;
-    text-shadow: 
-      0 0 8px rgba(255, 255, 255, 0.45),
-      0 0 16px rgba(56, 189, 248, 0.25);
+    letter-spacing: -0.01em;
   }
 }
 
 @layer base {
   html, body {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "Inter", system-ui, sans-serif;
+    /* Windows 11 native variable UI font first; SF on macOS; system fallback */
+    font-family: "Segoe UI Variable Text", "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    letter-spacing: -0.01em;
+    font-feature-settings: "cv11", "ss01";
+    letter-spacing: -0.005em;
   }
 }
 
@@ -126,10 +123,179 @@ body {
   -webkit-app-region: no-drag;
 }
 
-.tabular-nums {
+.tabular-nums, .tnum {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Display face for large numerals (clock, timers) */
+.font-display {
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Small secondary label: sentence case, calm */
+.label-muted {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0;
 }
 
 button, a, input, textarea, [role="button"], .cursor-pointer, .no-drag {
   -webkit-app-region: no-drag !important;
 }
+@keyframes ambient-drift {
+  from { transform: scale(1.05) translate3d(-2%, -1%, 0); }
+  to   { transform: scale(1.15) translate3d(2%, 1%, 0); }
+}
+
+/* Shared surface for cards inside the expanded notch */
+.surface {
+  background: var(--card-bg, rgba(255, 255, 255, 0.055));
+  box-shadow: inset 0 0 0 1px var(--card-ring, transparent);
+  border-radius: 16px;
+}
+.surface-hover {
+  transition: background-color 150ms ease;
+}
+.surface-hover:hover {
+  background: var(--card-bg-hover, rgba(255, 255, 255, 0.09));
+}
+/* Control-style fills (sliders, toggles, tab bars) follow the card style too */
+.card-fill {
+  background: var(--card-bg, rgba(255, 255, 255, 0.08));
+  box-shadow: inset 0 0 0 1px var(--card-ring, transparent);
+}
+.card-fill-hover { transition: background-color 150ms ease; }
+.card-fill-hover:hover { background: var(--card-bg-hover, rgba(255, 255, 255, 0.11)); }
+
+/* ── Album-art ambient glow (media card) ── */
+@keyframes ag-drift {
+  0%   { transform: scale(1.08) translate3d(-3%, -2%, 0); opacity: 0.5; }
+  100% { transform: scale(1.18) translate3d(3%, 2%, 0);  opacity: 0.68; }
+}
+@keyframes ag-breathe {
+  0%, 100% { transform: scaleY(1); }
+  40%      { transform: scaleY(1.07); }
+  70%      { transform: scaleY(0.98); }
+}
+@keyframes ag-orb-a {
+  0%, 100% { transform: translate3d(-4%, 0, 0) scale(1); }
+  50%      { transform: translate3d(5%, -5%, 0) scale(1.14); }
+}
+@keyframes ag-orb-b {
+  0%, 100% { transform: translate3d(4%, 0, 0) scale(1.04); }
+  50%      { transform: translate3d(-5%, -4%, 0) scale(0.94); }
+}
+
+/* ── Music lights ── */
+@keyframes wave-y { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+@keyframes wave-x { from { transform: scaleX(0.3); }  to { transform: scaleX(1); } }
+
+/* ── Background effects ── */
+@keyframes bg-aurora-a {
+  0%   { transform: translate3d(-12%, 0, 0) skewX(-10deg); opacity: 0.55; }
+  100% { transform: translate3d(12%, 8%, 0) skewX(8deg);    opacity: 0.9; }
+}
+@keyframes bg-aurora-b {
+  0%   { transform: translate3d(10%, 0, 0) skewY(4deg);  opacity: 0.4; }
+  100% { transform: translate3d(-10%, -6%, 0) skewY(-4deg); opacity: 0.75; }
+}
+@keyframes bg-mesh-a { from { transform: translate3d(0, 0, 0) scale(1); }     to { transform: translate3d(25%, 15%, 0) scale(1.2); } }
+@keyframes bg-mesh-b { from { transform: translate3d(0, 0, 0) scale(1.1); }   to { transform: translate3d(-22%, -12%, 0) scale(0.9); } }
+@keyframes bg-mesh-c { from { transform: translate3d(0, 0, 0) scale(0.95); }  to { transform: translate3d(-15%, -25%, 0) scale(1.15); } }
+@keyframes bg-spin   { to { transform: rotate(360deg); } }
+@keyframes bg-stars  { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-120px, -60px, 0); } }
+@keyframes bg-twinkle { from { opacity: 0.55; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-effect *, .bg-effect { animation: none !important; }
+}
+
+/* Side bar: drop the calendar on shorter screens while media is showing */
+@media (max-height: 1150px) {
+  .shelf-calendar-optional { display: none; }
+}
+
+/* ── Music lights (AudioWaveform) ── */
+.aw-inner {
+  display: block;
+  box-shadow: 0 0 6px var(--aw-glow);
+  opacity: 0.4;
+  transition: opacity 300ms ease;
+}
+.aw-y .aw-inner { transform: scaleY(0.25); }
+.aw-x .aw-inner { transform: scaleX(0.3); }
+.aw-playing .aw-inner { opacity: 1; animation-timing-function: ease-in-out; animation-iteration-count: infinite; animation-direction: alternate; }
+.aw-y.aw-playing .aw-inner { animation-name: wave-y; }
+.aw-x.aw-playing .aw-inner { animation-name: wave-x; }
+
+/* Live audio: outer layer follows the level, inner adds a light shimmer */
+.aw.audio-live .aw-outer { will-change: transform; }
+.aw-y.audio-live .aw-outer { transform: scaleY(clamp(0.16, calc(0.16 + var(--lv) * var(--w) * 0.9 + var(--beat, 0) * 0.14), 1)); }
+.aw-x.audio-live .aw-outer { transform: scaleX(clamp(0.2, calc(0.2 + var(--lv) * var(--w) * 0.85 + var(--beat, 0) * 0.12), 1)); }
+.aw-y.audio-live .aw-inner { animation-name: wave-jitter-y; transform: none; }
+.aw-x.audio-live .aw-inner { animation-name: wave-jitter-x; transform: none; }
+@keyframes wave-jitter-y { from { transform: scaleY(0.8); } to { transform: scaleY(1); } }
+@keyframes wave-jitter-x { from { transform: scaleX(0.82); } to { transform: scaleX(1); } }
+
+/* ── Album glow reacting to the music ── */
+.ag-react { transform-origin: 50% 100%; transition: opacity 400ms ease; }
+.audio-live .ag-react {
+  transform: translate3d(0, calc((1 - var(--lvl, 0.5)) * 9%), 0) scale(calc(1 + var(--beat, 0) * 0.09));
+  opacity: calc(0.5 + var(--lvl, 0.5) * 0.5);
+  transition: none;
+  will-change: transform, opacity;
+}
+
+/* ── Theme: Visualizer ── */
+.viz-outer { transform-origin: 50% 100%; transition: transform 500ms ease; }
+.viz-inner { transform-origin: 50% 100%; animation: viz-idle ease-in-out infinite alternate; }
+.audio-live .viz-outer { transform: scaleY(clamp(0.06, calc(0.06 + var(--lv) * var(--w) * 0.94 + var(--beat, 0) * 0.1), 1)); transition: none; will-change: transform; }
+.audio-live .viz-inner { animation-name: viz-live; }
+/* Paused: bars settle to a low, still line */
+.viz-paused .viz-outer { transform: scaleY(0.06) !important; }
+.viz-paused .viz-inner { animation: none; }
+@keyframes viz-idle { from { transform: scaleY(0.12); } to { transform: scaleY(0.5); } }
+@keyframes viz-live { from { transform: scaleY(0.78); } to { transform: scaleY(1); } }
+
+/* ── Theme: Waves ── */
+@keyframes bg-wave-x { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
+.wave-react { transform-origin: 50% 100%; transition: transform 500ms ease; }
+.audio-live .wave-react { transform: scaleY(calc(0.75 + var(--lvl, 0.5) * 0.55 + var(--beat, 0) * 0.12)); transition: none; will-change: transform; }
+
+/* ── Theme: Synthwave ── */
+.synth-sun { transform: translateX(-50%); }
+.audio-live .synth-sun { transform: translateX(-50%) scale(calc(1 + var(--beat, 0) * 0.08)); }
+.synth-grid { transform: rotateX(72deg) translate3d(0, 0, 0); animation: synth-grid 1.6s linear infinite; }
+@keyframes synth-grid { to { transform: rotateX(72deg) translate3d(0, 36px, 0); } }
+
+/* ── Theme: Holographic ── */
+@keyframes bg-sheen { 0% { transform: translate3d(0, 0, 0); } 60%, 100% { transform: translate3d(330%, 0, 0); } }
+
+/* ── Theme: Topographic ── */
+@keyframes bg-topo-a { from { transform: translate3d(-4%, -3%, 0) rotate(-2deg); } to { transform: translate3d(4%, 3%, 0) rotate(2deg); } }
+@keyframes bg-topo-b { from { transform: translate3d(3%, 2%, 0) rotate(3deg); }  to { transform: translate3d(-3%, -4%, 0) rotate(-1deg); } }
+
+/* ── Theme: Fireflies ── */
+@keyframes bg-ff-drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(var(--dx), var(--dy), 0); } }
+.ff-react { transition: opacity 400ms ease; }
+.audio-live .ff-react { opacity: calc(0.55 + var(--lvl, 0.5) * 0.45); transform: scale(calc(1 + var(--beat, 0) * 0.03)); transition: none; }
+
+/* ── Theme: Night sky meteors ── */
+@keyframes bg-meteor {
+  0%, 88% { opacity: 0; transform: rotate(-28deg) translate3d(0, 0, 0); }
+  90%     { opacity: 1; }
+  100%    { opacity: 0; transform: rotate(-28deg) translate3d(260px, 0, 0); }
+}
+
+/* ── Reactive wrappers for Ambient & Aurora ── */
+.ambient-react, .aurora-react { transition: opacity 400ms ease; }
+.audio-live .ambient-react { transform: scale(calc(1 + var(--beat, 0) * 0.08)); opacity: calc(0.65 + var(--lvl, 0.5) * 0.35); transition: none; }
+.audio-live .aurora-react { opacity: calc(0.7 + var(--lvl, 0.5) * 0.3); transition: none; }
+
+/* Crossfade when album colours change */
+.bg-fade-in { animation: bg-fade-in 700ms ease both; }
+@keyframes bg-fade-in { from { opacity: 0; } to { opacity: 1; } }

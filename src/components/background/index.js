@@ -1,8 +1,1 @@
-export { 
-  MatrixBackground, 
-  HyperspaceBackground, 
-  RainBackground,
-  LiquidGlowBackground,
-  CosmicOrbitsBackground,
-  AuroraWaveBackground
-} from './BackgroundEffects';
+export { BackgroundEffect, BACKGROUND_EFFECTS, normalizeBackgroundId } from './BackgroundEffects';

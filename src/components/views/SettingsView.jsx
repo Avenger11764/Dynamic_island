@@ -1,4 +1,5 @@
 import React from 'react';
+import { BACKGROUND_EFFECTS, normalizeBackgroundId } from '../background';
 import { motion } from 'framer-motion';
 import { Power } from 'lucide-react';
 
@@ -156,24 +157,16 @@ export const SettingsView = React.memo(({
       <div className="flex flex-col gap-2">
         <span className="text-xs font-semibold text-white/70">Background Animation</span>
         <div className="flex flex-wrap bg-white/10 rounded-lg p-1 w-full gap-1">
-          {['off', 'liquid', 'cosmic', 'aurora', 'matrix', 'hyperspace', 'rain'].map(anim => {
-            const labels = {
-              off: 'Off',
-              liquid: 'Liquid',
-              cosmic: 'Orbits',
-              aurora: 'Aurora',
-              matrix: 'Matrix',
-              hyperspace: 'Starfield',
-              rain: 'Raindrops'
-            };
-            const isSelected = config.bgAnimation === anim;
+          {BACKGROUND_EFFECTS.map(e => e.id).map(anim => {
+            const labels = Object.fromEntries(BACKGROUND_EFFECTS.map(e => [e.id, e.label]));
+            const isSelected = normalizeBackgroundId(config.bgAnimation) === anim;
             return (
               <button
                 type="button"
                 key={anim}
                 className={`flex-1 min-w-[30%] py-1.5 text-[10px] font-bold rounded-md transition-colors ${
                   isSelected
-                    ? (anim === 'cosmic' ? 'bg-cyan-500 text-black' : 'bg-white text-black')
+                    ? 'bg-white text-black'
                     : 'text-white/50 hover:text-white hover:bg-white/5'
                 }`}
                 onClick={() => setConfig({ ...config, bgAnimation: anim })}
