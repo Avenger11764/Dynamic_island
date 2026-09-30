@@ -105,18 +105,18 @@ body {
   100% { border-color: rgba(236, 72, 153, 0.4); }
 }
 
-.rgb-shadow-high { animation: rgb-shadow-high 4s infinite linear; }
-.rgb-shadow-med { animation: rgb-shadow-med 4s infinite linear; }
-.rgb-shadow-low { animation: rgb-shadow-low 4s infinite linear; }
-.rgb-text { animation: rgb-text-glow 4s infinite linear; }
-.rgb-bg { animation: rgb-bg 4s infinite linear; }
-.rgb-border { animation: rgb-border 4s infinite linear; }
+/* Colour cycling repaints on every change, so it moves in small steps (~12/s) rather than every frame */
+.rgb-shadow-high { animation: rgb-shadow-high 4s infinite steps(16); }
+.rgb-shadow-med { animation: rgb-shadow-med 4s infinite steps(16); }
+.rgb-shadow-low { animation: rgb-shadow-low 4s infinite steps(16); }
+.rgb-text { animation: rgb-text-glow 4s infinite steps(16); }
+.rgb-bg { animation: rgb-bg 4s infinite steps(16); }
+.rgb-border { animation: rgb-border 4s infinite steps(16); }
 
 /* ── Shelf Bar Styles ── */
 .shelf-bar {
   -webkit-app-region: no-drag;
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  transition: backdrop-filter 0.3s ease;
 }
 
 .shelf-bar * {
@@ -232,14 +232,17 @@ button, a, input, textarea, [role="button"], .cursor-pointer, .no-drag {
 .aw-y.aw-playing .aw-inner { animation-name: wave-y; }
 .aw-x.aw-playing .aw-inner { animation-name: wave-x; }
 
-/* Live audio: outer layer follows the level, inner adds a light shimmer */
+/* Live audio: utils/audioReactive writes each bar's scale (level + shimmer) inline;
+   these are the resting values until its first write */
 .aw.audio-live .aw-outer { will-change: transform; }
-.aw-y.audio-live .aw-outer { transform: scaleY(clamp(0.16, calc(0.16 + var(--lv) * var(--w) * 0.9 + var(--beat, 0) * 0.14), 1)); }
-.aw-x.audio-live .aw-outer { transform: scaleX(clamp(0.2, calc(0.2 + var(--lv) * var(--w) * 0.85 + var(--beat, 0) * 0.12), 1)); }
-.aw-y.audio-live .aw-inner { animation-name: wave-jitter-y; transform: none; }
-.aw-x.audio-live .aw-inner { animation-name: wave-jitter-x; transform: none; }
-@keyframes wave-jitter-y { from { transform: scaleY(0.8); } to { transform: scaleY(1); } }
-@keyframes wave-jitter-x { from { transform: scaleX(0.82); } to { transform: scaleX(1); } }
+.aw-y.audio-live .aw-outer { transform: scaleY(0.16); }
+.aw-x.audio-live .aw-outer { transform: scaleX(0.2); }
+.aw.audio-live .aw-inner { animation: none; transform: none; }
+
+/* Live audio values (utils/audioReactive) are set on the element that uses them, so they
+   needn't inherit: children (every firefly, say) are left alone when the level changes */
+@property --lvl { syntax: '<number>'; inherits: false; initial-value: 0.5; }
+@property --beat { syntax: '<number>'; inherits: false; initial-value: 0; }
 
 /* ── Album glow reacting to the music ── */
 .ag-react { transform-origin: 50% 100%; transition: opacity 400ms ease; }
@@ -253,13 +256,13 @@ button, a, input, textarea, [role="button"], .cursor-pointer, .no-drag {
 /* ── Theme: Visualizer ── */
 .viz-outer { transform-origin: 50% 100%; transition: transform 500ms ease; }
 .viz-inner { transform-origin: 50% 100%; animation: viz-idle ease-in-out infinite alternate; }
-.audio-live .viz-outer { transform: scaleY(clamp(0.06, calc(0.06 + var(--lv) * var(--w) * 0.94 + var(--beat, 0) * 0.1), 1)); transition: none; will-change: transform; }
-.audio-live .viz-inner { animation-name: viz-live; }
+/* Live: utils/audioReactive writes each bar's scale inline */
+.audio-live .viz-outer { transform: scaleY(0.06); transition: none; will-change: transform; }
+.audio-live .viz-inner { animation: none; }
 /* Paused: bars settle to a low, still line */
 .viz-paused .viz-outer { transform: scaleY(0.06) !important; }
 .viz-paused .viz-inner { animation: none; }
 @keyframes viz-idle { from { transform: scaleY(0.12); } to { transform: scaleY(0.5); } }
-@keyframes viz-live { from { transform: scaleY(0.78); } to { transform: scaleY(1); } }
 
 /* ── Theme: Waves ── */
 @keyframes bg-wave-x { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
@@ -269,7 +272,7 @@ button, a, input, textarea, [role="button"], .cursor-pointer, .no-drag {
 /* ── Theme: Synthwave ── */
 .synth-sun { transform: translateX(-50%); }
 .audio-live .synth-sun { transform: translateX(-50%) scale(calc(1 + var(--beat, 0) * 0.08)); }
-.synth-grid { transform: rotateX(72deg) translate3d(0, 0, 0); animation: synth-grid 1.6s linear infinite; }
+.synth-grid { transform: rotateX(72deg) translate3d(0, 0, 0); animation: synth-grid 1.6s steps(48) infinite; }
 @keyframes synth-grid { to { transform: rotateX(72deg) translate3d(0, 36px, 0); } }
 
 /* ── Theme: Holographic ── */
@@ -295,6 +298,28 @@ button, a, input, textarea, [role="button"], .cursor-pointer, .no-drag {
 .ambient-react, .aurora-react { transition: opacity 400ms ease; }
 .audio-live .ambient-react { transform: scale(calc(1 + var(--beat, 0) * 0.08)); opacity: calc(0.65 + var(--lvl, 0.5) * 0.35); transition: none; }
 .audio-live .aurora-react { opacity: calc(0.7 + var(--lvl, 0.5) * 0.3); transition: none; }
+
+/* ── Weather icon (WeatherIcon.jsx): transform/opacity only, in small steps ── */
+.wx-spin { animation: wx-spin 12s steps(72) infinite; }
+.wx-spin-slow { animation: wx-spin 15s steps(90) infinite; }
+.wx-sway { animation: wx-sway 2s steps(10) infinite alternate; }
+.wx-sway-sm { animation: wx-sway-sm 2.5s steps(5) infinite alternate; }
+.wx-drop { animation: wx-drop 1.2s steps(6) infinite; }
+.wx-flake { animation: wx-flake 2.2s steps(11) infinite; }
+.wx-flake-dim { animation: wx-flake-dim 2.2s steps(11) infinite; }
+.wx-bolt { transform-origin: 48% 71%; animation: wx-bolt 2s steps(3) infinite; }
+@keyframes wx-spin { to { transform: rotate(360deg); } }
+@keyframes wx-sway { from { transform: translateX(-1.5px); } to { transform: translateX(1.5px); } }
+@keyframes wx-sway-sm { from { transform: translateX(-0.5px); } to { transform: translateX(0.5px); } }
+@keyframes wx-drop { 0%, 100% { transform: translateY(0); opacity: 0; } 50% { transform: translateY(16.667%); opacity: 1; } }
+@keyframes wx-flake { 0%, 100% { transform: translateY(0); opacity: 0.5; } 50% { transform: translateY(12.5%); opacity: 1; } }
+@keyframes wx-flake-dim { 0%, 100% { transform: translateY(0); opacity: 0.3; } 50% { transform: translateY(12.5%); opacity: 1; } }
+@keyframes wx-bolt {
+  0%, 20%, 30%, 50%, 100% { transform: scale(1); opacity: 1; }
+  10% { transform: scale(0.95); opacity: 0.2; }
+  40% { transform: scale(0.9); opacity: 0.1; }
+  60% { transform: scale(1); opacity: 0.9; }
+}
 
 /* Crossfade when album colours change */
 .bg-fade-in { animation: bg-fade-in 700ms ease both; }

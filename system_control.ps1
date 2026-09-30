@@ -153,7 +153,7 @@ namespace WinAudioSys {
         private static readonly System.Threading.ManualResetEvent _meterWake = new System.Threading.ManualResetEvent(false);
         private static System.Threading.Thread _meterThread;
 
-        // Streams output peak levels ("PK:left,right" in 0..1000) ~40x/s while enabled.
+        // Streams output peak levels ("PK:left,right" in 0..1000) ~30x/s while enabled.
         // Used by the notch to sync its music lights to the beat.
         public static void SetMeter(bool on) {
             _meterOn = on;
@@ -197,7 +197,7 @@ namespace WinAudioSys {
                     Console.WriteLine("PK:" + l + "," + r);
                     Console.Out.Flush();
                 }
-                System.Threading.Thread.Sleep(25);
+                System.Threading.Thread.Sleep(30);   // ~31 ms on the default 15.6 ms timer grid
             }
         }
 
@@ -790,8 +790,10 @@ function Find-Battery($name, $battMap) {
     return -1
 }
 
-# Returns @{ Devices = hashtable name->battery; WinRtOk = bool; WinRtNames = string[] }
-function Get-BtSnapshot($btSelector, $asTaskGeneric, $prevWinRtNames, $waitMs) {
+# Returns @{ Devices = hashtable name->battery; WinRtOk = bool; WinRtNames = string[]; BattMap = name->battery }
+# Reading battery levels walks every Bluetooth device node, which is by far the slowest
+# part: pass the previous BattMap back in to reuse it, or $null to read them again.
+function Get-BtSnapshot($btSelector, $asTaskGeneric, $prevWinRtNames, $waitMs, $battMap) {
     $names = New-Object System.Collections.Generic.List[string]
     $winRtOk = $false
     $winRtNames = @()
@@ -823,12 +825,13 @@ function Get-BtSnapshot($btSelector, $asTaskGeneric, $prevWinRtNames, $waitMs) {
         }
     } catch {}
 
-    $battMap = $null
-    try { $battMap = [WinAudioSys.BtHelper]::GetAllBatteries() } catch {}
+    if (-not $battMap) {
+        try { $battMap = [WinAudioSys.BtHelper]::GetAllBatteries() } catch {}
+    }
     $dict = @{}
     foreach ($n in $names) { $dict[$n] = Find-Battery $n $battMap }
 
-    return @{ Devices = $dict; WinRtOk = $winRtOk; WinRtNames = $winRtNames }
+    return @{ Devices = $dict; WinRtOk = $winRtOk; WinRtNames = $winRtNames; BattMap = $battMap }
 }
 
 function Test-IsBtAudioName($name) {
@@ -847,7 +850,7 @@ if ($initBright -ne $null) {
     [Console]::WriteLine("BRIGHTNESS:$initBright")
 }
 
-$initSnap = Get-BtSnapshot $global:btSelector $global:asTaskGeneric $null 2000
+$initSnap = Get-BtSnapshot $global:btSelector $global:asTaskGeneric $null 2000 $null
 foreach ($name in $initSnap.Devices.Keys) {
     $b = $initSnap.Devices[$name]
     [Console]::WriteLine("BT_PRESENT:$name|BATTERY:$b")
@@ -871,37 +874,54 @@ function Start-Loop([scriptblock]$body, [object[]]$loopArgs) {
     return $ps
 }
 
-# Loop 1: volume + brightness (fast, never blocked by Bluetooth queries)
+# Loop 1: volume + brightness (never blocked by Bluetooth queries)
 $levelsLoop = Start-Loop {
     param($initBright)
     $lastB = $initBright
-    $counter = 0
     $cim = $null
     $misses = 0
+    $clock = [System.Diagnostics.Stopwatch]::StartNew()
+    $lastPoll = 0
+    $lastHb = 0
+
+    # Windows pushes brightness changes (WmiMonitorBrightnessEvent), so the loop can
+    # sleep until one arrives instead of querying WMI twice a second.
+    $evtId = 'SmartNotchBrightness'
+    $eventsSeen = $false
+    try {
+        Register-CimIndicationEvent -Namespace root/wmi -ClassName WmiMonitorBrightnessEvent -SourceIdentifier $evtId -ErrorAction Stop | Out-Null
+    } catch { $evtId = $null }
+
     while ($true) {
-        Start-Sleep -Milliseconds 120
-        $counter++
+        $curB = $null
+        if ($evtId) {
+            # Returns at once when brightness changes, otherwise after a second
+            if (Wait-Event -SourceIdentifier $evtId -Timeout 1) {
+                foreach ($e in @(Get-Event -SourceIdentifier $evtId)) {
+                    try { $curB = [int]$e.SourceEventArgs.NewEvent.Brightness; $eventsSeen = $true } catch {}
+                    Remove-Event -EventIdentifier $e.EventIdentifier
+                }
+            }
+        } else {
+            Start-Sleep -Milliseconds 1000
+        }
+        $now = $clock.ElapsedMilliseconds
 
         # Volume changes arrive instantly via the endpoint callback; this is the fallback/rehook check
-        if ($counter % 2 -eq 0) {
-            try { [WinAudioSys.Audio]::Tick() } catch {}
-        }
+        try { [WinAudioSys.Audio]::Tick() } catch {}
 
-        # Brightness: ~0.5s over one reused WMI session; back off to ~5s when the
-        # display has no WMI brightness (e.g. desktop monitors)
-        $brightEvery = if ($misses -ge 5) { 40 } else { 4 }
-        if ($counter % $brightEvery -eq 0) {
+        # Brightness fallback poll over one reused WMI session: every second until an
+        # event has shown that events work on this display, then every ~5s. Also ~5s
+        # when the display has no WMI brightness at all (e.g. desktop monitors).
+        $pollEvery = if ($eventsSeen -or $misses -ge 5) { 5000 } else { 1000 }
+        if ($curB -eq $null -and ($now - $lastPoll) -ge $pollEvery) {
+            $lastPoll = $now
             try {
                 if (-not $cim) { $cim = New-CimSession -ErrorAction Stop }
                 $inst = Get-CimInstance -CimSession $cim -Namespace root/wmi -ClassName WmiMonitorBrightness -OperationTimeoutSec 2 -ErrorAction Stop | Select-Object -First 1
                 if ($inst) {
                     $misses = 0
                     $curB = [int]$inst.CurrentBrightness
-                    if ($curB -ne $lastB) {
-                        $lastB = $curB
-                        [Console]::WriteLine("BRIGHTNESS:$curB")
-                        [Console]::Out.Flush()
-                    }
                 } else { $misses++ }
             } catch {
                 $misses++
@@ -909,7 +929,14 @@ $levelsLoop = Start-Loop {
             }
         }
 
-        if ($counter % 16 -eq 0) {
+        if ($curB -ne $null -and $curB -ne $lastB) {
+            $lastB = $curB
+            [Console]::WriteLine("BRIGHTNESS:$curB")
+            [Console]::Out.Flush()
+        }
+
+        if (($now - $lastHb) -ge 2000) {
+            $lastHb = $now
             [Console]::WriteLine("HB:LEVELS")
             [Console]::Out.Flush()
         }
@@ -927,13 +954,37 @@ $btLoop = Start-Loop {
     $prevWinRt = $initWinRt
     $lastAud = $lastAudioName
     $lastToggles = ''
+    $battMap = $null
+    $battAge = 0
 
     while ($true) {
         Start-Sleep -Milliseconds 1200
         try {
-            $snap = Get-BtSnapshot $btSelector $asTaskGeneric $prevWinRt 1500
+            # Battery levels change slowly and are slow to read: reuse them for ~30s
+            # (~5s while a connected device hasn't reported one yet)
+            $battAge++
+            $waiting = $false
+            foreach ($v in $known.Values) { if ($v -lt 0) { $waiting = $true; break } }
+            $battTtl = if ($waiting) { 4 } else { 25 }
+            if ($battAge -ge $battTtl) { $battMap = $null }
+            $fresh = ($null -eq $battMap)
+
+            $snap = Get-BtSnapshot $btSelector $asTaskGeneric $prevWinRt 1500 $battMap
             if ($snap.WinRtOk) { $prevWinRt = $snap.WinRtNames }
             $cur = $snap.Devices
+            $battMap = $snap.BattMap
+            if ($fresh) { $battAge = 0 }
+
+            # A device just connected: read batteries now so its alert shows the real level
+            if (-not $fresh) {
+                $isNew = $false
+                foreach ($d in $cur.Keys) { if (-not $known.ContainsKey($d)) { $isNew = $true; break } }
+                if ($isNew) {
+                    try { $battMap = [WinAudioSys.BtHelper]::GetAllBatteries() } catch {}
+                    $battAge = 0
+                    foreach ($d in @($cur.Keys)) { $cur[$d] = Find-Battery $d $battMap }
+                }
+            }
 
             foreach ($d in @($cur.Keys)) {
                 $b = $cur[$d]

@@ -1,13 +1,15 @@
 import React, { useMemo, useRef } from 'react';
 import { useAudioReactive } from '../../utils/audioReactive';
+import { stepped } from '../../utils/steppedEase';
 
 /**
  * Background effects for the expanded notch and bar.
  *
  * Pure CSS/SVG: gradients, masks and static filters, animated only through
- * `transform`/`opacity` keyframes (compositor-friendly). Effects marked
- * `reactive` also follow the live music level/beat (--lvl, --lvl-l, --lvl-r,
- * --beat from utils/audioReactive) and fall back to idle motion otherwise.
+ * `transform`/`opacity` keyframes (compositor-friendly). Slow drifts move in
+ * small steps (utils/steppedEase, `steps()`) so frames are only drawn when
+ * something visibly moves. Effects marked `reactive` also follow the live music
+ * level/beat (utils/audioReactive) and fall back to idle motion otherwise.
  * Animations honour `prefers-reduced-motion` via index.css.
  */
 
@@ -89,7 +91,7 @@ const Visualizer = ({ accent, colors, isPlaying }) => {
       <div className="absolute inset-x-0 bottom-0 h-[55%]" style={{ background: `radial-gradient(80% 90% at 50% 100%, ${rgba(c1, 0.22)}, transparent 70%)` }} />
       <div className="viz absolute left-[5%] right-[5%] bottom-[6%] h-[40%] flex items-end justify-between">
         {bars.map((b, i) => (
-          <div key={i} className="viz-outer h-full" style={{ width: 'calc((100% - 31 * 4px) / 32)', '--w': b.w, '--lv': `var(--lvl-${b.ch}, 0.5)` }}>
+          <div key={i} className="viz-outer h-full" data-audio-bar="viz" data-ch={b.ch} data-w={b.w} data-dur={b.dur} data-delay={b.delay} style={{ width: 'calc((100% - 31 * 4px) / 32)' }}>
             <div className="viz-inner w-full h-full rounded-full" style={{ background: grad, animationDuration: `${b.dur}s`, animationDelay: `${b.delay}s` }} />
           </div>
         ))}
@@ -109,17 +111,18 @@ const Waves = ({ accent, colors }) => {
     { c: rgba(a, 0.45), h: '48%', dur: 13 },
     { c: rgba(b, 0.55), h: '34%', dur: 8 }
   ];
+  // 30 steps a second on every layer: they share one clock, so the three tides cost one frame
   return (
     <div key={`${a}${b}${c}`} className="bg-fade-in absolute inset-0">
       <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 30%, ${rgba(a, 0.12)})` }} />
-      <div className="wave-react absolute inset-0">
+      <div className="wave-react absolute inset-0" data-audio-vars="">
         {layers.map((l, i) => (
           <Layer
             key={i}
             style={{
               left: 0, bottom: 0, width: '200%', height: l.h,
               backgroundImage: waveSvg(l.c), backgroundSize: '50% 100%', backgroundRepeat: 'repeat-x',
-              animation: `bg-wave-x ${l.dur}s linear infinite`, animationDirection: i === 1 ? 'reverse' : 'normal'
+              animation: `bg-wave-x ${l.dur}s steps(${l.dur * 30}) infinite`, animationDirection: i === 1 ? 'reverse' : 'normal'
             }}
           />
         ))}
@@ -133,7 +136,7 @@ const Synthwave = () => (
   <>
     <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, #0b0620 0%, #2a0b3d 38%, #5b1250 54%, #0b0620 56%)' }} />
     <div className="absolute left-0 right-0" style={{ top: '46%', height: '12%', background: 'radial-gradient(60% 100% at 50% 100%, rgba(255,64,180,0.55), transparent 70%)' }} />
-    <div className="synth-sun absolute left-1/2" style={{ bottom: '44%', width: 'min(34%, 150px)', aspectRatio: '1 / 1' }}>
+    <div className="synth-sun absolute left-1/2" data-audio-vars="" style={{ bottom: '44%', width: 'min(34%, 150px)', aspectRatio: '1 / 1' }}>
       <div
         className="w-full h-full rounded-full"
         style={{
@@ -164,7 +167,7 @@ const Holo = () => (
   <>
     <Layer style={{ width: '200%', aspectRatio: '1 / 1', left: '-50%', top: '50%', marginTop: '-100%', filter: 'blur(22px)', opacity: 0.55,
       background: 'conic-gradient(from 0deg, #ff9ad5, #9be7ff, #b8ffb0, #fff3a1, #c8a6ff, #ff9ad5)',
-      animation: 'bg-spin 36s linear infinite' }} />
+      animation: 'bg-spin 36s steps(360) infinite' }} />
     <Layer style={{ inset: 0, opacity: 0.6, mixBlendMode: 'overlay',
       background: 'repeating-linear-gradient(125deg, rgba(255,255,255,0.08) 0 2px, transparent 2px 7px)' }} />
     <Layer style={{ top: 0, bottom: 0, left: '-60%', width: '60%',
@@ -188,10 +191,10 @@ const Topo = ({ accent }) => {
       </svg>
       <Layer style={{ inset: '-20%', filter: 'url(#topo-warp)',
         background: `repeating-radial-gradient(circle at 32% 42%, transparent 0 11px, ${line} 11px 12px)`,
-        animation: 'bg-topo-a 40s ease-in-out infinite alternate' }} />
+        animation: 'bg-topo-a 40s steps(240) infinite alternate' }} />
       <Layer style={{ inset: '-20%', filter: 'url(#topo-warp)', opacity: 0.7,
         background: `repeating-radial-gradient(circle at 76% 70%, transparent 0 15px, ${faint} 15px 16px)`,
-        animation: 'bg-topo-b 55s ease-in-out infinite alternate' }} />
+        animation: 'bg-topo-b 55s steps(330) infinite alternate' }} />
       <div className="absolute inset-0" style={{ background: 'radial-gradient(90% 80% at 50% 50%, transparent 30%, rgba(0,0,0,0.75) 100%)' }} />
     </>
   );
@@ -205,6 +208,8 @@ const Fireflies = () => {
     size: 2.5 + rand(i + 13) * 3,
     dx: `${((rand(i + 21) - 0.5) * 90).toFixed(0)}px`,
     dy: `${((rand(i + 29) - 0.5) * 60).toFixed(0)}px`,
+    // Durations and delays are multiples of 0.1 s and each animation takes 10 steps a
+    // second, so all sparks move on one shared clock instead of 44 separate ones
     dur: (7 + rand(i + 37) * 9).toFixed(1),
     tw: (1.6 + rand(i + 43) * 2.6).toFixed(1),
     delay: (-rand(i + 51) * 10).toFixed(1),
@@ -213,15 +218,15 @@ const Fireflies = () => {
   return (
     <>
       <div className="absolute inset-0" style={{ background: 'radial-gradient(120% 90% at 50% 110%, rgba(40,70,30,0.45), transparent 70%)' }} />
-      <div className="ff-react absolute inset-0">
+      <div className="ff-react absolute inset-0" data-audio-vars="">
         {flies.map((f, i) => (
-          <div key={i} className="absolute" style={{ left: f.left, top: f.top, '--dx': f.dx, '--dy': f.dy, animation: `bg-ff-drift ${f.dur}s ease-in-out ${f.delay}s infinite alternate`, willChange: 'transform' }}>
+          <div key={i} className="absolute" style={{ left: f.left, top: f.top, '--dx': f.dx, '--dy': f.dy, animation: `bg-ff-drift ${f.dur}s steps(${Math.round(f.dur * 10)}) ${f.delay}s infinite alternate`, willChange: 'transform' }}>
             <div
               className="rounded-full"
               style={{
                 width: f.size, height: f.size, background: f.hue,
                 boxShadow: `0 0 ${f.size * 3}px ${f.size}px ${f.hue}88`,
-                animation: `bg-twinkle ${f.tw}s ease-in-out ${f.delay}s infinite alternate`
+                animation: `bg-twinkle ${f.tw}s steps(${Math.round(f.tw * 10)}) ${f.delay}s infinite alternate`
               }}
             />
           </div>
@@ -233,13 +238,13 @@ const Fireflies = () => {
 
 /* ───────────── Aurora ───────────── */
 const Aurora = () => (
-  <div className="aurora-react absolute inset-0">
+  <div className="aurora-react absolute inset-0" data-audio-vars="">
     <Layer style={{ left: '-30%', right: '-30%', top: '-35%', height: '75%', filter: 'blur(28px)',
       background: 'linear-gradient(90deg, transparent 0%, rgba(52,211,153,0.7) 22%, rgba(45,212,191,0.65) 42%, rgba(56,189,248,0.6) 62%, rgba(167,139,250,0.65) 80%, transparent 100%)',
-      animation: 'bg-aurora-a 16s ease-in-out infinite alternate' }} />
+      animation: `bg-aurora-a 16s ${stepped(128)} infinite alternate` }} />
     <Layer style={{ left: '-30%', right: '-30%', top: '10%', height: '55%', filter: 'blur(34px)', opacity: 0.7,
       background: 'linear-gradient(90deg, transparent 0%, rgba(129,140,248,0.45) 25%, rgba(236,72,153,0.3) 50%, rgba(52,211,153,0.4) 75%, transparent 100%)',
-      animation: 'bg-aurora-b 21s ease-in-out infinite alternate' }} />
+      animation: `bg-aurora-b 21s ${stepped(126)} infinite alternate` }} />
   </div>
 );
 
@@ -255,8 +260,8 @@ const NightSky = () => {
   return (
     <>
       <div className="absolute inset-0" style={{ background: 'radial-gradient(80% 70% at 70% 20%, rgba(99,102,241,0.2), transparent 70%), radial-gradient(60% 60% at 15% 90%, rgba(56,189,248,0.12), transparent 70%)' }} />
-      <Layer style={{ top: 0, left: 0, width: 1, height: 1, borderRadius: '50%', boxShadow: far, animation: 'bg-stars 90s linear infinite' }} />
-      <Layer style={{ top: 0, left: 0, width: 1.5, height: 1.5, borderRadius: '50%', boxShadow: near, animation: 'bg-stars 60s linear infinite, bg-twinkle 4s ease-in-out infinite alternate' }} />
+      <Layer style={{ top: 0, left: 0, width: 1, height: 1, borderRadius: '50%', boxShadow: far, animation: 'bg-stars 90s steps(540) infinite' }} />
+      <Layer style={{ top: 0, left: 0, width: 1.5, height: 1.5, borderRadius: '50%', boxShadow: near, animation: `bg-stars 60s steps(360) infinite, bg-twinkle 4s ${stepped(24)} infinite alternate` }} />
       {[0, 1].map((i) => (
         <Layer key={i} style={{ top: i ? '12%' : '4%', left: i ? '55%' : '20%', width: 90, height: 1.5, borderRadius: 2,
           background: 'linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.9))',
@@ -274,13 +279,14 @@ const Ambient = ({ colors, isPlaying, accent }) => {
   const c3 = colors?.[2] || shiftHue(c1, -40);
   const state = isPlaying === false ? 'paused' : 'running';
   return (
-    <div className="ambient-react absolute inset-0">
-      <Layer style={{ width: '90%', height: '170%', left: '-20%', top: '-60%', borderRadius: '50%', animationPlayState: state,
-        background: `radial-gradient(circle, ${rgba(c1, 0.6)} 0%, transparent 65%)`, animation: 'bg-mesh-a 12s ease-in-out infinite alternate' }} />
-      <Layer style={{ width: '85%', height: '160%', right: '-20%', top: '-10%', borderRadius: '50%', animationPlayState: state,
-        background: `radial-gradient(circle, ${rgba(c2, 0.5)} 0%, transparent 65%)`, animation: 'bg-mesh-b 15s ease-in-out infinite alternate' }} />
-      <Layer style={{ width: '70%', height: '130%', left: '25%', bottom: '-75%', borderRadius: '50%', animationPlayState: state,
-        background: `radial-gradient(circle, ${rgba(c3, 0.45)} 0%, transparent 65%)`, animation: 'bg-mesh-c 18s ease-in-out infinite alternate' }} />
+    <div className="ambient-react absolute inset-0" data-audio-vars="">
+      {/* animationPlayState comes after `animation`: the shorthand would reset it to running */}
+      <Layer style={{ width: '90%', height: '170%', left: '-20%', top: '-60%', borderRadius: '50%',
+        background: `radial-gradient(circle, ${rgba(c1, 0.6)} 0%, transparent 65%)`, animation: `bg-mesh-a 12s ${stepped(84)} infinite alternate`, animationPlayState: state }} />
+      <Layer style={{ width: '85%', height: '160%', right: '-20%', top: '-10%', borderRadius: '50%',
+        background: `radial-gradient(circle, ${rgba(c2, 0.5)} 0%, transparent 65%)`, animation: `bg-mesh-b 15s ${stepped(105)} infinite alternate`, animationPlayState: state }} />
+      <Layer style={{ width: '70%', height: '130%', left: '25%', bottom: '-75%', borderRadius: '50%',
+        background: `radial-gradient(circle, ${rgba(c3, 0.45)} 0%, transparent 65%)`, animation: `bg-mesh-c 18s ${stepped(108)} infinite alternate`, animationPlayState: state }} />
     </div>
   );
 };

@@ -21,7 +21,8 @@ let lastUpdateDate = 0;
 let lastTrackId = '';
 let lastThumbnailBuffer = null;
 
-setInterval(() => {
+function poll() {
+  lastPoll = Date.now();
   try {
     // 1. Fetch fresh sessions directly from Windows OS in real-time
     let sessions = [];
@@ -136,4 +137,33 @@ setInterval(() => {
   } catch(e) {
     // Ignore native mapping errors
   }
-}, 800);
+}
+
+// Windows raises an event when the track, play state or position changes, so the
+// state is read right then instead of polling for it every 0.8s. Reading the
+// sessions is the expensive part (it copies every session's artwork).
+const FALLBACK_MS = 2500;   // safety net, and the heartbeat the main process watches for
+const SETTLE_MS = 60;       // one track change raises several events: read once
+const TIMELINE_MIN_MS = 1000; // some players report their position many times a second
+
+let lastPoll = 0;
+let pollTimer = null;
+let pollDue = 0;
+
+function pollSoon(minGap = 0) {
+  const now = Date.now();
+  const due = now + Math.max(SETTLE_MS, minGap - (now - lastPoll));
+  if (pollTimer && pollDue <= due) return;   // an earlier read is already scheduled
+  clearTimeout(pollTimer);
+  pollDue = due;
+  pollTimer = setTimeout(() => { pollTimer = null; poll(); }, due - now);
+}
+
+['session-added', 'session-removed', 'current-session-changed', 'session-media-changed', 'session-playback-changed']
+  .forEach((name) => monitor.on(name, () => pollSoon()));
+monitor.on('session-timeline-changed', () => pollSoon(TIMELINE_MIN_MS));
+
+poll();
+setInterval(() => {
+  if (Date.now() - lastPoll >= FALLBACK_MS - 100) poll();
+}, FALLBACK_MS);

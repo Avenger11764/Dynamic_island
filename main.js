@@ -189,7 +189,7 @@ function startSpotifyPolling() {
   
   spawnWorker();
 
-  // The worker reports every ~0.8s; if the native media API hangs, restart it
+  // The worker reports on media events and at least every ~2.5s; if the native media API hangs, restart it
   setInterval(() => {
     if (appQuitting || !smtcWorker) return;
     if (Date.now() - smtcLastMessage > 12000) {
@@ -244,6 +244,19 @@ function getCpuUsage() {
   return { idle, total };
 }
 
+// CPU/RAM/network numbers are only forwarded while the renderer can show them
+// (expanded notch or bar); it says so over 'stats-visible'.
+let statsVisible = false;
+let lastHardwareStats = null;
+let lastNetStats = null;
+ipcMain.on('stats-visible', (event, on) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+  statsVisible = !!on;
+  if (!statsVisible) return;
+  if (lastHardwareStats) mainWindow.webContents.send('hardware-stats', lastHardwareStats);
+  if (lastNetStats) mainWindow.webContents.send('network-stats', lastNetStats);
+});
+
 let lastCpuInfo = getCpuUsage();
 function startHardwarePolling() {
   setInterval(() => {
@@ -261,7 +274,8 @@ function startHardwarePolling() {
     const cpu = totalDiff === 0 ? 0 : Math.round(100 - (100 * idleDiff / totalDiff));
     lastCpuInfo = cpuNow;
 
-    mainWindow.webContents.send('hardware-stats', { cpu, ram });
+    lastHardwareStats = { cpu, ram };
+    if (statsVisible) mainWindow.webContents.send('hardware-stats', lastHardwareStats);
   }, 2000);
 }
 
@@ -270,6 +284,8 @@ const { spawn, exec, execFile, execSync } = require('child_process');
 let vbsPath = '';
 let seekPs1Path = '';
 let combinedPs = null;
+let lastPrivacySent = null;
+let lastCallSent = null;
 
 function startCombinedBackgroundMonitor() {
   const psScript = `
@@ -310,6 +326,75 @@ function startCombinedBackgroundMonitor() {
             byte[] buffer = new byte[len];
             Marshal.Copy(ptr, buffer, 0, len);
             return Encoding.UTF8.GetString(buffer);
+        }
+    }
+
+    // Camera / microphone consent store. An app is using the device while its
+    // LastUsedTimeStop is 0 (or older than its LastUsedTimeStart). Compiled rather
+    // than scripted because it runs every second.
+    public static class ConsentStore {
+        const string Root = @"Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\";
+
+        static bool HasValue(Microsoft.Win32.RegistryKey k, string name, out long value) {
+            value = 0;
+            object v = k.GetValue(name);
+            if (v == null) return false;
+            try { value = Convert.ToInt64(v); } catch { return false; }
+            return true;
+        }
+
+        static bool InUse(Microsoft.Win32.RegistryKey k) {
+            long start, stop;
+            if (!HasValue(k, "LastUsedTimeStart", out start) || start <= 0) return false;
+            return !HasValue(k, "LastUsedTimeStop", out stop) || stop == 0 || start > stop;
+        }
+
+        static bool Stopped(Microsoft.Win32.RegistryKey k) {
+            long stop;
+            return !(HasValue(k, "LastUsedTimeStop", out stop) && stop == 0);
+        }
+
+        // Calls visit(appName, key) for every app under the store: packaged apps, then NonPackaged ones
+        static bool Any(Microsoft.Win32.RegistryKey hive, string type, Func<string, Microsoft.Win32.RegistryKey, bool> visit) {
+            using (var key = hive.OpenSubKey(Root + type)) {
+                if (key == null) return false;
+                foreach (string name in key.GetSubKeyNames()) {
+                    if (string.Equals(name, "NonPackaged", StringComparison.OrdinalIgnoreCase)) continue;
+                    using (var sub = key.OpenSubKey(name)) {
+                        if (sub != null && visit(name, sub)) return true;
+                    }
+                }
+                using (var np = key.OpenSubKey("NonPackaged")) {
+                    if (np == null) return false;
+                    foreach (string name in np.GetSubKeyNames()) {
+                        using (var sub = np.OpenSubKey(name)) {
+                            if (sub != null && visit(name, sub)) return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        public static bool IsInUse(string type) {
+            try {
+                Func<string, Microsoft.Win32.RegistryKey, bool> inUse = (n, k) => InUse(k);
+                return Any(Microsoft.Win32.Registry.CurrentUser, type, inUse) || Any(Microsoft.Win32.Registry.LocalMachine, type, inUse);
+            } catch { return false; }
+        }
+
+        // Apps currently holding the microphone or camera
+        public static string[] GetActiveApps() {
+            var apps = new System.Collections.Generic.List<string>();
+            try {
+                foreach (string type in new string[] { "microphone", "webcam" }) {
+                    Any(Microsoft.Win32.Registry.CurrentUser, type, (n, k) => {
+                        if (!Stopped(k) && !apps.Contains(n)) apps.Add(n);
+                        return false;
+                    });
+                }
+            } catch {}
+            return apps.ToArray();
         }
     }
 
@@ -564,47 +649,7 @@ function startCombinedBackgroundMonitor() {
     }
     
     function CheckConsentRegistry ($type) {
-      foreach ($root in @([Microsoft.Win32.Registry]::CurrentUser, [Microsoft.Win32.Registry]::LocalMachine)) {
-        $path = "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\$type"
-        $key = $root.OpenSubKey($path)
-        if ($null -ne $key) {
-          foreach ($subName in $key.GetSubKeyNames()) {
-            if ($subName -eq "NonPackaged") { continue }
-            $sub = $key.OpenSubKey($subName)
-            if ($null -ne $sub) {
-              $stop = $sub.GetValue("LastUsedTimeStop")
-              $start = $sub.GetValue("LastUsedTimeStart")
-              if ($null -ne $start -and $start -gt 0) {
-                if ($null -eq $stop -or $stop -eq 0 -or [int64]$start -gt [int64]$stop) {
-                  $sub.Close(); $key.Close()
-                  return $true
-                }
-              }
-              $sub.Close()
-            }
-          }
-          $np = $key.OpenSubKey("NonPackaged")
-          if ($null -ne $np) {
-            foreach ($subName in $np.GetSubKeyNames()) {
-              $sub = $np.OpenSubKey($subName)
-              if ($null -ne $sub) {
-                $stop = $sub.GetValue("LastUsedTimeStop")
-                $start = $sub.GetValue("LastUsedTimeStart")
-                if ($null -ne $start -and $start -gt 0) {
-                  if ($null -eq $stop -or $stop -eq 0 -or [int64]$start -gt [int64]$stop) {
-                    $sub.Close(); $np.Close(); $key.Close()
-                    return $true
-                  }
-                }
-                $sub.Close()
-              }
-            }
-            $np.Close()
-          }
-          $key.Close()
-        }
-      }
-      return $false
+      return [ConsentStore]::IsInUse($type)
     }
 
     function CheckCameraInUse {
@@ -629,45 +674,7 @@ function startCombinedBackgroundMonitor() {
       $winTitle = ""
       $winHandle = 0
       
-      $micPath = "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone"
-      $webPath = "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\webcam"
-      
-      $activeApps = @()
-      
-      foreach ($p in @($micPath, $webPath)) {
-        $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($p)
-        if ($null -ne $key) {
-          foreach ($s in $key.GetSubKeyNames()) {
-            if ($s -ne "NonPackaged") {
-              $sub = $key.OpenSubKey($s)
-              if ($null -ne $sub) {
-                $stop = $sub.GetValue("LastUsedTimeStop")
-                if ($null -ne $stop -and $stop -eq 0) {
-                  $activeApps += $s
-                }
-                $sub.Close()
-              }
-            }
-          }
-          $np = $key.OpenSubKey("NonPackaged")
-          if ($null -ne $np) {
-            foreach ($s in $np.GetSubKeyNames()) {
-              $sub = $np.OpenSubKey($s)
-              if ($null -ne $sub) {
-                $stop = $sub.GetValue("LastUsedTimeStop")
-                if ($null -ne $stop -and $stop -eq 0) {
-                  $activeApps += $s
-                }
-                $sub.Close()
-              }
-            }
-            $np.Close()
-          }
-          $key.Close()
-        }
-      }
-      
-      $activeApps = $activeApps | Select-Object -Unique
+      $activeApps = @([ConsentStore]::GetActiveApps())
       
       if ($activeApps.Count -gt 0) {
         foreach ($app in $activeApps) {
@@ -724,13 +731,38 @@ function startCombinedBackgroundMonitor() {
       return "None"
     }
     
-    $prevRx = [double]0
-    $prevTx = [double]0
-    $nets = Get-CimInstance Win32_PerfRawData_Tcpip_NetworkInterface
-    foreach ($n in $nets) {
-      $prevRx += $n.BytesReceivedPersec
-      $prevTx += $n.BytesSentPersec
+    # Byte counters straight from the network stack: no WMI query every second.
+    # The adapter list is looked up again every 30s (or when reading one fails).
+    $global:netIfs = @()
+    $global:netAge = 999
+    $global:netKey = ''
+    $global:netChanged = $false
+    function GetNetTotals {
+      $global:netAge++
+      if ($global:netAge -ge 30) {
+        $global:netAge = 0
+        $global:netIfs = @([System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() | Where-Object {
+          $_.OperationalStatus -eq 'Up' -and $_.NetworkInterfaceType -ne 'Loopback' -and $_.NetworkInterfaceType -ne 'Tunnel'
+        })
+        $key = ($global:netIfs | ForEach-Object { $_.Id }) -join ','
+        if ($key -ne $global:netKey) { $global:netKey = $key; $global:netChanged = $true }
+      }
+      $rx = [double]0
+      $tx = [double]0
+      foreach ($ni in $global:netIfs) {
+        try {
+          $st = $ni.GetIPStatistics()
+          $rx += $st.BytesReceived
+          $tx += $st.BytesSent
+        } catch { $global:netAge = 999 }
+      }
+      return @($rx, $tx)
     }
+
+    $t = GetNetTotals
+    $prevRx = $t[0]
+    $prevTx = $t[1]
+    $global:netChanged = $false
     
     while ($true) {
       Start-Sleep -Seconds 1
@@ -738,20 +770,19 @@ function startCombinedBackgroundMonitor() {
       $cam = CheckCameraInUse
       $mic = CheckMicrophoneInUse
       
-      $nets = Get-CimInstance Win32_PerfRawData_Tcpip_NetworkInterface
-      $currRx = [double]0
-      $currTx = [double]0
-      foreach ($n in $nets) {
-        $currRx += $n.BytesReceivedPersec
-        $currTx += $n.BytesSentPersec
-      }
+      $t = GetNetTotals
+      $currRx = $t[0]
+      $currTx = $t[1]
       
       $diffRx = $currRx - $prevRx
       $diffTx = $currTx - $prevTx
       if ($diffRx -lt 0) { $diffRx = 0 }
       if ($diffTx -lt 0) { $diffTx = 0 }
+      # A different set of adapters: totals aren't comparable with the previous second
+      if ($global:netChanged) { $global:netChanged = $false; $diffRx = 0; $diffTx = 0 }
       
-      $callInfo = GetActiveCall
+      # A call needs the microphone or camera: skip the window lookup otherwise
+      $callInfo = if ($cam -or $mic) { GetActiveCall } else { "None" }
       Write-Output "$cam,$mic,$diffRx,$diffTx|$callInfo"
       
       GetNewNotifications
@@ -770,6 +801,9 @@ function startCombinedBackgroundMonitor() {
   const ps = spawn('powershell.exe', ['-NoProfile', '-Command', psScript]);
   combinedPs = ps;
   
+  // The monitor reports every second; the renderer is only told when something changed
+  lastPrivacySent = null;
+  lastCallSent = null;
   let psStdoutBuffer = '';
   ps.stdout.on('data', (data) => {
     psStdoutBuffer += data.toString();
@@ -802,28 +836,25 @@ function startCombinedBackgroundMonitor() {
           const mic = statsParts[1] === 'True';
           const rx = parseInt(statsParts[2]);
           const tx = parseInt(statsParts[3]);
+          lastNetStats = { rx, tx };
           if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('privacy-dots', { cam, mic });
-            mainWindow.webContents.send('network-stats', { rx, tx });
+            const dots = `${cam},${mic}`;
+            if (dots !== lastPrivacySent) {
+              lastPrivacySent = dots;
+              mainWindow.webContents.send('privacy-dots', { cam, mic });
+            }
+            if (statsVisible) mainWindow.webContents.send('network-stats', lastNetStats);
           }
         }
       }
       
-      if (pipes.length === 5) {
-        const activeCall = {
-          isActive: true,
-          appName: pipes[1],
-          title: pipes[2],
-          handle: parseInt(pipes[3]),
-          isForeground: pipes[4] === 'True'
-        };
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('active-call-status', activeCall);
-        }
-      } else {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('active-call-status', { isActive: false });
-        }
+      const activeCall = pipes.length === 5
+        ? { isActive: true, appName: pipes[1], title: pipes[2], handle: parseInt(pipes[3]), isForeground: pipes[4] === 'True' }
+        : { isActive: false };
+      const callKey = JSON.stringify(activeCall);
+      if (callKey !== lastCallSent && mainWindow && !mainWindow.isDestroyed()) {
+        lastCallSent = callKey;
+        mainWindow.webContents.send('active-call-status', activeCall);
       }
     }
   });
@@ -2218,6 +2249,9 @@ function createWindow() {
   });
   mainWindow.webContents.on('did-finish-load', () => {
     logg('webContents did-finish-load fired');
+    // A freshly loaded renderer starts from defaults: send it the current state again
+    lastPrivacySent = null;
+    lastCallSent = null;
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('init-levels', {
         volume: currentVolumeVal,

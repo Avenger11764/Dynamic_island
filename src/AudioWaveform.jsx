@@ -4,10 +4,10 @@ import { useAudioReactive } from './utils/audioReactive';
 /**
  * Four "music light" bars coloured from the album art.
  *
- * With live audio levels, each bar's outer layer follows the real output level
- * (bars 1–2 the left channel, 3–4 the right) and its inner layer adds a small
- * shimmer so the bars don't move in lockstep. Without levels it falls back to
- * a looping CSS animation.
+ * With live audio levels, each bar follows the real output level (bars 1–2 the
+ * left channel, 3–4 the right) plus a small per-bar shimmer so the bars don't
+ * move in lockstep; utils/audioReactive drives that from the data-* attributes.
+ * Without levels it falls back to a looping CSS animation.
  */
 const BARS = [
   { w: 0.8, ch: 'l', dur: 0.82, delay: -0.1 },
@@ -37,9 +37,12 @@ export default function AudioWaveform({ isPlaying, color, colors, height = 12, w
         <span
           key={i}
           className="aw-outer flex-shrink-0 flex items-center justify-center"
+          data-audio-bar={isSideNotch ? 'aw-x' : 'aw-y'}
+          data-ch={b.ch}
+          data-w={b.w}
+          data-dur={b.dur}
+          data-delay={b.delay}
           style={{
-            '--w': b.w,
-            '--lv': `var(--lvl-${b.ch}, 0)`,
             width: isSideNotch ? '100%' : 2.5,
             height: isSideNotch ? 2.5 : '100%'
           }}
