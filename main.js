@@ -1034,6 +1034,22 @@ function startSystemControlWorker() {
         }
         continue;
       }
+      if (t.startsWith('BT_DEVICES:')) {
+        // Paired Bluetooth audio devices: tab-separated "id|1 or 0|name"
+        btAudioDevices = t.substring(11).split('\t').filter(Boolean).map((entry) => {
+          const [id, connected, ...name] = entry.split('|');
+          return { id, connected: connected === '1', name: name.join('|').trim() };
+        }).filter((d) => BT_DEVICE_ID.test(d.id) && d.name);
+        sendBtDevices();
+        continue;
+      }
+      if (t.startsWith('BT_SET:')) {
+        const [id, wanted, reached] = t.substring(7).split('|');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('bt-set-result', { id, connect: wanted === '1', ok: reached === '1' });
+        }
+        continue;
+      }
       if (t.startsWith('BOOST_STEP:')) {
         const [name, mb] = t.substring(11).split('|');
         if (boostWaiter && !boostWaiter.sender.isDestroyed()) boostWaiter.sender.send('boost-progress', { name, mb: parseFloat(mb) || 0 });
@@ -1182,10 +1198,49 @@ function parseBtLine(rest) {
   return { name: parts[0], battery: isNaN(battery) ? -1 : battery };
 }
 
+// ── Bluetooth quick connect ──────────────────────────────────────────────────
+// Paired Bluetooth audio devices, listed and connected by the system worker.
+// The list is only fetched while a Bluetooth panel is open in the notch or bar.
+const BT_DEVICE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+let btAudioDevices = [];
+let btPanelOpen = false;
+
+function btBatteryFor(name) {
+  if (knownBtDevices.has(name)) return knownBtDevices.get(name);
+  const lower = name.toLowerCase();
+  for (const [known, battery] of knownBtDevices) {
+    const k = known.toLowerCase();
+    if (k.includes(lower) || lower.includes(k)) return battery;
+  }
+  return -1;
+}
+
+function sendBtDevices() {
+  if (!btPanelOpen || !mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('bt-devices', btAudioDevices.map((d) => ({ ...d, battery: d.connected ? btBatteryFor(d.name) : -1 })));
+}
+
+ipcMain.on('bt-panel', (event, open) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+  btPanelOpen = !!open;
+  if (btPanelOpen) sysWorkerSend('btlist');
+});
+
+ipcMain.on('bt-set-connection', (event, id, connect) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+  // Only ids the worker itself reported are passed back to it
+  if (typeof id !== 'string' || !BT_DEVICE_ID.test(id) || !btAudioDevices.some((d) => d.id === id)) return;
+  sysWorkerSend(`${connect ? 'btconnect' : 'btdisconnect'} ${id}`);
+});
+
+ipcMain.on('open-bluetooth-settings', () => shell.openExternal('ms-settings:bluetooth'));
+
 function btDeviceConnected(name, battery, alert) {
   const prev = knownBtDevices.get(name);
   knownBtDevices.set(name, battery);
   currentBtDevice = { name, battery };
+  // Keep an open Bluetooth panel in step with devices that connect on their own
+  if (btPanelOpen) { if (alert) sysWorkerSend('btlist'); else if (prev !== battery) sendBtDevices(); }
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (alert) {
     mainWindow.webContents.send('bt-device-event', { type: 'connected', name, battery });
@@ -1201,6 +1256,7 @@ function btDeviceDisconnected(name) {
     const rest = [...knownBtDevices.entries()].pop();
     currentBtDevice = rest ? { name: rest[0], battery: rest[1] } : null;
   }
+  if (btPanelOpen) sysWorkerSend('btlist');
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('bt-device-event', { type: 'disconnected', name });
   }

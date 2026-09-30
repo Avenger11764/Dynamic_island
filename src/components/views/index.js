@@ -8,4 +8,5 @@ export { StopwatchView } from './StopwatchView';
 export { SettingsView } from './SettingsView';
 export { ExpandedHeader } from './ExpandedHeader';
 export { ShelfBar } from './ShelfBar';
+export { BluetoothView } from './BluetoothView';
 

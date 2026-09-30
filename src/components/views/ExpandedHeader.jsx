@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   LayoutGrid, Music, Coffee, Timer as TimerIcon, Activity, Signal,
-  SlidersHorizontal, Settings as SettingsIcon, Pin, X
+  SlidersHorizontal, Settings as SettingsIcon, Pin, X, Bluetooth
 } from 'lucide-react';
 import WeatherIcon from '../../WeatherIcon';
 import { BatteryRing } from '../ui/Glyphs';
@@ -67,6 +67,7 @@ export const ExpandedHeader = React.memo(({
     { id: 'dashboard', title: 'Home', Icon: LayoutGrid, show: true },
     { id: 'media', title: 'Now playing', Icon: Music, show: config.showMediaWidget !== false },
     { id: 'control', title: 'Controls', Icon: SlidersHorizontal, show: true },
+    { id: 'bluetooth', title: 'Bluetooth', Icon: Bluetooth, show: true },
     { id: 'pomodoro', title: 'Focus timer', Icon: Coffee, show: config.showPomodoro !== false },
     { id: 'stopwatch', title: 'Stopwatch', Icon: TimerIcon, show: !!config.showStopwatch },
     { id: 'stats', title: 'System', Icon: Activity, show: showHw },

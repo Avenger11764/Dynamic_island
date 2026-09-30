@@ -79,6 +79,7 @@ namespace WinAudioSys {
         public short wReserved2;
         public short wReserved3;
         public IntPtr pwszVal;
+        public IntPtr pad;   // PROPVARIANT is 24 bytes on x64: GetValue writes all of them
     }
 
     [Guid("7991EEC9-7E89-4D85-8390-6C703CEC60C0"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -613,6 +614,214 @@ namespace WinAudioSys {
         }
     }
 
+    [Guid("2A07407E-6497-4A18-9787-32F79BD0D98F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IDeviceTopology {
+        int GetConnectorCount(out uint pCount);
+        int GetConnector(uint nIndex, out IConnector ppConnector);
+    }
+
+    [Guid("9C2C4058-23F5-41DE-877A-DF3AF236A09E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IConnector {
+        int GetConnectorType(out int pType);
+        int GetDataFlow(out int pFlow);
+        int ConnectTo(IConnector pConnectTo);
+        int Disconnect();
+        int IsConnected(out bool pbConnected);
+        int GetConnectedTo(out IConnector ppConTo);
+        int GetConnectorIdConnectedTo([MarshalAs(UnmanagedType.LPWStr)] out string ppwstrConnectorId);
+        int GetDeviceIdConnectedTo([MarshalAs(UnmanagedType.LPWStr)] out string ppwstrDeviceId);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KSPROPERTY {
+        public Guid Set;
+        public int Id;
+        public int Flags;
+    }
+
+    [Guid("28F54685-06FD-11D2-B27A-00A0C9223196"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IKsControl {
+        [PreserveSig] int KsProperty(ref KSPROPERTY Property, int PropertyLength, IntPtr PropertyData, int DataLength, out int BytesReturned);
+    }
+
+    // Quick connect for paired Bluetooth audio devices (headphones, speakers, headsets).
+    // Windows has no public "connect this Bluetooth device" API; this is the same
+    // request the Windows sound panel's Connect button sends: a one-shot reconnect /
+    // disconnect property on the Bluetooth audio driver behind each audio endpoint.
+    // Other Bluetooth devices (mice, keyboards) connect on their own and aren't listed.
+    // Public entry points: ReportAsync() and SetAsync().
+    public class BtConnect {
+        static readonly Guid BtAudioSet = new Guid("7FA06C40-B8F6-4C7E-8556-E8C33A12E54D");
+        const int OneShotReconnect = 0, OneShotDisconnect = 1, TypeGet = 1;
+
+        public class Dev {
+            public string Id;
+            public string Name;
+            public bool Connected;
+            public List<string> Controls = new List<string>();
+        }
+
+        static PROPERTYKEY Key(string fmtid, int pid) {
+            PROPERTYKEY k = new PROPERTYKEY(); k.fmtid = new Guid(fmtid); k.pid = pid; return k;
+        }
+
+        static string CleanName(string n) {
+            if (string.IsNullOrEmpty(n)) return "";
+            foreach (string suffix in new string[] { " Hands-Free AG Audio", " Hands-Free AG", " Hands-Free Audio", " Hands-Free", " Stereo", " Avrcp Transport" }) {
+                if (n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) n = n.Substring(0, n.Length - suffix.Length);
+            }
+            return n.Trim();
+        }
+
+        // Paired Bluetooth audio devices, one entry per physical device
+        public static List<Dev> Scan() {
+            var byId = new Dictionary<string, Dev>(StringComparer.OrdinalIgnoreCase);
+            var list = new List<Dev>();
+            IMMDeviceEnumerator en = null;
+            IMMDeviceCollection coll = null;
+            try {
+                en = (IMMDeviceEnumerator)new MMDevEnum();
+                // Render and capture endpoints that are active, unplugged or not present
+                en.EnumAudioEndpoints(2, 1 | 4 | 8, out coll);
+                int count; coll.GetCount(out count);
+                PROPERTYKEY pkContainer = Key("8c7ed206-3f8a-4827-b3ab-ae9e1faefc6c", 2);
+                PROPERTYKEY pkAdapter = Key("026e516e-b814-414b-83cd-856d6fef4822", 2);
+                Guid iidTopo = typeof(IDeviceTopology).GUID;
+                for (int i = 0; i < count; i++) {
+                    IMMDevice dev = null;
+                    object topoObj = null;
+                    IConnector con = null;
+                    IPropertyStore ps = null;
+                    try {
+                        coll.Item(i, out dev);
+                        dev.Activate(ref iidTopo, 23, IntPtr.Zero, out topoObj);
+                        ((IDeviceTopology)topoObj).GetConnector(0, out con);
+                        string controlId;
+                        con.GetDeviceIdConnectedTo(out controlId);
+                        if (controlId == null || controlId.IndexOf(@"\\?\bth", StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                        int state; dev.GetState(out state);
+                        dev.OpenPropertyStore(0, out ps);
+                        PROPVARIANT pv;
+                        string id = controlId, name = "";
+                        ps.GetValue(ref pkContainer, out pv);
+                        if (pv.vt == 72 && pv.pwszVal != IntPtr.Zero) id = ((Guid)Marshal.PtrToStructure(pv.pwszVal, typeof(Guid))).ToString();
+                        ps.GetValue(ref pkAdapter, out pv);
+                        if (pv.vt == 31 && pv.pwszVal != IntPtr.Zero) name = CleanName(Marshal.PtrToStringUni(pv.pwszVal));
+
+                        Dev d;
+                        if (!byId.TryGetValue(id, out d)) { d = new Dev(); d.Id = id; d.Name = name; byId[id] = d; list.Add(d); }
+                        if (d.Name == "" && name != "") d.Name = name;
+                        if (state == 1) d.Connected = true;
+                        if (!d.Controls.Contains(controlId)) d.Controls.Add(controlId);
+                    } catch { }
+                    finally { Release(ps); Release(con); Release(topoObj); Release(dev); }
+                }
+            } catch { }
+            finally {
+                if (coll != null) { try { Marshal.ReleaseComObject(coll); } catch { } }
+                if (en != null) { try { Marshal.ReleaseComObject(en); } catch { } }
+            }
+            list.RemoveAll(d => d.Name == "");
+            return list;
+        }
+
+        static void Release(object o) {
+            if (o != null) { try { Marshal.ReleaseComObject(o); } catch { } }
+        }
+
+        // All of this runs on one dedicated STA thread. The audio topology objects are
+        // apartment-threaded: touched from the command thread (which blocks reading
+        // stdin and never pumps messages) they deadlock every later call.
+        static readonly List<Action> _jobs = new List<Action>();
+        static readonly System.Threading.AutoResetEvent _wake = new System.Threading.AutoResetEvent(false);
+        static readonly System.Threading.ManualResetEvent _never = new System.Threading.ManualResetEvent(false);
+        static System.Threading.Thread _worker;
+
+        static void Post(Action job) {
+            lock (_jobs) {
+                _jobs.Add(job);
+                if (_worker == null) {
+                    _worker = new System.Threading.Thread(Work);
+                    _worker.SetApartmentState(System.Threading.ApartmentState.STA);
+                    _worker.IsBackground = true;
+                    _worker.Start();
+                }
+            }
+            _wake.Set();
+        }
+
+        static void Work() {
+            while (true) {
+                Action job = null;
+                lock (_jobs) { if (_jobs.Count > 0) { job = _jobs[0]; _jobs.RemoveAt(0); } }
+                if (job == null) { _wake.WaitOne(); continue; }
+                try { job(); } catch { }
+            }
+        }
+
+        // One line for the main process: "BT_DEVICES:" then tab-separated "id|1 or 0|name"
+        static void Report() {
+            var parts = new List<string>();
+            foreach (Dev d in Scan()) parts.Add(d.Id + "|" + (d.Connected ? "1" : "0") + "|" + d.Name.Replace("|", " ").Replace("	", " "));
+            Console.WriteLine("BT_DEVICES:" + string.Join("	", parts.ToArray()));
+            Console.Out.Flush();
+        }
+
+        public static void ReportAsync() { Post(Report); }
+
+        // Sends the request, then waits for the device to actually change state and
+        // reports "BT_SET:id|1 or 0 wanted|1 or 0 reached" followed by a fresh list.
+        public static void SetAsync(string id, bool connect) {
+            Post(() => {
+                bool reached = false;
+                try {
+                    if (Set(id, connect)) {
+                        for (int i = 0; i < 30 && !reached; i++) {
+                            _never.WaitOne(400);   // a wait that keeps this STA's message pump alive
+                            Dev d = Scan().Find(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+                            reached = d != null && d.Connected == connect;
+                        }
+                    }
+                } catch { }
+                Console.WriteLine("BT_SET:" + id + "|" + (connect ? "1" : "0") + "|" + (reached ? "1" : "0"));
+                Console.Out.Flush();
+                try { Report(); } catch { }
+            });
+        }
+
+        // Asks the driver to connect (or disconnect) every audio service of the device.
+        // Returns true if at least one request was accepted; the connection itself
+        // completes a moment later.
+        static bool Set(string id, bool connect) {
+            bool ok = false;
+            IMMDeviceEnumerator en = null;
+            try {
+                Dev target = Scan().Find(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
+                if (target == null) return false;
+                en = (IMMDeviceEnumerator)new MMDevEnum();
+                Guid iidKs = typeof(IKsControl).GUID;
+                foreach (string controlId in target.Controls) {
+                    IMMDevice ctl = null;
+                    object ksObj = null;
+                    try {
+                        en.GetDevice(controlId, out ctl);
+                        ctl.Activate(ref iidKs, 23, IntPtr.Zero, out ksObj);
+                        KSPROPERTY prop = new KSPROPERTY();
+                        prop.Set = BtAudioSet;
+                        prop.Id = connect ? OneShotReconnect : OneShotDisconnect;
+                        prop.Flags = TypeGet;
+                        int returned;
+                        if (((IKsControl)ksObj).KsProperty(ref prop, Marshal.SizeOf(typeof(KSPROPERTY)), IntPtr.Zero, 0, out returned) >= 0) ok = true;
+                    } catch { }
+                    finally { Release(ksObj); Release(ctl); }
+                }
+            } catch { }
+            finally { Release(en); }
+            return ok;
+        }
+    }
+
     public class BtHelper {
         [DllImport("cfgmgr32.dll", EntryPoint = "CM_Get_Device_ID_List_SizeW", CharSet = CharSet.Unicode)]
         public static extern int CM_Get_Device_ID_List_Size(out uint pulLen, string pszFilter, uint ulFlags);
@@ -1078,6 +1287,15 @@ while ($true) {
         }
         elseif ($line -eq "boost") {
             [WinAudioSys.MemOptimizer]::RunAsync()
+        }
+        elseif ($line -eq "btlist") {
+            [WinAudioSys.BtConnect]::ReportAsync()
+        }
+        elseif ($line.StartsWith("btconnect ")) {
+            [WinAudioSys.BtConnect]::SetAsync($line.Substring(10).Trim(), $true)
+        }
+        elseif ($line.StartsWith("btdisconnect ")) {
+            [WinAudioSys.BtConnect]::SetAsync($line.Substring(13).Trim(), $false)
         }
         elseif ($line -eq "meter on") {
             [WinAudioSys.Audio]::SetMeter($true)

@@ -20,7 +20,8 @@ import {
   PomodoroView, 
   SettingsView, 
   ExpandedHeader, 
-  ShelfBar 
+  ShelfBar,
+  BluetoothView 
 } from './components/views';
 import { 
   OsdAlert, 
@@ -31,9 +32,10 @@ import { BackgroundEffect, normalizeBackgroundId } from './components/background
 import { getMaterialSurface, applyCardStyle } from './utils/materials';
 import { useAlbumColors } from './utils/useAlbumColors';
 import { useAppUpdates, splitChangelog } from './utils/useAppUpdates';
-import { SourceAppIcon, BrandMark, BatteryRing } from './components/ui';
+import { SourceAppIcon, BrandMark, BatteryRing, BluetoothDevices } from './components/ui';
 import { formatTime, formatSpeed } from './utils/formatters';
 const ipcRenderer = window.electronAPI || null;
+const SHELF_BT_HEIGHT = 340;   // bar window height while the Bluetooth popover is open
 
 export default function App() {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -445,6 +447,12 @@ export default function App() {
   const shelfSettingsOpenRef = useRef(false);
   useEffect(() => { shelfSettingsOpenRef.current = shelfSettingsOpen; }, [shelfSettingsOpen]);
 
+  // Bluetooth quick-connect popover under the top bar (the side bar shows the list inline)
+  const [shelfBtOpen, setShelfBtOpen] = useState(false);
+  const shelfBtOpenRef = useRef(false);
+  shelfBtOpenRef.current = shelfBtOpen;
+  const toggleShelfBt = useCallback(() => setShelfBtOpen((open) => !open), []);
+
   const configRef = useRef(config);
   useEffect(() => { configRef.current = config; }, [config]);
 
@@ -833,6 +841,17 @@ export default function App() {
   const [dragPreviewPosition, setDragPreviewPosition] = useState('top');
   const shelfHideTimeoutRef = useRef(null);
 
+  // The popover hangs below the bar, so the window grows while it is open
+  const shelfBtMounted = useRef(false);
+  useEffect(() => {
+    if (!shelfBtMounted.current) { shelfBtMounted.current = true; return; }
+    if (!ipcRenderer || config.mode !== 'bar' || config.screenPosition === 'left' || config.screenPosition === 'right') return;
+    ipcRenderer.send('set-shelf-height', shelfBtOpen ? SHELF_BT_HEIGHT : 64);
+  }, [shelfBtOpen]);
+  useEffect(() => {
+    if (!shelfVisible || config.mode !== 'bar') setShelfBtOpen(false);
+  }, [shelfVisible, config.mode, config.screenPosition]);
+
   // CPU/RAM/network numbers are only streamed while they can be on screen
   const statsVisible = config.mode === 'bar' ? shelfVisible : isExpanded;
   useEffect(() => {
@@ -950,7 +969,7 @@ export default function App() {
     setShelfVisible(true);
     if (ipcRenderer) {
       const isSide = config.screenPosition === 'left' || config.screenPosition === 'right';
-      ipcRenderer.send('set-shelf-height', shelfSettingsOpenRef.current ? (isSide ? 516 : 420) : (isSide ? 160 : 64));
+      ipcRenderer.send('set-shelf-height', shelfSettingsOpenRef.current ? (isSide ? 516 : 420) : (isSide ? 160 : (shelfBtOpenRef.current ? SHELF_BT_HEIGHT : 64)));
       ipcRenderer.send('set-ignore-mouse-events', false);
     }
   };
@@ -962,6 +981,7 @@ export default function App() {
     const isInput = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
     if (isInput) return;
     if (shelfSettingsOpenRef.current) return;
+    if (shelfBtOpenRef.current) return;
     if (isSettingsWindowOpenRef.current) return;
     if (!config.hoverToShow) return; // Persistent unless user explicitly enabled hoverToShow
 
@@ -1350,9 +1370,28 @@ export default function App() {
                 activeBtDevice={activeBtDevice}
                 ipcRenderer={ipcRenderer}
                 onPointerDown={handleCustomDragStart}
+                btOpen={shelfBtOpen}
+                onToggleBluetooth={toggleShelfBt}
               />
             )}
           </AnimatePresence>
+          {shelfBtOpen && shelfVisible && !isDragging && !isSidePosition && (
+            <>
+              <div className="fixed inset-0 z-[40]" onClick={() => setShelfBtOpen(false)} />
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.16 }}
+                className="fixed top-[62px] right-4 w-[270px] max-h-[268px] overflow-y-auto custom-scrollbar z-[60] rounded-[18px] p-2"
+                style={{
+                  backgroundColor: getMaterialSurface(config.panelStyle, config.bgColor, { opaque: true }),
+                  boxShadow: '0 16px 40px -12px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.08)'
+                }}
+              >
+                <BluetoothDevices />
+              </motion.div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -1475,6 +1514,7 @@ export default function App() {
                     if (isExpanded) {
                       if (isSideNotch && viewMode !== 'settings') {
                         if (viewMode === 'control') return 350;
+                        if (viewMode === 'bluetooth') return 300;
                         if (viewMode === 'dashboard') return (effectivePrivacy.cam || effectivePrivacy.mic) ? 420 : 380;
                         if (viewMode === 'stats') return 275;
                         if (viewMode === 'network') return 200;
@@ -1486,6 +1526,7 @@ export default function App() {
                       if (viewMode === 'settings') return 320;
                       if (viewMode === 'dashboard') return (effectivePrivacy.cam || effectivePrivacy.mic) ? 336 : 292;
                       if (viewMode === 'control') return 236;
+                      if (viewMode === 'bluetooth') return 250;
                       if (viewMode === 'network') return 168;
                       if (viewMode === 'stats') return 214;
                       if (viewMode === 'pomodoro') return 282;
@@ -1887,7 +1928,7 @@ export default function App() {
                         </AnimatePresence>
 
                         <div
-                          className={`flex flex-grow rounded-2xl relative transition-all duration-300 ${getPanelBorderStyle()} ${isSideNotch && viewMode !== 'settings' ? 'flex-col justify-center items-center overflow-y-auto no-scrollbar p-2 my-auto' : 'justify-between'} ${viewMode === 'settings' ? 'p-3.5 items-start flex-col overflow-y-auto custom-scrollbar overflow-hidden' : (viewMode === 'control' ? (isSideNotch && viewMode !== 'settings' ? 'p-2.5 justify-center' : 'px-2.5 pb-2.5 pt-1') : (viewMode === 'pomodoro' ? (isSideNotch && viewMode !== 'settings' ? 'p-2.5' : 'px-3 pb-3 pt-1') : (viewMode === 'dashboard' ? 'px-2 pb-2 pt-1 items-stretch justify-center' : (viewMode === 'media' ? 'p-0 overflow-hidden items-center justify-center' : 'px-2.5 pb-2.5 pt-0.5 items-center justify-center'))))}`}
+                          className={`flex flex-grow rounded-2xl relative transition-all duration-300 ${getPanelBorderStyle()} ${isSideNotch && viewMode !== 'settings' ? 'flex-col justify-center items-center overflow-y-auto no-scrollbar p-2 my-auto' : 'justify-between'} ${viewMode === 'settings' ? 'p-3.5 items-start flex-col overflow-y-auto custom-scrollbar overflow-hidden' : (viewMode === 'control' || viewMode === 'bluetooth' ? (isSideNotch && viewMode !== 'settings' ? 'p-2.5 justify-center' : 'px-2.5 pb-2.5 pt-1') : (viewMode === 'pomodoro' ? (isSideNotch && viewMode !== 'settings' ? 'p-2.5' : 'px-3 pb-3 pt-1') : (viewMode === 'dashboard' ? 'px-2 pb-2 pt-1 items-stretch justify-center' : (viewMode === 'media' ? 'p-0 overflow-hidden items-center justify-center' : 'px-2.5 pb-2.5 pt-0.5 items-center justify-center'))))}`}
                           style={{ pointerEvents: 'auto', ...getPanelBorderStyleInline() }}
                         >
                           <AnimatePresence mode="wait">
@@ -2006,6 +2047,8 @@ export default function App() {
                                 activeBtDevice={activeBtDevice}
                               />
                             )}
+
+                            {viewMode === 'bluetooth' && <BluetoothView />}
 
                             {viewMode === 'settings' && (
                               <SettingsView
