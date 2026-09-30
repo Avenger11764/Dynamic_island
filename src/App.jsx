@@ -27,10 +27,9 @@ import {
   BluetoothAlert, 
   NotificationBanners 
 } from './components/alerts';
-import { BackgroundEffect } from './components/background';
+import { BackgroundEffect, normalizeBackgroundId } from './components/background';
 import { getMaterialSurface, applyCardStyle } from './utils/materials';
 import { useAlbumColors } from './utils/useAlbumColors';
-import { setAudioMeter } from './utils/audioReactive';
 import { useAppUpdates, splitChangelog } from './utils/useAppUpdates';
 import { SourceAppIcon, BrandMark, BatteryRing } from './components/ui';
 import { formatTime, formatSpeed } from './utils/formatters';
@@ -301,13 +300,6 @@ export default function App() {
 
   const activeAccentHex = config.accentColor !== 'rgb' && config.accentColor?.startsWith('#') ? config.accentColor : '#06b6d4';
   const albumColors = useAlbumColors(spotifyState?.item?.album?.images?.[0]?.url || '');
-  // Stream output levels for the beat-synced lights only while something is playing
-  const isMediaPlaying = !!spotifyState?.is_playing;
-  useEffect(() => {
-    setAudioMeter(isMediaPlaying);
-  }, [isMediaPlaying]);
-  useEffect(() => () => setAudioMeter(false), []);
-
   useEffect(() => {
     if (ipcRenderer && config.screenPosition) {
       ipcRenderer.send('set-screen-position', config.screenPosition, { ignoreBounds: window.isDraggingUpdate });
@@ -789,12 +781,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let timer;
     const updateClock = () => {
       setTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: config.clockFormat === '12h' }));
+      // The clock shows minutes: wake at the next minute rather than every second
+      timer = setTimeout(updateClock, 60000 - (Date.now() % 60000) + 50);
     };
     updateClock();
-    const interval = setInterval(updateClock, 1000);
-    return () => clearInterval(interval);
+    return () => clearTimeout(timer);
   }, [config.clockFormat]);
 
   // Advance the song position locally. Fine-grained only when a progress bar or
@@ -838,6 +832,12 @@ export default function App() {
   const [isDragMoving, setIsDragMoving] = useState(false);
   const [dragPreviewPosition, setDragPreviewPosition] = useState('top');
   const shelfHideTimeoutRef = useRef(null);
+
+  // CPU/RAM/network numbers are only streamed while they can be on screen
+  const statsVisible = config.mode === 'bar' ? shelfVisible : isExpanded;
+  useEffect(() => {
+    if (ipcRenderer) ipcRenderer.send('stats-visible', statsVisible);
+  }, [statsVisible]);
 
   const handleCustomDragStart = (e) => {
     if (
@@ -1519,8 +1519,6 @@ export default function App() {
               transformOrigin: isSideNotch ? (config.screenPosition === 'left' ? 'left center' : 'right center') : 'top center',
               originY: isSideNotch ? 0.5 : 0,
               originX: config.screenPosition === 'left' ? 0 : (config.screenPosition === 'right' ? 1 : 0.5),
-              backdropFilter: isExpanded || isNotification ? 'blur(36px) saturate(190%)' : 'blur(20px)',
-              WebkitBackdropFilter: isExpanded || isNotification ? 'blur(36px) saturate(190%)' : 'blur(20px)',
               ...getNotchGlowStyle()
             }}
             transition={{
@@ -1574,7 +1572,7 @@ export default function App() {
               )}
 
               <AnimatePresence>
-                {isExpanded && (
+                {isExpanded && normalizeBackgroundId(config.bgAnimation) !== 'off' && (
                   <motion.div 
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -1736,7 +1734,7 @@ export default function App() {
                         >
                           <BrandMark size={18} />
                         </motion.div>
-                      ) : spotifyState?.is_playing && spotifyState?.item && config.showAudioWaveform !== false ? (
+                      ) : spotifyState?.is_playing && spotifyState?.item && config.showAudioWaveform !== false && !isNotchHidden ? (
                         <div className={isSideNotch ? 'h-[14px] overflow-hidden flex items-center' : 'h-[12px] overflow-hidden flex items-center'}>
                           <AudioWaveform isPlaying={true} colors={albumColors} isSideNotch={isSideNotch} width={isSideNotch ? 14 : 22} height={isSideNotch ? 14 : 13} />
                         </div>

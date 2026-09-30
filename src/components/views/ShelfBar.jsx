@@ -161,8 +161,6 @@ export const ShelfBar = React.memo(({
       style={{
         backgroundColor: barBg,
         ...(isSide ? { width: '160px', height: '100vh' } : { height: '56px' }),
-        backdropFilter: 'blur(36px) saturate(160%)',
-        WebkitBackdropFilter: 'blur(36px) saturate(160%)',
         pointerEvents: isVisible ? 'auto' : 'none',
         boxShadow: barShadow
       }}
