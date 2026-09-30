@@ -3,6 +3,7 @@
   "private": true,
   "version": "7.0.6",
   "changelog": [
+    "Bluetooth quick connect: Connect or disconnect your paired headphones and speakers right from the notch or the bar.",
     "Much lighter on your PC: Smart Notch now uses a fraction of the processor it did, most of all while music is playing or the notch is open.",
     "Quieter in the background: Media, brightness and Bluetooth are followed through Windows events instead of constant checking.",
     "Calmer when paused: The album glow and Ambient effect now rest when your music is paused.",
