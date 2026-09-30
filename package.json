@@ -1,15 +1,12 @@
 {
   "name": "smart-notch",
   "private": true,
-  "version": "7.0.5",
+  "version": "7.0.6",
   "changelog": [
-    "A fresh new look: A calmer, cleaner design for the notch, alerts, bar and settings, with a new battery ring and logo.",
-    "Lights that move to your music: The music bars, album glow and effects now pulse to the beat of whatever is playing.",
-    "New background effects: Visualizer, Waves and Synthwave in your album's colours, plus Fireflies, Holographic and Topographic.",
-    "More reliable popups: Bluetooth, volume and brightness popups keep working after connecting headphones or waking from sleep.",
-    "Better bar mode: Focus timer, calendar and quick toggles in the side bar, and a startable timer in the top bar.",
-    "Smoother dragging: See where the notch will land while dragging, and it keeps up with quick moves.",
-    "Update notices: Get a heads-up when a new version is in the Microsoft Store, and see what's new after updating."
+    "Much lighter on your PC: Smart Notch now uses a fraction of the processor it did, most of all while music is playing or the notch is open.",
+    "Quieter in the background: Media, brightness and Bluetooth are followed through Windows events instead of constant checking.",
+    "Calmer when paused: The album glow and Ambient effect now rest when your music is paused.",
+    "Faster media response: Play, pause and track changes show up in the notch sooner."
   ],
   "main": "main.js",
   "author": "Avinash",
