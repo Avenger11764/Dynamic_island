@@ -188,7 +188,7 @@ export const DashboardView = React.memo(({
             <span className="font-display text-[14px] font-semibold text-white">{pad(Math.floor(pomodoro / 60))}:{pad(pomodoro % 60)}</span>
           </Row>
         ) : activeBtDevice ? (
-          <Row>
+          <Row onClick={() => setViewMode('bluetooth')}>
             <div className="flex items-center gap-2.5 min-w-0">
               <Headphones size={15} strokeWidth={1.9} className="text-white/70 flex-shrink-0" />
               <span className="text-[12px] font-medium text-white/85 truncate" title={activeBtDevice.name}>{activeBtDevice.name}</span>

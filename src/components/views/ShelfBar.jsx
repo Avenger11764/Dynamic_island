@@ -3,12 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play, Pause, SkipForward, SkipBack, Music, X, Rocket,
   Settings as SettingsIcon, Power, ArrowDown, ArrowUp,
-  Volume2, VolumeX, Volume1, Sun, Headphones, Bell, Sparkles, ArrowDownToLine
+  Volume2, VolumeX, Volume1, Sun, Headphones, Bell, Sparkles, ArrowDownToLine, Bluetooth
 } from 'lucide-react';
 import WeatherIcon from '../../WeatherIcon';
 import AudioWaveform from '../../AudioWaveform';
 import { BackgroundEffect } from '../background';
 import { AmbientGlow } from '../ui/AmbientGlow';
+import { BluetoothDevices } from '../ui/BluetoothDevices';
 import { useAlbumColors } from '../../utils/useAlbumColors';
 import { TimerCard, TimerChip, QuickToggles, QuickTools, MiniCalendar } from './ShelfWidgets';
 import { formatTime, formatSpeed } from '../../utils/formatters';
@@ -36,7 +37,7 @@ const LevelBar = ({ value, muted, onSet, onWheel, title }) => (
   </div>
 );
 
-const ActionButton = ({ title, onClick, disabled, danger, children, badge }) => (
+const ActionButton = ({ title, onClick, disabled, danger, active, children, badge }) => (
   <button
     type="button"
     title={title}
@@ -44,7 +45,7 @@ const ActionButton = ({ title, onClick, disabled, danger, children, badge }) => 
     onClick={onClick}
     disabled={disabled}
     className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 ${
-      danger ? 'text-white/50 hover:text-[#FF453A] hover:bg-white/[0.08]' : 'text-white/60 hover:text-white hover:bg-white/[0.08]'
+      danger ? 'text-white/50 hover:text-[#FF453A] hover:bg-white/[0.08]' : (active ? 'text-white bg-white/[0.14]' : 'text-white/60 hover:text-white hover:bg-white/[0.08]')
     }`}
   >
     {children}
@@ -75,6 +76,7 @@ export const ShelfBar = React.memo(({
   pomodoro = 0, isPomoRunning, pomoMode, togglePomo, resetPomo, switchPomoMode,
   stopwatch = 0, isSwRunning, toggleSw, resetSw,
   isDnd = false, setIsDnd, isNightLight = false, setIsNightLight,
+  btOpen = false, onToggleBluetooth,
   ipcRenderer
 }) => {
   const isRgb = config.accentColor === 'rgb';
@@ -240,7 +242,8 @@ export const ShelfBar = React.memo(({
             </div>
           ) : null}
 
-          {activeBtDevice?.name && (
+          {/* Paired audio devices with quick connect; other connected devices keep the plain row */}
+          <BluetoothDevices compact fallback={activeBtDevice?.name ? (
             <div className="surface w-full px-2.5 py-2 flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 min-w-0">
                 <Headphones size={13} {...ICON} className="text-white/60 flex-shrink-0" />
@@ -253,7 +256,7 @@ export const ShelfBar = React.memo(({
                 </span>
               )}
             </div>
-          )}
+          ) : null} />
 
           {config.showPomodoro !== false && <TimerCard {...timerProps} />}
 
@@ -388,6 +391,7 @@ export const ShelfBar = React.memo(({
               <BatteryRing level={battery.level} charging={battery.charging} size={17} />
             </span>
             <div className="flex items-center flex-shrink-0">
+              <ActionButton title="Bluetooth devices" onClick={onToggleBluetooth} active={btOpen}><Bluetooth size={14} {...ICON} /></ActionButton>
               {config.showQuickTools !== false && (
                 <ActionButton title="Optimize memory (nothing is closed)" onClick={onBoost} disabled={isBoosting}><Rocket size={14} {...ICON} /></ActionButton>
               )}
