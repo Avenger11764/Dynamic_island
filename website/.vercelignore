@@ -1,0 +1,7 @@
+# Ignore heavy installer executables from Vercel deployment
+public/*.exe
+public/*.zip
+*.exe
+*.zip
+dist/
+node_modules/

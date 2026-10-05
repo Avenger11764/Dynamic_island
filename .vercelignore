@@ -1,0 +1,17 @@
+# Ignore heavy desktop app binaries, installers, and dev caches from Vercel
+release/
+Installers/
+store/
+store_screenshots/
+brag-output*/
+.claude/
+.agents/
+build_dist/
+*.exe
+*.zip
+*.7z
+*.log
+*.ps1
+node_modules/
+website/public/*.exe
+website/public/*.zip
