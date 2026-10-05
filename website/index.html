@@ -11,11 +11,31 @@
   </head>
   <body>
     <div id="root"></div>
-    <div style="display:flex;justify-content:center;padding:16px 0 24px;background:#030712;">
-      <a href="https://www.betterlaunch.co/product/smart-notch" target="_blank" rel="noreferrer" style="transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-        <img src="https://www.betterlaunch.co/badge-launching-dark.svg" alt="Smart notch on Better Launch" width="200" height="56" />
-      </a>
-    </div>
+    <script>
+      // Inject BetterLaunch badge into the React footer once it renders
+      new MutationObserver(function(_, obs) {
+        var footer = document.querySelector('footer');
+        if (!footer) return;
+        var linkRow = footer.querySelector('div > div');
+        if (!linkRow || linkRow.querySelector('.bl-badge')) return;
+        var a = document.createElement('a');
+        a.href = 'https://www.betterlaunch.co/product/smart-notch';
+        a.target = '_blank';
+        a.rel = 'noreferrer';
+        a.className = 'bl-badge';
+        a.style.cssText = 'transition:transform 0.2s;display:inline-flex;';
+        a.onmouseover = function() { a.style.transform = 'scale(1.05)'; };
+        a.onmouseout = function() { a.style.transform = 'scale(1)'; };
+        var img = document.createElement('img');
+        img.src = 'https://www.betterlaunch.co/badge-launching-dark.svg';
+        img.alt = 'Smart notch on Better Launch';
+        img.width = 200;
+        img.height = 56;
+        a.appendChild(img);
+        linkRow.appendChild(a);
+        obs.disconnect();
+      }).observe(document.getElementById('root'), { childList: true, subtree: true });
+    </script>
     <script type="module" src="https://get.microsoft.com/badge/ms-store-badge.bundled.js"></script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
