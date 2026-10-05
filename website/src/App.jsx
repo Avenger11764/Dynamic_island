@@ -169,9 +169,8 @@ function App() {
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
               <span className="hidden sm:inline">GitHub</span>
             </a>
-            <a href="/Smart_Notch_Setup_7.0.6.exe" download className="bg-white text-black px-4 py-2 sm:px-5 sm:py-2.5 rounded-full font-medium text-xs sm:text-sm hover:bg-gray-100 transition-all active:scale-95 flex items-center gap-1.5 sm:gap-2">
-              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              Download v7.0.6
+            <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="bg-white text-black px-4 py-2 sm:px-5 sm:py-2.5 rounded-full font-medium text-xs sm:text-sm hover:bg-gray-100 transition-all active:scale-95 flex items-center gap-1.5 sm:gap-2">
+              <span>Get on Microsoft Store</span>
             </a>
           </div>
         </div>
@@ -210,10 +209,6 @@ function App() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 max-w-xs sm:max-w-none mx-auto">
               <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="hover:scale-105 transition-transform active:scale-95 w-full sm:w-auto flex justify-center">
                 <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" className="h-[48px] sm:h-[52px]" />
-              </a>
-              <a href="/Smart_Notch_Setup_7.0.6.exe" download className="bg-white text-black px-6 sm:px-8 py-3.5 sm:py-4 rounded-full font-semibold text-sm sm:text-base hover:bg-gray-100 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)] active:scale-95 flex items-center justify-center gap-2 h-[48px] sm:h-[52px] w-full sm:w-auto">
-                <Download className="w-4 h-4 sm:w-5 sm:h-5" />
-                Download Setup v7.0.6
               </a>
               <a href="https://github.com/Avenger11764/Dynamic_island" target="_blank" rel="noreferrer" className="glass px-6 sm:px-8 py-3.5 sm:py-4 rounded-full font-semibold text-white text-sm sm:text-base hover:bg-white/10 transition-all active:scale-95 flex items-center justify-center gap-2 border border-white/10 h-[48px] sm:h-[52px] w-full sm:w-auto">
                 View Source <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -405,15 +400,15 @@ function App() {
                 <div className="flex gap-3 sm:gap-4 items-start">
                   <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold shrink-0 border border-blue-500/30 text-sm sm:text-base">1</div>
                   <div>
-                    <h4 className="text-white font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Download Installer</h4>
-                    <p className="text-gray-400 text-xs sm:text-sm">Download the lightweight `Smart_Notch_Setup.exe` directly.</p>
+                    <h4 className="text-white font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Get on Microsoft Store</h4>
+                    <p className="text-gray-400 text-xs sm:text-sm">Install directly with verified safety and automatic background updates.</p>
                   </div>
                 </div>
                 <div className="flex gap-3 sm:gap-4 items-start">
                   <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold shrink-0 border border-blue-500/30 text-sm sm:text-base">2</div>
                   <div>
-                    <h4 className="text-white font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Run Setup</h4>
-                    <p className="text-gray-400 text-xs sm:text-sm">Simply double-click the `.exe` file to seamlessly install the app.</p>
+                    <h4 className="text-white font-semibold text-base sm:text-lg mb-0.5 sm:mb-1">Instant 1-Click Install</h4>
+                    <p className="text-gray-400 text-xs sm:text-sm">No manual setup wizards or file extractions needed.</p>
                   </div>
                 </div>
                 <div className="flex gap-3 sm:gap-4 items-start">
@@ -438,11 +433,10 @@ function App() {
                     <img src="/favicon.png" alt="Smart Notch App Logo" className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl drop-shadow-[0_0_40px_rgba(56,189,248,0.5)]" />
                   </div>
                   <h3 className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2">Smart Notch for Windows</h3>
-                  <p className="text-gray-400 text-xs sm:text-sm mb-6 sm:mb-8">Version 7.0.6 for Windows (64-bit)</p>
+                  <p className="text-gray-400 text-xs sm:text-sm mb-6 sm:mb-8">Official Microsoft Store App</p>
                   
-                  <a href="/Smart_Notch_Setup_7.0.6.exe" download className="w-full bg-white text-black hover:bg-gray-200 font-bold py-3.5 sm:py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-95 flex items-center justify-center gap-2 relative z-10 text-sm sm:text-base">
-                    <Download className="w-4 h-4 sm:w-5 sm:h-5" />
-                    Download v7.0.6 Now
+                  <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="w-full flex justify-center hover:scale-105 transition-transform active:scale-95">
+                    <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" className="h-[48px] sm:h-[52px]" />
                   </a>
                 </div>
               </motion.div>
@@ -526,10 +520,6 @@ function App() {
             <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="hover:scale-105 transition-transform active:scale-95 w-full sm:w-auto flex justify-center">
               <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" className="h-[48px] sm:h-[60px]" />
             </a>
-            <a href="/Smart_Notch_Setup_7.0.6.exe" download className="w-full sm:w-auto bg-white text-black px-7 sm:px-10 py-3.5 sm:py-5 rounded-full font-semibold text-base sm:text-lg hover:scale-105 transition-transform active:scale-95 flex items-center justify-center gap-3 shadow-[0_0_40px_rgba(255,255,255,0.2)]">
-              <Download className="w-5 h-5 sm:w-6 sm:h-6" />
-              Download v7.0.6 for Windows
-            </a>
           </div>
         </div>
       </section>
@@ -544,7 +534,7 @@ function App() {
               <span>Support Smart Notch ☕</span>
             </a>
             <a href="https://github.com/Avenger11764/Dynamic_island" className="hover:text-white transition-colors">GitHub Repository</a>
-            <a href="/Smart_Notch_Setup_7.0.6.exe" download className="hover:text-white transition-colors">Download Installer (v7.0.6)</a>
+            <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">Microsoft Store</a>
           </div>
         </div>
       </footer>
