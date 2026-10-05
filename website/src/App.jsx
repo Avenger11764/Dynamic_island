@@ -64,6 +64,14 @@ function App() {
        setIsNavigating(false);
     }, 600);
   };
+
+  const openStore = () => {
+    // Directly launch Windows Microsoft Store app to product page, with web fallback
+    window.location.href = "ms-windows-store://pdp/?ProductId=9N1D46F5X565";
+    setTimeout(() => {
+      window.open("https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS", "_blank");
+    }, 1500);
+  };
   
   const features = [
     {
@@ -165,13 +173,13 @@ function App() {
               <Coffee className="w-3.5 h-3.5 text-amber-400" />
               <span>Support ☕</span>
             </a>
-            <a href="https://github.com/Avenger11764/Dynamic_island" target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white transition-colors flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium">
-              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
-              <span className="hidden sm:inline">GitHub</span>
-            </a>
-            <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="bg-white text-black px-4 py-2 sm:px-5 sm:py-2.5 rounded-full font-medium text-xs sm:text-sm hover:bg-gray-100 transition-all active:scale-95 flex items-center gap-1.5 sm:gap-2">
-              <span>Get on Microsoft Store</span>
-            </a>
+            <button 
+              onClick={openStore}
+              className="bg-white text-black px-4 py-2 sm:px-5 sm:py-2.5 rounded-full font-medium text-xs sm:text-sm hover:bg-gray-100 transition-all active:scale-95 flex items-center gap-1.5 sm:gap-2 cursor-pointer shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-black" />
+              <span>Download</span>
+            </button>
           </div>
         </div>
       </nav>
@@ -210,9 +218,13 @@ function App() {
               <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="hover:scale-105 transition-transform active:scale-95 w-full sm:w-auto flex justify-center">
                 <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" className="h-[48px] sm:h-[52px]" />
               </a>
-              <a href="https://github.com/Avenger11764/Dynamic_island" target="_blank" rel="noreferrer" className="glass px-6 sm:px-8 py-3.5 sm:py-4 rounded-full font-semibold text-white text-sm sm:text-base hover:bg-white/10 transition-all active:scale-95 flex items-center justify-center gap-2 border border-white/10 h-[48px] sm:h-[52px] w-full sm:w-auto">
-                View Source <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-              </a>
+              <button 
+                onClick={openStore}
+                className="bg-white/10 hover:bg-white/15 text-white px-6 sm:px-8 py-3.5 sm:py-4 rounded-full font-semibold text-sm sm:text-base transition-all active:scale-95 flex items-center justify-center gap-2 border border-white/15 backdrop-blur-md h-[48px] sm:h-[52px] w-full sm:w-auto cursor-pointer shadow-[0_0_25px_rgba(255,255,255,0.05)]"
+              >
+                <Download className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                Download App
+              </button>
             </div>
           </motion.div>
 
@@ -480,7 +492,7 @@ function App() {
           <div className="space-y-3 sm:space-y-4">
             {[
               { q: "Does this drain battery or use a lot of RAM?", a: "No! We've optimized the application using Context Isolation and smart polling mechanisms. It intelligently sleeps background workers when not in view, keeping resource usage extremely minimal." },
-              { q: "Is Smart Notch open source?", a: "Yes, it is 100% open source. You can view the code, contribute, or build it yourself directly from our GitHub repository." },
+              { q: "Where can I get Smart Notch?", a: "You can download and install Smart Notch safely and directly with 1 click from the official Microsoft Store for Windows." },
               { q: "Can I connect my own Spotify account?", a: "Absolutely. The media player integrates directly with Spotify to pull live track data and beautifully ambient album art." },
               { q: "Does it work on Windows 10?", a: "While optimized for the aesthetic of Windows 11, Smart Notch runs flawlessly on Windows 10 as well." }
             ].map((faq, i) => (
@@ -533,8 +545,9 @@ function App() {
               <Coffee className="w-3.5 h-3.5" />
               <span>Support Smart Notch ☕</span>
             </a>
-            <a href="https://github.com/Avenger11764/Dynamic_island" className="hover:text-white transition-colors">GitHub Repository</a>
-            <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">Microsoft Store</a>
+            <button onClick={openStore} className="hover:text-white transition-colors cursor-pointer bg-transparent border-none p-0 text-inherit font-inherit">
+              Microsoft Store
+            </button>
           </div>
         </div>
       </footer>
