@@ -545,9 +545,6 @@ function App() {
             </a>
             <a href="https://github.com/Avenger11764/Dynamic_island" className="hover:text-white transition-colors">GitHub Repository</a>
             <a href="/Smart_Notch_Setup_7.0.6.exe" download className="hover:text-white transition-colors">Download Installer (v7.0.6)</a>
-            <a href="https://www.betterlaunch.co/product/smart-notch" target="_blank" rel="noreferrer" className="hover:scale-105 transition-transform">
-              <img src="https://www.betterlaunch.co/badge-launching-dark.svg" alt="Smart notch on Better Launch" width="200" height="56" />
-            </a>
           </div>
         </div>
       </footer>
