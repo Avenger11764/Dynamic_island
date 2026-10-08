@@ -528,10 +528,17 @@ function App() {
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <h2 className="text-3xl sm:text-5xl md:text-7xl font-bold text-white mb-4 sm:mb-8 tracking-tight">Ready to elevate your desktop?</h2>
           <p className="text-base sm:text-xl text-gray-400 mb-8 sm:mb-12 max-w-2xl mx-auto px-2">Download the free installer today and join thousands of users experiencing the next level of Windows productivity.</p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 mt-6 sm:mt-8 relative z-10 max-w-xs sm:max-w-none mx-auto">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mt-6 sm:mt-8 relative z-10 max-w-xs sm:max-w-none mx-auto">
             <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="hover:scale-105 transition-transform active:scale-95 w-full sm:w-auto flex justify-center">
-              <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" className="h-[48px] sm:h-[60px]" />
+              <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" className="h-[48px] sm:h-[52px]" />
             </a>
+            <button 
+              onClick={openStore}
+              className="bg-white/10 hover:bg-white/15 text-white px-6 sm:px-8 py-3.5 sm:py-4 rounded-full font-semibold text-sm sm:text-base transition-all active:scale-95 flex items-center justify-center gap-2 border border-white/15 backdrop-blur-md h-[48px] sm:h-[52px] w-full sm:w-auto cursor-pointer shadow-[0_0_25px_rgba(255,255,255,0.05)]"
+            >
+              <Download className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+              Download App
+            </button>
           </div>
         </div>
       </section>
