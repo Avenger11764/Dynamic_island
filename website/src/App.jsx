@@ -447,18 +447,9 @@ function App() {
                   <h3 className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2">Smart Notch for Windows</h3>
                   <p className="text-gray-400 text-xs sm:text-sm mb-6 sm:mb-8">Official Microsoft Store App</p>
                   
-                  <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3 w-full relative z-10">
-                    <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="hover:scale-105 transition-transform active:scale-95 w-full sm:w-auto flex justify-center">
-                      <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" className="h-[48px] sm:h-[52px]" />
-                    </a>
-                    <button 
-                      onClick={openStore}
-                      className="bg-white/10 hover:bg-white/15 text-white px-5 sm:px-6 py-3.5 sm:py-4 rounded-full font-semibold text-sm sm:text-base transition-all active:scale-95 flex items-center justify-center gap-2 border border-white/15 backdrop-blur-md h-[48px] sm:h-[52px] w-full sm:w-auto cursor-pointer shadow-[0_0_25px_rgba(255,255,255,0.05)]"
-                    >
-                      <Download className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                      Download App
-                    </button>
-                  </div>
+                  <a href="https://apps.microsoft.com/store/detail/9N1D46F5X565?cid=DevShareMCLPCS" target="_blank" rel="noreferrer" className="w-full flex justify-center hover:scale-105 transition-transform active:scale-95">
+                    <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" className="h-[48px] sm:h-[52px]" />
+                  </a>
                 </div>
               </motion.div>
             </div>
